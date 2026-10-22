@@ -80,3 +80,14 @@ test('T10: a stage the case does not reach is an error naming it', () => {
   const caseFile = file('case3.json', {})
   assert.throws(() => execFileSync('node', [CLI, '--case', caseFile, '--prompt', 'fix:r1'], { stdio: 'pipe' }), /stage fix:r1 not reached/)
 })
+
+test('T11: --json prints the stage prompt with the schema, model and effort its agent gets', () => {
+  const caseFile = file('case4.json', {})
+  const cfg = file('sonnet.json', variant({ models: Object.assign({}, DEFAULT.models, { review: 'sonnet' }) }))
+  const out = JSON.parse(cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code', '--json'))
+  assert.equal(out.prompt, cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code'))
+  assert.equal(out.model, 'sonnet')
+  assert.equal(out.effort, 'high')
+  assert.deepEqual(out.schema.required, ['verdict', 'findings', 'rulings', 'checked'])
+  assert.ok('mailbox' in out.schema.properties)
+})
