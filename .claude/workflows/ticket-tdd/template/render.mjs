@@ -3,6 +3,7 @@
 //
 //     node render.mjs [config.json]                                     the workflow script, on stdout
 //     node render.mjs [config.json] --case case.json --prompt <label>   the prompt the agent labelled <label> receives
+//     ... --prompt <label> --json                                       that prompt with its agent's schema, model and effort, as JSON
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -47,7 +48,8 @@ const STUB_RESULTS = {
   implement: { committed: true, head: 'HEAD', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
 }
 
-export function stagePrompt(source, kase, label) {
+// The call the agent labelled <label> receives: { prompt, schema, model, effort }.
+export function stageCall(source, kase, label) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source.replace('export const meta', 'const meta'))
   const results = Object.assign({}, STUB_RESULTS, kase.results)
@@ -55,7 +57,7 @@ export function stagePrompt(source, kase, label) {
   return new Promise((resolve, reject) => {
     const agent = async (prompt, opts) => {
       // The run stops at the stage asked for: its agent never answers.
-      if (opts.label === label) { resolve(prompt); return new Promise(() => {}) }
+      if (opts.label === label) { resolve({ prompt, schema: opts.schema, model: opts.model, effort: opts.effort }); return new Promise(() => {}) }
       const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates : null
       return r && JSON.parse(JSON.stringify(r))
     }
@@ -70,8 +72,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const flag = name => { const i = argv.indexOf(name); return i < 0 ? null : argv.splice(i, 2)[1] }
   const casePath = flag('--case')
   const label = flag('--prompt')
+  const json = argv.indexOf('--json') >= 0 && argv.splice(argv.indexOf('--json'), 1)
   const source = render(argv[0] ? JSON.parse(readFileSync(argv[0], 'utf8')) : DEFAULT)
   if (!label) process.stdout.write(source)
-  else stagePrompt(source, casePath ? JSON.parse(readFileSync(casePath, 'utf8')) : {}, label)
-    .then(p => process.stdout.write(p), e => { console.error(e.message); process.exit(1) })
+  else stageCall(source, casePath ? JSON.parse(readFileSync(casePath, 'utf8')) : {}, label)
+    .then(c => process.stdout.write(json ? JSON.stringify(c) : c.prompt), e => { console.error(e.message); process.exit(1) })
 }

@@ -282,6 +282,7 @@ over `default.json`:
 ```
 node template/render.mjs [config.json]                                    # the workflow, on stdout
 node template/render.mjs [config.json] --case case.json --prompt <label>  # one stage's prompt
+node template/render.mjs [config.json] --case case.json --prompt <label> --json
 ```
 
 `--prompt` runs the rendered script with stub agents and prints the prompt, mailbox note included, that
@@ -290,7 +291,8 @@ the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The cas
 commit the diff starts from: the prompt names both, the agent reads them), `gate_lines` are every gates
 step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement, standard level); a stage behind a review round, such as a fix, needs the
-round's results in the case.
+round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
+gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code.
 
 ### Adding a variant dimension
 
