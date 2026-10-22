@@ -1,0 +1,282 @@
+# ticket-tdd — research → level → TDD → review loop
+
+A Workflow run that implements **one ticket or one spec** in any git repository. The script is
+`.claude/workflows/ticket-tdd.js`; this directory holds what its agents read (`skills/`) and
+`workflow-doctor.sh`. This repository is the one shared copy: projects run it in place, never copy it.
+The core knows nothing about any one project: what a project adds — its gates, its rules, a mutation
+tool if it has one — arrives in `args.profile`, from a small profile workflow in the project that calls
+`workflow({ scriptPath: <core>/.claude/workflows/ticket-tdd.js }, {...args, tools: <core>, profile})`,
+with `<core>` this repository's absolute path, given to the profile as an arg.
+
+Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history before that is there.
+
+## Shape
+
+```
+research → level
+  → ( [test-case planning → coverage] → implementation )
+  → ( gates → review → fix ) × n → fix-diff review
+  → [mutation] → minor fix → fix-diff review
+```
+
+The level comes from research's signals (below): `light` (checklist lens, one round, no planning),
+`standard` (both lenses, one round), `heavy` (both lenses, two full rounds, the mutation step). `n` is
+the level's rounds unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
+one, and runs before the lenses of its round, which get its lines. A fix that no full round follows gets a
+review of its own diff. Freeing the run directory is the main thread's step after acceptance.
+
+## Parameters (`args`)
+
+| arg | meaning | default |
+|---|---|---|
+| `target` | path of the ticket or spec | required |
+| `repo`, `branch` | worktree the agents work in, and its branch | required |
+| `tools` | checkout of this repository (it holds `.claude/workflows/ticket-tdd/`) | required |
+| `run` | scratch directory for state files | required |
+| `base` | the commit the run starts from; review diffs against it | required |
+| `baseline` | the gate summary lines measured at `base`, as one string | required |
+| `level` | `light`, `standard` or `heavy`, overriding the one research's signals pick | picked |
+| `rounds` | max review rounds `n`, or `auto` | the level's |
+| `min_rounds` | rounds that run even when a round comes back clean | the level's rounds |
+| `extra_rounds` | full rounds added when the last planned round has blockers or majors to fix | `0` (the fix-diff review sees the fix) |
+| `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
+| `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement |
+| `review_command` | what the checklist lens starts from | the `mattpocock-skills:code-review` skill |
+| `profile` | the project's additions, below | `{}` |
+
+### `profile`
+
+Every field is optional; an absent one leaves the core's neutral wording.
+
+| field | type | where it lands |
+|---|---|---|
+| `gates` | string | every agent: what "the gates" are |
+| `commit` | string | every agent: commit-message rule appended to the core's |
+| `context` | string[] | every agent: extra preamble lines (search traps, what not to touch) |
+| `research` | string | research: where decisions live, which harnesses exist |
+| `runtime` | string | code lens: what the new code must execute in |
+| `code_rules` | string[] | implement, fix, code lens: hard code rules |
+| `heavy_paths` | string[] | level pick: regexes over research's `files`; a match makes the run heavy |
+| `mutation` | string | mutation step: when and how to run the project's own mutation tool, if it has one |
+
+**Mutation testing is the project's tool, never done by hand.** The core names no tool; `profile.mutation`
+names it in words: when it applies, its command and what it covers. It runs once per run, on heavy runs only, in its own
+`mutation` step, never in a gates step: after the first round that ends with no finding to fix, on that
+HEAD. Its survivors that need a fix get one, then one more review round without the tool, even past the
+planned rounds. A run that uses up its rounds without such a round runs the tool once at the end, and its
+unruled survivors are left over. The step reports its counts (`generated`, `invalid`, `judged`, `killed`, `timeouts`) and every survivor (file,
+line, op, before, after) through its schema; `tool.applies` with `tool.ran` false lands in `failures`. The
+profile's command passes the tool the project's test command for the test files the diff adds or changes, so
+a mutant that only a test kills is killed. Each survivor is then ruled on by the code lens in a short call of
+its own (`review:code:survivors`): `equivalent` (no test could tell it from the original) or
+`unreachable` (the mutated code cannot run in the product's use), each with a one-line reason. A ruled
+survivor is an `advisory` finding (`M-<n>`; minor, outside the two-minor cap); one with no ruling, or
+a ruling without a reason, is a `major` finding (with a trigger and a consequence) that goes to fix.
+
+The repository's own agent instructions (`AGENTS.md`, `CLAUDE.md`) reach every agent anyway; the
+profile carries only what a stage prompt must name explicitly.
+
+## How to launch
+
+1. **Worktree** — `git worktree add ../wt-<name> -b wf/<name> <branch>`, when another session may be
+   committing to the branch.
+2. **Baseline** — run the gates in the worktree; their summary lines, and any failure already there
+   with its cause, become `args.baseline`.
+3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`, or the project's wrapper the same way. A launch by `name` runs the scripts as they were at session start, not as on disk.
+4. **After** — check every lens returned a verdict and `failures` is empty; read the commits; re-run the
+   gates; fast-forward the branch; free the run directory (`git worktree prune`, then delete every
+   directory under `run`, keeping its top-level files); remove the worktree.
+
+## Stages
+
+### 1. Research
+
+A spec is not an implementation plan. The research agent reads the target, its spec, siblings, the
+documents they cite and the code they touch, and returns (schema-forced) `requirements[]` — one line
+each, with a stable id and the checklist box it comes from — `facts[]` with sources, `plan[]`,
+`files[]`, `test_harness`, `risks[]`, `signals[]` and `anchors[]`, and writes the same as Markdown to
+`<run>/research.md`. This output is pasted into every later prompt, with the rule to start from the anchors,
+read only the lines a stage changes or verifies, and append to `research.md` when an anchor is stale.
+
+**Signals** are cited facts, each with its source: `pass-fail-logic`, `workflow-core`,
+`format-or-determinism`, `input-parser`, `upstream-or-vendored`, or `docs-or-mechanical` when the change
+is only prose or one mechanical edit repeated. **The level** is picked by the script: any risk signal or a
+file matching `profile.heavy_paths` makes it `heavy`; otherwise `docs-or-mechanical` makes it `light`;
+otherwise `standard`. The level and its reasons are logged and returned. **Anchors** are `file:line-range`
+plus one line each: every place a later stage changes or checks.
+
+### 2. Test-case planning, and the coverage check
+
+Skipped on a light run: every requirement goes to `verify_review`. Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
+asserts[]}`: self-contained, unique, AAA (one Act, atomic asserts), meaningful. `requirement` is copied
+byte for byte from research. A requirement with no behaviour to test goes to `verify_review`, and the
+checklist lens checks it by name; one only a run outside the suites can verify goes to `verify_launch`.
+
+**The coverage check** is code in the script: every case must cite a listed requirement, and every
+requirement must be cited by a case or sit in a `verify_*` list. Either failure sends the plan back to
+the planner once; what is still wrong goes into the result.
+
+### 3. Implementation
+
+Follows `skills/implement.md` (vendored: upstream sets `disable-model-invocation`, so the agent reads it
+by path; `tdd/` sits beside it) and `profile.code_rules`. Cases are taken one per red → green cycle.
+Before reporting, the deliverable is called the way its consumer calls it and fed every input, mode and
+data file the ticket names; what was not run that way is listed in `unverified`, an empty list being a
+claim that all of it was. Report: `head`, commits, tests by case id, `unverified`, gate lines.
+
+**If implementation changed nothing** — `head` still at `base` and no tests — the stage runs once more,
+told so; a second empty result ends the run as `failed` before any review.
+
+### 4. Gates
+
+One agent, run once per HEAD, before the lenses of its round, and skipped when HEAD has not changed
+since the last gates step (implement and every fix report `head`). It runs the profile's gates and
+returns their summary lines verbatim, the changed files (`git diff --stat base..HEAD` scope), and a recount
+of every count the ticket names. A gate worse than the baseline, a change the
+ticket does not call for or a wrong count comes back as a finding; the script numbers it
+`G<round>-<n>` (`G<round>r-<n>` after the last fix) and passes it through `tidy` when the step returns. The lenses get its gate lines and
+run none of the gates; the code lens may make one targeted run of the changed path.
+
+After a fix the step is told the HEAD it last gated and reruns only what `git diff --name-only <that
+HEAD>..HEAD` can affect: a fix that changed only docs runs no build, replay check or test;
+one that changed only tests runs no build or replay check, only the changed test files. Such a step is `scoped`.
+
+### 5. Review × n
+
+Two lenses in parallel — checklist (every requirement id, every `verify_review` requirement) and code
+(would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`; it also rules on the mutation survivors, above).
+A light run has the checklist lens only. A diff with no production file gets one checked row saying so from the code lens.
+
+**The checklist lens** receives every requirement id and the `unverified` list implement reported. It
+returns one `checked` row per id with `status: met|unmet|unverified`; an id without a row counts as
+`unverified`. An `unmet` requirement becomes a major finding and goes to the fix like any other; an
+`unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
+the requirements.
+
+**Mutation cannot be skipped silently.** The mutation step reports whether the tool applied and ran; one
+that applied and did not run, or a dead step, lands in `failures`.
+
+Each round the lenses also receive every finding of the earlier rounds with its outcome — `fixed`,
+`rejected` or `accepted` — and rule on last round's rejections: `accept`, or `insist` with a sharper
+finding.
+
+**Severity has a bar.** `blocker` only when a named artifact in this diff is wrong now, the fix must
+change this diff, and a guard-adding fix names a valid input that still passes; `major` is a concrete
+defect missing one of those; everything else is `minor`. A finding carries a `trigger` (a reachable
+input or path) and a `consequence` (what breaks); the script turns a blocker or major with an empty
+`trigger` into a minor and keeps at most two minors per lens. Minors go to `advisory`: never sent to the round's
+fix, never holding a round open; the minor fix after the rounds applies the cheap ones. One root cause is one finding; a closed finding is not restated
+as a broader risk; from round 2 a new finding on code the last fix did not change says why it was
+missed.
+
+**Silence is not clean.** Every reviewer returns `checked` rows — item plus the artifact that settled
+it. No rows or a `verdict` that disagrees with the findings reads as `SILENT` in `verdicts` and lands in
+`failures`. A round with a dead or silent lens is
+not clean and cannot end the loop.
+
+### 6. Fix
+
+Verify before agreeing and before disagreeing; a fix that does not fit is rejected with an argument
+citing code, the ticket or the spec, and returns to the next round. Never delete the thing a finding is
+about. Findings are grouped by root cause and each cause fixed once, and closed on every other path
+the same failure could take. From round 2 the agent sees the
+earlier rounds' fixes, and a cause already fixed twice is rejected as "recurs after two fixes: needs a
+split or the user" rather than patched a third time. The fix reports its `head` (the script's once-per-HEAD check reads it).
+
+**The fix-diff review.** The last round's fix, and the minor fix, get one reviewer (`review:fix:r<n>`,
+`review:fix:minor`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
+rejected, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
+last round get one more fix (`fix:r<n>:review`) and one more fix-diff review; what is still found is left
+over as `unverified`. Its majors after the minor fix are left over. `extra_rounds` instead adds full rounds.
+
+### 6b. Minor fix
+
+One agent (`models.fix`) after the rounds and the mutation step, skipped when
+there is no minor finding or a stage failed. It applies each advisory finding whose fix is cheap (a few
+lines in files the run changed, no new test file, no change of design), rejects the rest with a reason,
+reruns the gates and reverts when one got worse; a minor fix that moved HEAD gets a fix-diff review. Ruled survivors are not sent. Applied findings leave
+`advisory`; the result's `minor_fixes` lists what it applied and rejected.
+
+### Loop exit
+
+```
+loop:
+  round += 1
+  gates, if HEAD changed since the last gates step; then in parallel the level's lenses, given its lines
+  findings = gates findings + review(round, rejections), minors set aside
+  if no findings and every lens answered and round >= min_rounds:
+    if the tool ran: break
+    mutation step (heavy only), rule the survivors (ruled ones set aside); none to fix: break
+    findings = unruled survivors; if round == n: n += 1
+  if findings and round == n and extra rounds left: n += 1
+  if findings: fix
+  if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
+    gates once more if the fix moved HEAD (its findings are leftover); break
+after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
+minor fix → fix-diff review
+```
+
+## Mailbox
+
+The main thread can clarify a running ticket without stopping it. `<run>/mailbox.md` is written by the
+main thread only, append-only while the run is live:
+
+```
+## m3
+to: review:*:code
+round: 2
+until: fix
+supersedes: m1
+The 16-fixture sweep must include 8 jobs.
+```
+
+- `to:` is `all`, a stage (`research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`), an exact
+  label (`review:r2:code`), or a label pattern where `*` matches one segment. Every agent is told its
+  label and reads the entries addressed to it at start, before each long gate run, before committing and
+  before returning.
+- `until:` (a stage or round) expires an entry; `supersedes: <id>` kills an older one. Agents skip
+  expired and superseded entries.
+- An agent never edits `mailbox.md` (parallel lenses would race). It appends a receipt line
+  `<id> <label> applied|rejected <why>` to `<run>/mailbox-acks.md` and lists the entry in its result's
+  `mailbox` field. An entry for one exact label is closed by that label's receipt; entries for `all`, a
+  stage or a pattern stay open until the main thread closes them.
+- Cleanup is the main thread's: it moves closed, expired and superseded entries to
+  `<run>/mailbox-archive.md`, so `mailbox.md` holds only live entries, and archives everything when the
+  run ends. A new run's directory starts with no mailbox.
+- An entry for a stage that has already run is not seen; post it again to the stage that comes next.
+- Entries clarify the ticket; they never widen it. A change of scope is a new ticket.
+
+## Result
+
+`{status, level, level_why, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
+verdicts, mutation (the tool's result, at most one), unlisted_cases,
+uncovered_requirements, verify_launch, verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
+when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
+else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
+lens killed by an API error reads as `DIED` in `verdicts`, one that answered without evidence as `SILENT`.
+
+## Testing the core
+
+`test_ticket_tdd.mjs` (beside this file; run by hand with `node --test`, no dependency) evaluates
+`ticket-tdd.js` as an async function with a stub `agent()` that returns recorded results keyed by label,
+and checks what the script does with them: `tidy`, survivor rulings, checklist statuses, the
+deduplicated leftover, the run status, and that the lenses start after the gates step and get its
+lines. A change to the core's control flow gets a case there.
+
+## Changing the prompts
+
+**Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage. A
+commit that edits one states the size change in bytes. When an agent keeps making the wrong move, fix
+the schema, the check or the input it is given — the thing that let it make that move — before adding
+one more sentence telling it not to.
+
+**Discipline is not a fix.** After a fix, ask: had it existed six months ago, could today's failure
+still have arrived by another path? If a class of defect already has two written rules and comes back,
+a third rule is not the answer: the fix is a check, a schema field or a deleted duplicate. Prefer
+removing the surface the defect lives on to adding a gate over it. The same question is put to the fix
+stage about the code.
+
+## Dependencies
+
+`workflow-doctor.sh` checks them and exits 1 on anything missing; `--help` says why each is needed.
