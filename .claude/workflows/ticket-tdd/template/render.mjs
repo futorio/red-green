@@ -4,6 +4,7 @@
 //     node render.mjs [config.json]                                     the workflow script, on stdout
 //     node render.mjs [config.json] --case case.json --prompt <label>   the prompt the agent labelled <label> receives
 //     ... --prompt <label> --json                                       that prompt with its agent's schema, model and effort, as JSON
+//     node render.mjs [config.json] --case case.json --level            the review level the core picks from the case's research result
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -48,22 +49,40 @@ const STUB_RESULTS = {
   implement: { committed: true, head: 'HEAD', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
 }
 
-// The call the agent labelled <label> receives: { prompt, schema, model, effort }.
-export function stageCall(source, kase, label) {
+// Runs the core on a case: agents answer from the case's results, except `stop`, which never answers.
+function drive(source, kase, stop, log) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source.replace('export const meta', 'const meta'))
   const results = Object.assign({}, STUB_RESULTS, kase.results)
   const gates = { head: 'HEAD', gate_lines: kase.gate_lines || ['GATES'], changed_files: [], counts: [], findings: [] }
+  const agent = async (prompt, opts) => {
+    if (stop(prompt, opts)) return new Promise(() => {})
+    const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates : null
+    return r && JSON.parse(JSON.stringify(r))
+  }
+  const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
+  return core(Object.assign({}, STUB_ARGS, kase.args), agent, parallel, () => {}, log)
+}
+
+// The call the agent labelled <label> receives: { prompt, schema, model, effort }.
+export function stageCall(source, kase, label) {
   return new Promise((resolve, reject) => {
-    const agent = async (prompt, opts) => {
-      // The run stops at the stage asked for: its agent never answers.
-      if (opts.label === label) { resolve({ prompt, schema: opts.schema, model: opts.model, effort: opts.effort }); return new Promise(() => {}) }
-      const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates : null
-      return r && JSON.parse(JSON.stringify(r))
-    }
-    const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
-    core(Object.assign({}, STUB_ARGS, kase.args), agent, parallel, () => {}, () => {})
+    const stop = (prompt, opts) => opts.label === label && (resolve({ prompt, schema: opts.schema, model: opts.model, effort: opts.effort }), true)
+    drive(source, kase, stop, () => {})
       .then(() => reject(new Error(`stage ${label} not reached; give the case results for the stages before it`)), reject)
+  })
+}
+
+// The review level the core picks from the case's research result: { level, why }, read from the core's own log line.
+export function levelOf(source, kase) {
+  return new Promise((resolve, reject) => {
+    const log = msg => {
+      // ponytail: why is split on '; ' as the core joins it; a reason holding '; ' splits in two.
+      const m = /; level (\w+) \((.*)\) -> \d+ review rounds/.exec(msg)
+      if (m) resolve({ level: m[1], why: m[2].split('; ') })
+    }
+    drive(source, kase, (_, opts) => opts.label !== 'research', log)
+      .then(() => reject(new Error('the core logged no level')), reject)
   })
 }
 
@@ -73,8 +92,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const casePath = flag('--case')
   const label = flag('--prompt')
   const json = argv.indexOf('--json') >= 0 && argv.splice(argv.indexOf('--json'), 1)
+  const level = argv.indexOf('--level') >= 0 && argv.splice(argv.indexOf('--level'), 1)
   const source = render(argv[0] ? JSON.parse(readFileSync(argv[0], 'utf8')) : DEFAULT)
-  if (!label) process.stdout.write(source)
+  if (level) levelOf(source, JSON.parse(readFileSync(casePath, 'utf8')))
+    .then(l => process.stdout.write(JSON.stringify(l)), e => { console.error(e.message); process.exit(1) })
+  else if (!label) process.stdout.write(source)
   else stageCall(source, casePath ? JSON.parse(readFileSync(casePath, 'utf8')) : {}, label)
     .then(c => process.stdout.write(json ? JSON.stringify(c) : c.prompt), e => { console.error(e.message); process.exit(1) })
 }

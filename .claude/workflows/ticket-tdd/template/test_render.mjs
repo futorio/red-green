@@ -91,3 +91,12 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.deepEqual(out.schema.required, ['verdict', 'findings', 'rulings', 'checked'])
   assert.ok('mailbox' in out.schema.properties)
 })
+
+test('T12: --level picks the review level the core would from the case\'s research result and profile', () => {
+  const research = sig => ({ requirements: ['R1: x'], facts: [], plan: [], files: ['docs/a.md', 'src/Player.cpp'], test_harness: '', risks: [], signals: sig, anchors: [] })
+  const level = (sig, profile) => JSON.parse(cli('--case', file('lv.json', { args: { profile }, results: { research: research(sig) } }), '--level'))
+  assert.deepEqual(level([{ signal: 'input-parser', source: 'a.c:1' }], {}), { level: 'heavy', why: ['input-parser (a.c:1)'] })
+  assert.deepEqual(level([], { heavy_paths: ['^src/'] }), { level: 'heavy', why: ['heavy path src/Player.cpp'] })
+  assert.deepEqual(level([{ signal: 'docs-or-mechanical', source: 'ticket' }], {}), { level: 'light', why: ['docs or a mechanical sweep, no risk signal'] })
+  assert.deepEqual(level([], {}), { level: 'standard', why: ['behaviour code, no risk signal'] })
+})

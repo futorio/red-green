@@ -283,6 +283,7 @@ over `default.json`:
 node template/render.mjs [config.json]                                    # the workflow, on stdout
 node template/render.mjs [config.json] --case case.json --prompt <label>  # one stage's prompt
 node template/render.mjs [config.json] --case case.json --prompt <label> --json
+node template/render.mjs [config.json] --case case.json --level           # the level pickLevel gives
 ```
 
 `--prompt` runs the rendered script with stub agents and prints the prompt, mailbox note included, that
@@ -292,7 +293,9 @@ commit the diff starts from: the prompt names both, the agent reads them), `gate
 step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement, standard level); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
-gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code.
+gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code. `--level` runs the
+script on the case's `results.research` and `args.profile` and prints `{ level, why }`, read from the
+core's level log line: what `pickLevel` picks from that research output, offline.
 
 ### Adding a variant dimension
 
