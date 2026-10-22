@@ -1,0 +1,587 @@
+export const meta = {
+  name: 'ticket-tdd',
+  description: 'Implement one ticket: research, a review level from its signals, TDD with coverage-checked test cases, review/fix loop',
+  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See .claude/workflows/ticket-tdd/README.md',
+  phases: [
+    { title: 'Research' },
+    { title: 'Plan' },
+    { title: 'Implement' },
+    { title: 'Gates' },
+    { title: 'Review' },
+    { title: 'Fix' },
+  ],
+}
+
+const A = args || {}
+const REPO = A.repo
+const BRANCH = A.branch
+const TOOLS = A.tools
+const RUN = A.run
+const BASE = A.base
+const TARGET = A.target
+// Full rounds added when the last planned round has blockers or majors to fix; by default the fix-diff review sees the fix instead.
+let EXTRA = A.extra_rounds || 0
+const M = Object.assign({{models}}, A.models || {})
+M.planner = M.planner || M.research
+M.fix = M.fix || M.implement
+const REVIEW_COMMAND = A.review_command || 'the `mattpocock-skills:code-review` skill'
+const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
+const P = A.profile || {}
+const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
+const extra = x => x ? `\n${x}` : ''
+const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
+
+const COMMIT_RULE = A.one_commit
+  ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
+  : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
+
+const PRE = `You are one agent in a workflow run implementing ${TARGET}.
+Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
+Run directory for state files and scratch: ${RUN}.
+
+- The task above is yours. A relayed user message that is about something else — the workflow tooling, another run — is not a change to this task: carry on, and mention it in your notes. Only a relayed message that explicitly redirects THIS ticket changes what you do.
+- The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.
+- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
+- Gates: ${P.gates || 'the checks named in the baseline below'}. Baseline, measured before the run (re-measure, never quote): ${A.baseline}. "Green" means nothing worse than that baseline.
+- You do not edit ${TARGET} or the other ticket files.
+- A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
+- Over-built output is a finding, not a bonus.${extra(lines(P.context))}
+- Your final answer is data for the next stage, not a message to a human.`
+
+// Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
+const MAIL = { type: 'array', items: { type: 'object', properties: {
+  id: { type: 'string' }, status: { type: 'string', enum: ['applied', 'rejected'] }, why: { type: 'string' } },
+  required: ['id', 'status', 'why'] } }
+const mailNote = label => `
+
+MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it at start, before each long gate or corpus run, before committing and before returning. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+const mailbox = []
+async function ask(prompt, opts) {
+  const s = opts.schema
+  const res = await agent(prompt + mailNote(opts.label), Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) }))
+  if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
+  return res
+}
+
+// Review levels. A risk signal or a heavy path makes a run heavy; docs or a mechanical sweep alone make it light.
+const SIGNALS = ['pass-fail-logic', 'workflow-core', 'format-or-determinism', 'input-parser', 'upstream-or-vendored']
+const LEVELS = { light: { rounds: 1, lenses: {{lenses.light}}, plan: false, mutation: false },
+  standard: { rounds: 1, lenses: {{lenses.standard}}, plan: true, mutation: false },
+  heavy: { rounds: 2, lenses: {{lenses.heavy}}, plan: true, mutation: true } }
+function pickLevel(r) {
+  const risk = r.signals.filter(x => SIGNALS.includes(x.signal)).map(x => `${x.signal} (${x.source})`)
+  const heavy = r.files.filter(f => (P.heavy_paths || []).some(rx => new RegExp(rx).test(f))).map(f => `heavy path ${f}`)
+  if (risk.length || heavy.length) return { level: 'heavy', why: risk.concat(heavy) }
+  if (r.signals.some(x => x.signal === 'docs-or-mechanical')) return { level: 'light', why: ['docs or a mechanical sweep, no risk signal'] }
+  return { level: 'standard', why: ['behaviour code, no risk signal'] }
+}
+
+const RESEARCH_SCHEMA = { type: 'object', properties: {
+  requirements: { type: 'array', items: { type: 'string' } },
+  facts: { type: 'array', items: { type: 'object', properties: { fact: { type: 'string' }, source: { type: 'string' } }, required: ['fact', 'source'] } },
+  plan: { type: 'array', items: { type: 'string' } },
+  files: { type: 'array', items: { type: 'string' } },
+  test_harness: { type: 'string' },
+  risks: { type: 'array', items: { type: 'string' } },
+  signals: { type: 'array', items: { type: 'object', properties: { signal: { type: 'string', enum: SIGNALS.concat('docs-or-mechanical') }, source: { type: 'string' } }, required: ['signal', 'source'] } },
+  anchors: { type: 'array', items: { type: 'object', properties: { where: { type: 'string' }, what: { type: 'string' } }, required: ['where', 'what'] } },
+}, required: ['requirements', 'facts', 'plan', 'files', 'test_harness', 'risks', 'signals', 'anchors'] }
+
+const CASE = { type: 'object', properties: {
+  id: { type: 'string' }, requirement: { type: 'string' }, title: { type: 'string' },
+  arrange: { type: 'string' }, act: { type: 'string' }, asserts: { type: 'array', items: { type: 'string' } },
+}, required: ['id', 'requirement', 'title', 'arrange', 'act', 'asserts'] }
+const CASES_SCHEMA = { type: 'object', properties: {
+  cases: { type: 'array', items: CASE },
+  verify_launch: { type: 'array', items: { type: 'string' } },
+  verify_review: { type: 'array', items: { type: 'string' } },
+  notes: { type: 'string' },
+}, required: ['cases', 'verify_launch', 'verify_review'] }
+
+const IMPL_SCHEMA = { type: 'object', properties: {
+  committed: { type: 'boolean' },
+  head: { type: 'string' },
+  commits: { type: 'array', items: { type: 'string' } },
+  tests: { type: 'array', items: { type: 'object', properties: { case_id: { type: 'string' }, file: { type: 'string' }, test: { type: 'string' } }, required: ['case_id', 'file', 'test'] } },
+  gate_output: { type: 'string' },
+  unverified: { type: 'array', items: { type: 'string' } },
+  notes: { type: 'string' },
+}, required: ['committed', 'head', 'commits', 'tests', 'gate_output', 'unverified'] }
+
+const FINDING = { type: 'object', properties: {
+  severity: { type: 'string', enum: ['blocker', 'major', 'minor'] },
+  where: { type: 'string' }, problem: { type: 'string' },
+  trigger: { type: 'string' }, consequence: { type: 'string' }, fix: { type: 'string' },
+}, required: ['severity', 'where', 'problem', 'trigger', 'consequence', 'fix'] }
+const reviewSchema = row => ({ type: 'object', properties: {
+  verdict: { type: 'string', enum: ['clean', 'findings'] },
+  findings: { type: 'array', items: FINDING },
+  rulings: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, ruling: { type: 'string', enum: ['accept', 'insist'] }, argument: { type: 'string' } }, required: ['id', 'ruling', 'argument'] } },
+  checked: { type: 'array', items: { type: 'object', properties: Object.assign({ item: { type: 'string' }, evidence: { type: 'string' } }, row), required: ['item', 'evidence'].concat(Object.keys(row)) } },
+  notes: { type: 'string' },
+}, required: ['verdict', 'findings', 'rulings', 'checked'] })
+const STATUS = { status: { type: 'string', enum: ['met', 'unmet', 'unverified'] } }
+const REVIEW_SCHEMA = reviewSchema({})
+const PRODUCTION = 'production source — not tests, docs, data or config'
+
+const SURVIVOR = { type: 'object', properties: { file: { type: 'string' }, line: { type: 'integer' }, op: { type: 'string' }, before: { type: 'string' }, after: { type: 'string' } }, required: ['file', 'line', 'op', 'before', 'after'] }
+const GATES_SCHEMA = { type: 'object', properties: {
+  head: { type: 'string' },
+  gate_lines: { type: 'array', items: { type: 'string' } },
+  changed_files: { type: 'array', items: { type: 'string' } },
+  counts: { type: 'array', items: { type: 'string' } },
+  findings: { type: 'array', items: FINDING },
+  notes: { type: 'string' },
+}, required: ['head', 'gate_lines', 'changed_files', 'counts', 'findings'] }
+const MUTATION_SCHEMA = { type: 'object', properties: {
+  head: { type: 'string' },
+  tool: { type: 'object', properties: {
+    applies: { type: 'boolean' }, ran: { type: 'boolean' }, not_run: { type: 'string' },
+    generated: { type: 'integer' }, judged: { type: 'integer' }, killed: { type: 'integer' }, invalid: { type: 'integer' }, timeouts: { type: 'integer' },
+    survivors: { type: 'array', items: SURVIVOR },
+  }, required: ['applies', 'ran'] },
+  notes: { type: 'string' },
+}, required: ['head', 'tool'] }
+
+const SEVERITY = `SEVERITY. blocker only if ALL hold: (1) a named file, symbol or test makes it wrong now; (2) that thing is in this diff or a file it touches; (3) the fix must change this diff, not a follow-up; (4) if the fix adds or tightens a guard, you name a valid input that must still pass it. major: a concrete defect in this diff that misses one of those. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. Every blocker and major carries a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A missing test is major or worse only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. Never restate a finding a fix closed as a broader future risk. After your first finding, make one more pass on a different concern before you stop; never invent a finding to fill it.`
+const CHECKED = what => `In \`checked\`, one row per ${what}: \`item\`, and in \`evidence\` one sentence naming the file, test or command output that settled it. A bare "ok" is not evidence. verdict is \`clean\` exactly when findings is empty. A review with no checked rows is read as no review.`
+const idOf = s => s.split(':')[0].trim()
+function silence(res, ids) {
+  if (!res.checked.length) return 'no checked rows'
+  if ((res.verdict === 'clean') !== !res.findings.length) return `verdict ${res.verdict} with ${res.findings.length} findings`
+  const seen = new Set(res.checked.map(c => idOf(c.item)))
+  const missing = (ids || []).filter(i => !seen.has(i))
+  return missing.length ? `not checked: ${missing.join(', ')}` : null
+}
+// A blocker or major with no trigger is a minor; a lens keeps at most two minors.
+function tidy(findings) {
+  let minors = 0
+  const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
+  const kept = out.filter(f => f.severity !== 'minor' || ++minors <= 2)
+  const down = out.filter(f => f.downgraded).length
+  if (down || kept.length < out.length) log(`findings tidied: ${down} downgraded for no trigger, ${out.length - kept.length} minors dropped`)
+  return kept
+}
+
+const FIX_SCHEMA = { type: 'object', properties: {
+  applied: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, what: { type: 'string' } }, required: ['id', 'what'] } },
+  rejected: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, argument: { type: 'string' } }, required: ['id', 'argument'] } },
+  committed: { type: 'boolean' },
+  head: { type: 'string' },
+  gate_output: { type: 'string' },
+}, required: ['applied', 'rejected', 'committed', 'head', 'gate_output'] }
+
+const failures = []
+
+phase('Research')
+const research = await ask(`${PRE}
+
+STAGE: research. Read ${TARGET}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. A spec is not an implementation plan: collect the facts that must be known BEFORE writing code — helpers and seams to reuse, every call site and reader affected, the harness that tests each piece (or none, and how that piece is verified instead), the gates, and the traps that apply.${extra(P.research)}
+
+Output:
+- requirements: every checkable requirement, one line each, prefixed with a stable id and naming the checklist box or phrase it comes from, e.g. "R7: grammar/effects.json holds 8 entries (Checklist › Whitelist)". Cover every checklist box.
+- facts: each with its source (file and function, or file:line in a tree the project pins).
+- plan: ordered implementation steps, dependency-correct. files (every file the change will touch, repository-relative), test_harness, risks.
+- signals: each risk the change carries, with its source (file:line or ticket clause): \`pass-fail-logic\` (code that decides a check, gate or test verdict), \`workflow-core\` (the workflow scripts or prompts), \`format-or-determinism\` (a file or wire format others read, a hash, a replay, state a deterministic replay depends on), \`input-parser\` (code that parses input from outside the program), \`upstream-or-vendored\` (code another project owns). \`docs-or-mechanical\` when the change is only prose or one mechanical edit repeated, with no risk signal. A signal is a fact you can cite, not a guess; none is a valid answer. The review level is picked from them.
+- anchors: every place a later stage will change or check, as where = \`file:line-range\` and what = one line on what is there. Later stages start from these instead of searching again.
+Also write all of the above as Markdown to ${RUN}/research.md (anchors as a list); later stages read it and append to it.`,
+  { model: M.research, effort: 'high', schema: RESEARCH_SCHEMA, phase: 'Research', label: 'research' })
+if (!research) return { status: 'failed', stage: 'research', failures }
+const RESEARCH = JSON.stringify(research, null, 1) + `
+
+Start from the anchors above and ${RUN}/research.md: read only the lines you change or verify, search only for what they do not cover, and append a line to ${RUN}/research.md when an anchor is stale or missing.`
+const picked = A.level ? { level: A.level, why: ['args.level'] } : pickLevel(research)
+const LEVEL = LEVELS[picked.level]
+let N = A.rounds && A.rounds !== 'auto' ? A.rounds : LEVEL.rounds
+// A heavy run reviews its planned rounds in full even when the first is clean: round 2 catches majors round 1 missed.
+const MIN_ROUNDS = A.min_rounds || Math.min(N, LEVEL.rounds)
+log(`research: ${research.requirements.length} requirements; level ${picked.level} (${picked.why.join('; ')}) -> ${N} review rounds, lenses ${LEVEL.lenses.join(' + ')}`)
+
+phase('Plan')
+const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is copied BYTE FOR BYTE from one of the research requirements (id prefix included). Cases must be:
+a) self-contained — one isolated case per group of tests;
+b) unique — no two cases check the same behaviour, and a case checks nothing outside its own requirement;
+c) AAA — Arrange: data, stubs, objects; Act: ONE call of the target; asserts: a list of atomic checks on the Act's result, each verifiable on its own (one expected value or one property per entry — never "a and b" in one entry);
+d) meaningful — traces to a requirement; nothing written for the sake of a test.
+Expected values come from an independent source (the ticket, the spec, a literal), never recomputed the way the code would.
+A requirement with no behaviour a test can check — a prose or documentation edit, a gate outcome — gets no case: copy it BYTE FOR BYTE into verify_review; the checklist review lens checks it. One that only a run outside the test suites can verify (a launch, a manual step) goes into verify_launch.
+`
+
+// A light run plans no cases: every requirement is checked by the checklist lens.
+let plan = !LEVEL.plan ? { cases: [], verify_launch: [], verify_review: research.requirements.slice() } : await ask(`${PRE}
+
+STAGE: test-case planning. No code is written yet. Turn the research plan into test cases for the TDD cycle of implementation; read the harness research names in test_harness to see what each case will use.
+
+${PLAN_RULES}
+
+RESEARCH:
+${RESEARCH}`, { model: M.planner, effort: 'high', schema: CASES_SCHEMA, phase: 'Plan', label: 'plan' })
+if (!plan) return { status: 'failed', stage: 'plan', failures }
+
+function coverage(p) {
+  const listed = new Set(research.requirements)
+  const cited = new Set(p.cases.map(c => c.requirement))
+  const skip = new Set(p.verify_launch.concat(p.verify_review))
+  return {
+    unlisted: p.cases.filter(c => !listed.has(c.requirement)).map(c => ({ id: c.id, requirement: c.requirement })),
+    uncovered: research.requirements.filter(r => !cited.has(r) && !skip.has(r)),
+  }
+}
+let cov = coverage(plan)
+if (cov.unlisted.length || cov.uncovered.length) {
+  plan = await ask(`${PRE}
+
+STAGE: test-case planning, the one replan. A code check of your cases found:
+- cases citing a requirement string not in the list — copy the right one byte for byte: ${JSON.stringify(cov.unlisted)}
+- requirements no case covers — add a case, or move it to verify_review / verify_launch per the rules: ${JSON.stringify(cov.uncovered)}
+Keep every other case as it is, same id.
+
+${PLAN_RULES}
+
+YOUR PREVIOUS CASES:
+${JSON.stringify(plan.cases)}
+
+RESEARCH:
+${RESEARCH}`, { model: M.planner, effort: 'high', schema: CASES_SCHEMA, phase: 'Plan', label: 'replan' }) || plan
+  cov = coverage(plan)
+}
+const cases = plan.cases
+log(`plan: ${cases.length} cases, ${cov.unlisted.length} unlisted, ${cov.uncovered.length} uncovered, ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
+const CASES = JSON.stringify(cases, null, 1)
+
+phase('Implement')
+const implementPrompt = retry => `${PRE}
+
+STAGE: implementation.${retry ? ` A previous attempt at this stage produced NO change (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it, and its code rules.${CODE_RULES}
+Take the cases one at a time, red then green. Use the research facts and plan; do not re-derive what they settle.
+
+Before reporting, call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in \`unverified\`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.
+
+Run the tests you write as you go; run the gates once, at the end, before you commit — not at the start, not before and after. ${A.one_commit ? 'Create the ONE commit when the gate is at baseline or better; if it cannot get there, do not commit and say exactly what is red.' : 'Commit as you go.'}
+
+Report: committed, head (\`git rev-parse HEAD\`), commits (sha + subject), tests (case_id -> file + test name, one row per case implemented), unverified, gate_output (each gate's summary line, verbatim), notes.
+
+CASES:
+${CASES}
+
+RESEARCH:
+${RESEARCH}`
+let impl = await ask(implementPrompt(null), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement' })
+const madeNothing = r => !r || (r.head.startsWith(BASE.slice(0, 7)) && !r.tests.length)
+if (madeNothing(impl)) {
+  log('implement produced nothing; retrying once')
+  impl = await ask(implementPrompt(impl ? impl.notes || 'none' : 'agent died'), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement:retry' })
+  if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts produced no change; nothing was reviewed', research, cases, failures }
+}
+log(`implement: committed=${impl.committed}, ${impl.tests.length} tests mapped`)
+
+const mutation = []
+
+// The gates step runs once per HEAD, before the lenses, which get its lines. HEAD moves only when implement or a fix commits.
+let headNow = impl.head
+let gated = null
+const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
+const ruled = new Map()
+const keyOf = s => `${s.file}|${s.before}|${s.after}`
+// A survivor the code lens ruled is a minor finding (advisory, outside tidy's cap); every other one is a major, made by the script, not a lens.
+const survivorFindings = survivors => survivors.map(s => {
+  const r = ruled.get(keyOf(s))
+  return {
+    id: s.id, key: keyOf(s), source: 'mutation', severity: r ? 'minor' : 'major', where: `${s.file}:${s.line}`,
+    problem: `a mutant survives: ${s.op} (${s.before} -> ${s.after})${r ? `; ruled ${r.ruling}: ${r.reason}` : ''}`,
+    trigger: `run the tests with ${s.file}:${s.line} changed to: ${s.after}`,
+    consequence: 'no test fails, so a defect of that shape on this line ships unnoticed',
+    fix: 'add or strengthen a test that fails on this mutant, or show that no test could tell it from the original'
+  }
+})
+
+const RULING_SCHEMA = { type: 'object', properties: {
+  rulings: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, ruling: { type: 'string', enum: ['equivalent', 'unreachable'] }, reason: { type: 'string' } }, required: ['id', 'ruling', 'reason'] } },
+}, required: ['rulings'] }
+// The code lens rules on the survivors the gates step found; a ruling without a reason does not count.
+async function ruleSurvivors(survivors, label) {
+  const open = survivors.filter(s => !ruled.has(keyOf(s)))
+  if (!open.length) return
+  const res = await ask(`${PRE}
+
+STAGE: mutant ruling, code lens, HEAD ${headNow}. The mutation tool changed one line at a time in the lines this ticket changed, and no test failed on these mutants. Read the code and the tests and rule on each one only when you are sure: \`equivalent\` (no test could tell the mutant from the original) or \`unreachable\` (the mutated code cannot run in the product's use, e.g. a hook that does nothing in single-player play), with a one-line reason. Leave out any you cannot rule: each becomes a major finding for the fix stage. Change nothing in ${REPO}.
+SURVIVORS:
+${JSON.stringify(open)}`, { model: M.review, effort: 'high', schema: RULING_SCHEMA, phase: 'Review', label })
+  if (!res) { failures.push(`mutant ruling ${label}`); return }
+  for (const r of res.rulings) {
+    const s = open.find(x => x.id === r.id)
+    if (s && (r.reason || '').trim()) ruled.set(keyOf(s), r)
+  }
+}
+
+async function runGates(round, label, since, tag) {
+  phase('Gates')
+  const res = await ask(`${PRE}
+
+STAGE: gates, HEAD ${headNow}. This runs once per HEAD, before the reviewers, who run none of the gates and get your gate_lines. Change nothing in ${REPO} and commit nothing. The mutation tool is not a gate here: it runs once per run, in its own step.${since ? ` Gates already ran at ${since} and a fix has moved HEAD: run only what \`git diff --name-only ${since}..HEAD\` can affect. Only docs (prose no program reads) changed: no build, replay check or test; say "skipped: docs only" in gate_lines. Only tests changed: no build or replay check, only the changed test files; say "skipped: tests only" in gate_lines for the rest. The static checks always run; anything else changed: every gate.` : ''}
+1. Run every gate named above, from ${REPO}. gate_lines: each gate's summary line, verbatim. A gate worse than the baseline is a finding.
+2. Scope: \`git diff --stat ${BASE}..HEAD\`. changed_files: \`git diff --name-only ${BASE}..HEAD\`. A change the ticket does not call for is a finding.
+3. Recount from disk every count the ticket names; counts: one line each, the ticket's number and the disk's. A mismatch is a finding; so is a generated file that differs from what its generator produces.
+${SEVERITY}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates', label })
+  if (!res) {
+    failures.push(`gates ${label}`)
+    return { head: headNow, gate_lines: ['the gates step died: run none, and say so in notes'], changed_files: [], counts: [], found: [], scoped: true }
+  }
+  if (!res.gate_lines.length) failures.push(`gates ${label} silent: no gate lines`)
+  headNow = res.head || headNow
+  return Object.assign({}, res, { scoped: !!since, found: tidy(res.findings).map((f, k) => Object.assign({ id: `G${round}${tag || ''}-${k + 1}`, source: 'gates' }, f)) })
+}
+
+// The mutation tool runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
+// Returns the survivors as findings: ruled ones minor, the rest major.
+let mutated = false
+async function runMutation() {
+  mutated = true
+  if (!P.mutation || !LEVEL.mutation) return []
+  phase('Gates')
+  const res = await ask(`${PRE}
+
+STAGE: mutation, HEAD ${headNow}. The gates already ran: run none of them. Change nothing in ${REPO} and commit nothing.
+The project's mutation tool: ${P.mutation} This run's label for file names: mutation. tool.applies: whether \`git diff --name-only ${BASE}..HEAD\` lists files it covers. If it applies, run it once on this HEAD and report its counts and every survivor; if it applies and did not run, tool.ran is false and tool.not_run the reason — never a pass.`, { model: M.gates, effort: 'medium', schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
+  if (!res) { failures.push('mutation'); return [] }
+  if (res.tool.applies && !res.tool.ran) failures.push(`mutation tool not run: ${res.tool.not_run || 'no reason given'}`)
+  if (res.tool.applies) mutation.push(res.tool)
+  if (!res.tool.ran) return []
+  const survivors = (res.tool.survivors || []).map((s, i) => Object.assign({ id: `M-${i + 1}` }, s))
+  await ruleSurvivors(survivors, 'review:code:survivors')
+  return survivorFindings(survivors)
+}
+
+const GATES_APART = gates => `The gates step already ran at this HEAD; its lines are below. Review the diff and those lines: run none of the gates or any long check, recount nothing and do not re-check the scope. The code lens may make at most one targeted run of the changed path (one test, one replay case) when reading cannot settle a question, and says so in \`checked\`.
+GATES:
+${JSON.stringify(gates.gate_lines)}`
+const reqIds = research.requirements.map(idOf)
+
+const LENSES = [
+  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${reqIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
+  { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}.{{probe}}{{same_frame}}${CODE_RULES}
+{{test_case_review.code}}Mutation is a separate step's tool, run once after the review rounds on heavy runs only, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
+]
+async function runFix(round, toFix, label) {
+  phase('Fix')
+  return ask(`${PRE}
+
+STAGE: fix, round ${round}. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} For each finding: verify before you agree, verify before you disagree. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.${fixed.length ? ` A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".` : ''} Re-run the gates; ${A.one_commit ? 'fold the change into the one commit with --amend, rewriting its message (create the commit if it does not exist yet and the gate is at baseline or better)' : 'commit'}. Report head: \`git rev-parse HEAD\` after your last change.
+
+FINDINGS:
+${JSON.stringify(toFix, null, 1)}
+${fixed.length ? `\nEARLIER FIXES:\n${JSON.stringify(fixed)}\n` : ''}
+RESEARCH:
+${RESEARCH}`, { model: M.fix, effort: 'high', schema: FIX_SCHEMA, phase: 'Fix', label })
+}
+
+// Every fix that no full round follows is reviewed on its own diff: did it fix what it was given, did it break
+// anything near it, did it weaken a test. Returns its findings, or null when the reviewer died.
+let fixReviews = 0
+async function fixReview(fromHead, given, label) {
+  fixReviews += 1
+  phase('Review')
+  const res = await ask(`${PRE}
+
+STAGE: fix review, HEAD ${headNow}. A fix moved HEAD from ${fromHead}; no full review round follows it. Review its diff, \`git diff ${fromHead}..HEAD\`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{test_case_review.fix}}. Run none of the gates; at most one targeted run of the changed path when reading cannot settle a question.
+${SEVERITY}
+${CHECKED('finding it was given, item = its id, then each other thing you verified')}
+GIVEN:
+${JSON.stringify(given.map(f => ({ id: f.id, where: f.where, problem: f.problem })))}
+
+RESEARCH:
+${RESEARCH}`, { model: M.review, effort: 'high', schema: REVIEW_SCHEMA, phase: 'Review', label })
+  if (!res) { failures.push(`fix review ${label}`); return null }
+  const quiet = silence(res)
+  if (quiet) failures.push(`fix review ${label} silent: ${quiet}`)
+  verdicts.push({ round: label, lens: 'fix review', verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
+  return tidy(res.findings).map((f, k) => Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f))
+}
+
+let rejections = []
+const accepted = []
+const advisory = []
+const fixed = []
+const history = []
+const verdicts = []
+const rounds = []
+const status = {}
+let unfixed = []
+let round = 0
+while (round < N) {
+  round += 1
+  const fresh = !gated || !same(gated.head, headNow)
+  const gatesStep = async () => {
+    if (!fresh) return gated
+    return runGates(round, `gates:r${round}`, gated && gated.head)
+  }
+  phase('Review')
+  let fromHead = headNow
+  const active = LENSES.filter(l => LEVEL.lenses.includes(l.key))
+  const rej = rejections.length ? `\nREJECTED LAST ROUND — rule on each: "accept" the argument, or "insist" and restate it as a sharper finding:\n${JSON.stringify(rejections)}\n` : ''
+  const past = history.length ? `\nEARLIER FINDINGS (do not restate a fixed or accepted one):\n${JSON.stringify(history)}\n` : ''
+  gated = await gatesStep()
+  const lensResults = await parallel(active.map(l => () => ask(`${PRE}
+
+STAGE: review, round ${round} of at most ${N} — what you do not catch ships. Lens: ${l.key}. ${l.job()}
+${GATES_APART(gated)}
+Compare against the ticket, its spec, and the research plan below. Do not manufacture findings; an empty list is a valid answer.
+${SEVERITY}${round > 1 ? ' A blocker or major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}
+${CHECKED(l.key === 'checklist' ? 'research requirement, item = its id' : 'thing you verified')}
+${rej}${past}
+RESEARCH:
+${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
+
+  const found = fresh ? gated.found.slice() : []
+  let reviewed = true
+  lensResults.forEach((res, i) => {
+    const l = active[i]
+    if (!res) { failures.push(`review r${round} ${l.key}`); verdicts.push({ round, lens: l.key, verdict: 'DIED' }); reviewed = false; return }
+    const quiet = silence(res)
+    if (quiet) { failures.push(`review r${round} ${l.key} silent: ${quiet}`); reviewed = false }
+    verdicts.push({ round, lens: l.key, verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
+    for (const r of res.rulings) if (r.ruling === 'accept') {
+      accepted.push(r)
+      const h = history.find(x => x.id === r.id)
+      if (h) h.outcome = 'accepted'
+    }
+    if (l.key === 'checklist') {
+      const rows = {}
+      res.checked.forEach(c => { rows[idOf(c.item)] = c })
+      reqIds.forEach(id => { status[id] = rows[id] ? { status: rows[id].status, evidence: rows[id].evidence } : { status: 'unverified', evidence: 'no checked row' } })
+      // unmet is fixed like any major; unverified only goes to the leftover list at the end.
+      reqIds.filter(id => status[id].status === 'unmet').forEach(id => found.push({ id: `R${round}-${id}`, source: 'checklist', severity: 'major',
+        where: research.requirements.find(r => idOf(r) === id), problem: status[id].evidence, trigger: status[id].evidence,
+        consequence: 'the ticket requirement is not met', fix: 'meet the requirement' }))
+    }
+    found.push(...tidy(res.findings).map((f, k) => Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f)))
+  })
+  let toFix = found.filter(f => f.severity !== 'minor')
+  advisory.push(...found.filter(f => f.severity === 'minor'))
+  if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
+  const bySeverity = s => found.filter(f => f.severity === s).length
+  rounds.push({ round, blocker: bySeverity('blocker'), major: bySeverity('major'), minor: bySeverity('minor') })
+  log(`round ${round}: ${toFix.length} to fix (${bySeverity('blocker')} blocker, ${bySeverity('major')} major)`)
+
+  if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
+  if (!toFix.length && reviewed && round >= MIN_ROUNDS) {
+    if (mutated) break
+    const late = await runMutation()
+    toFix = late.filter(f => f.severity !== 'minor')
+    advisory.push(...late.filter(f => f.severity === 'minor'))
+    if (!toFix.length) break
+    // Survivors get a fix and one more review round, without the tool.
+    log(`mutation: ${toFix.length} survivors to fix`)
+    if (round === N) N += 1
+  }
+  if (toFix.length && round === N && EXTRA > 0) {
+    EXTRA -= 1
+    N += 1
+    log(`round ${round}: ${toFix.length} to fix in the last round, one more round reviews the fix`)
+  }
+  if (toFix.length) {
+    fromHead = headNow
+    const fix = await runFix(round, toFix, `fix:r${round}`)
+    if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
+    fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
+    rounds[rounds.length - 1].applied = fix.applied.length
+    rounds[rounds.length - 1].rejected = fix.rejected.length
+    rejections = fix.rejected.map(r => Object.assign({}, toFix.find(f => f.id === r.id) || { id: r.id }, { argument: r.argument }))
+    toFix.forEach(f => history.push({ id: f.id, round, where: f.where, problem: f.problem, outcome: fix.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }))
+    headNow = fix.head || headNow
+  }
+  if (round === N) {
+    unfixed = rejections.slice()
+    // The last round's fix gets a fix-diff review; its majors get one more fix and review, then are left over.
+    if (toFix.length && !same(headNow, fromHead)) {
+      let from = fromHead
+      let given = toFix
+      for (let pass = 0; ; pass++) {
+        const late = await fixReview(from, given, `review:fix:r${round}${pass ? `:${pass}` : ''}`)
+        if (!late) {
+          unfixed.push(...given.map(f => Object.assign({}, f, { status: 'unverified', problem: `fixed in the last round, its review died: ${f.problem}` })))
+          break
+        }
+        advisory.push(...late.filter(f => f.severity === 'minor'))
+        const majors = late.filter(f => f.severity !== 'minor')
+        if (!majors.length) break
+        if (pass >= 1) { unfixed.push(...majors.map(f => Object.assign({}, f, { status: 'unverified' }))); break }
+        from = headNow
+        const again = await runFix(round, majors, `fix:r${round}:review`)
+        if (!again) { failures.push(`fix r${round} review`); unfixed.push(...majors); break }
+        fixed.push(...again.applied.map(a => Object.assign({ round }, a)))
+        headNow = again.head || headNow
+        given = majors
+      }
+    }
+    if (!same(headNow, gated.head)) {
+      // The last fix moved HEAD and no review follows: the gates step checks it.
+      gated = await runGates(round, `gates:r${round}:recheck`, gated.head, 'r')
+      const lateFound = gated.found
+      unfixed.push(...lateFound.filter(f => f.severity !== 'minor'))
+      advisory.push(...lateFound.filter(f => f.severity === 'minor'))
+    }
+  }
+}
+// A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
+if (!mutated && !failures.some(f => f.startsWith('fix '))) {
+  const late = await runMutation()
+  unfixed.push(...late.filter(f => f.severity !== 'minor'))
+  advisory.push(...late.filter(f => f.severity === 'minor'))
+}
+// A finding is the same finding by what it says, not by its positional id: a survivor by file, line text and mutated text,
+// any other by source, place and problem (a rejection without a place by its id).
+const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
+const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
+const unmet = reqIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
+  id, source: 'checklist', where: research.requirements.find(r => idOf(r) === id), status: status[id] ? status[id].status : 'unverified',
+  problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
+
+// Cheap minor findings get one pass of a cheaper fixer after the rounds; the ones it does not apply stay advisory.
+// Ruled survivors are left out: their ruling says no test can tell them apart.
+const cheap = uniq(advisory).filter(f => f.source !== 'mutation')
+let minorFix = null
+if (cheap.length && !failures.length) {
+  phase('Fix')
+  minorFix = await ask(`${PRE}
+
+STAGE: minor fixes. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} Apply each finding below whose fix is cheap: a few lines in files this run already changed, no new test file, no change of design. Reject every other one with a one-line reason; it stays advisory. Verify before you agree; never delete the thing a finding is about to silence it. Re-run the gates; if any gate is worse than before your edit, revert your edits and reject them all. ${A.one_commit ? 'Fold the change into the one commit with --amend, rewriting its message' : 'Commit'}. Report head: \`git rev-parse HEAD\` after your last change.
+
+FINDINGS:
+${JSON.stringify(cheap, null, 1)}`, { model: M.fix, effort: 'medium', schema: FIX_SCHEMA, phase: 'Fix', label: 'fix:minor' })
+  if (!minorFix) failures.push('fix minor')
+  else {
+    const from = headNow
+    headNow = minorFix.head || headNow
+    // A minor fix is reviewed like any other; what it broke is left over for the main thread.
+    if (!same(headNow, from)) {
+      const late = await fixReview(from, cheap.filter(f => minorFix.applied.some(a => a.id === f.id)), 'review:fix:minor')
+      if (late) unfixed.push(...late.filter(f => f.severity !== 'minor').map(f => Object.assign({}, f, { status: 'unverified' })))
+    }
+  }
+}
+const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
+
+// Freeing the run directory is the main thread's step after acceptance (README § Shape).
+return {
+  status: failures.length ? 'done_with_failures' : impl.unverified.length ? 'done_unverified' : 'done',
+  level: picked.level,
+  level_why: picked.why,
+  rounds_planned: N,
+  rounds_run: round,
+  rounds,
+  verdicts,
+  mutation,
+  unlisted_cases: cov.unlisted,
+  uncovered_requirements: cov.uncovered,
+  verify_launch: plan.verify_launch,
+  verify_review: plan.verify_review,
+  leftover_findings: uniq(unfixed.concat(unmet)),
+  advisory: uniq(advisory).filter(f => !minorApplied(f)),
+  minor_fixes: minorFix && { applied: minorFix.applied, rejected: minorFix.rejected },
+  accepted_rejections: accepted,
+  unverified: impl.unverified,
+  implement: { committed: impl.committed, commits: impl.commits, gate_output: impl.gate_output, notes: impl.notes },
+  mailbox,
+  failures,
+}

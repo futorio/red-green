@@ -264,6 +264,46 @@ and checks what the script does with them: `tidy`, survivor rulings, checklist s
 deduplicated leftover, the run status, and that the lenses start after the gates step and get its
 lines. A change to the core's control flow gets a case there.
 
+## Template
+
+`template/` renders this core from `ticket-tdd.js.tmpl` and a config, for the ablation study. The core
+stays hand-written; the template follows it, and `test_render.mjs` fails when the default config does
+not render the core byte for byte, so a change to `ticket-tdd.js` is made in the template too.
+
+A config is JSON whose keys are the variant dimensions; it names only what it changes, each key merging
+over `default.json`:
+
+- `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`).
+- `lenses`: the review lenses per level (`light`, `standard`, `heavy`), from `checklist` and `code`.
+- `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review),
+  `probe` and `same_frame` (off; on adds a draft sentence to the code lens, marked "experiment draft"
+  for the experiments to settle).
+
+```
+node template/render.mjs [config.json]                                    # the workflow, on stdout
+node template/render.mjs [config.json] --case case.json --prompt <label>  # one stage's prompt
+```
+
+`--prompt` runs the rendered script with stub agents and prints the prompt, mailbox note included, that
+the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The case is
+`{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
+commit the diff starts from: the prompt names both, the agent reads them), `gate_lines` are every gates
+step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
+have stubs (one requirement, standard level); a stage behind a review round, such as a fix, needs the
+round's results in the case.
+
+### Adding a variant dimension
+
+1. Put a `{{name}}` slot in `ticket-tdd.js.tmpl` where the text varies, inside one line when it can,
+   so a key changes only the lines it controls.
+2. Add the key to `default.json` with the value that renders today's core; a new duty is off by default.
+3. Fill the slot in `render()`. Text that goes inside a prompt's template literal passes through
+   `literal()`.
+4. Add a test beside T03-T06: the key changed alone changes exactly the lines it controls.
+   T01 must still pass.
+
+A new lens also needs its entry in the template's `LENSES` and its name in `render.mjs`'s `LENSES`.
+
 ## Changing the prompts
 
 **Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage. A
