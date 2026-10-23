@@ -276,8 +276,9 @@ over `default.json`:
 - `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`).
 - `lenses`: the review lenses per level (`light`, `standard`, `heavy`), from `checklist` and `code`.
 - `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review),
-  `probe` and `same_frame` (off; on adds a draft sentence to the code lens, marked "experiment draft"
-  for the experiments to settle).
+  `probe`, `same_frame` and `order` (off; on adds a draft sentence to the code lens, marked "experiment draft"
+  for the experiments to settle; `order` generalises `same_frame` past games: any two paths that change one piece
+  of state within one unit of processing, in both orders and repeated).
 
 ```
 node template/render.mjs [config.json]                                    # the workflow, on stdout

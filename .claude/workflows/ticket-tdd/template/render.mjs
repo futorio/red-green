@@ -13,11 +13,13 @@ const TEMPLATE = readFileSync(here('ticket-tdd.js.tmpl'), 'utf8')
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 const LENSES = ['checklist', 'code']
 
-// Duty texts, inserted into a JS template literal. Probe and same-frame are drafts for the ablation experiments to settle.
+// Duty texts, inserted into a JS template literal. Probe, same-frame and order are drafts for the ablation experiments to settle.
 const TEST_CASE_REVIEW_CODE = 'A test the diff weakened, deleted or left asserting nothing it promises is a finding. '
 const TEST_CASE_REVIEW_FIX = '; (3) no test was weakened, deleted or left asserting nothing it promises'
 const PROBE = ' PROBE (experiment draft): make one targeted run of the changed path the way its consumer runs it — the built program on an input that takes a new branch — even when reading seems to settle it; name the command and what it showed in `checked`. A behaviour that differs from the ticket is a finding with that run as its trigger.'
 const SAME_FRAME = ' SAME-FRAME RULE (experiment draft): for each piece of state the diff adds or writes, list the events that change it and check any two of them arriving in the same frame or tick, in both orders; a wrong result is a finding whose trigger names both events.'
+
+const ORDER = ' ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.'
 
 const literal = s => s.replace(/[`\\]/g, '\\$&').replace(/\$\{/g, '\\${')
 const js = v => v === null ? 'null' : Array.isArray(v) ? `[${v.map(js).join(', ')}]` : `'${v}'`
@@ -34,6 +36,7 @@ export function render(config) {
     'lenses.heavy': js(lenses.heavy),
     probe: duties.probe ? literal(PROBE) : '',
     same_frame: duties.same_frame ? literal(SAME_FRAME) : '',
+    order: duties.order ? literal(ORDER) : '',
     'test_case_review.code': duties.test_case_review ? TEST_CASE_REVIEW_CODE : '',
     'test_case_review.fix': duties.test_case_review ? TEST_CASE_REVIEW_FIX : '',
   }
