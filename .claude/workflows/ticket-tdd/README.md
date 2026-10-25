@@ -1,4 +1,4 @@
-# ticket-tdd — research → level → TDD → review loop
+# ticket-tdd — research → TDD → review loop
 
 A Workflow run that implements **one ticket or one spec** in any git repository. The script is
 `.claude/workflows/ticket-tdd.js`; this directory holds what its agents read (`skills/`) and
@@ -13,15 +13,14 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 ## Shape
 
 ```
-research → level
-  → ( [test-case planning → coverage] → implementation )
+research
+  → ( test-case planning → coverage → implementation )
   → ( gates → review → fix ) × n → fix-diff review
   → [mutation] → minor fix → fix-diff review
 ```
 
-The level comes from research's signals (below): `light` (checklist lens, one round, no planning),
-`standard` (both lenses, one round), `heavy` (both lenses, two full rounds, the mutation step). `n` is
-the level's rounds unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
+Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
+when the profile names a tool. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
 one, and runs before the lenses of its round, which get its lines. A fix that no full round follows gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
@@ -35,9 +34,8 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `run` | scratch directory for state files | required |
 | `base` | the commit the run starts from; review diffs against it | required |
 | `baseline` | the gate summary lines measured at `base`, as one string | required |
-| `level` | `light`, `standard` or `heavy`, overriding the one research's signals pick | picked |
-| `rounds` | max review rounds `n`, or `auto` | the level's |
-| `min_rounds` | rounds that run even when a round comes back clean | the level's rounds |
+| `rounds` | max review rounds `n`, or `auto` | `2` |
+| `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
 | `extra_rounds` | full rounds added when the last planned round has blockers or majors to fix | `0` (the fix-diff review sees the fix) |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
 | `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement |
@@ -56,11 +54,10 @@ Every field is optional; an absent one leaves the core's neutral wording.
 | `research` | string | research: where decisions live, which harnesses exist |
 | `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
-| `heavy_paths` | string[] | level pick: regexes over research's `files`; a match makes the run heavy |
 | `mutation` | string | mutation step: when and how to run the project's own mutation tool, if it has one |
 
 **Mutation testing is the project's tool, never done by hand.** The core names no tool; `profile.mutation`
-names it in words: when it applies, its command and what it covers. It runs once per run, on heavy runs only, in its own
+names it in words: when it applies, its command and what it covers. It runs once per run, in its own
 `mutation` step, never in a gates step: after the first round that ends with no finding to fix, on that
 HEAD. Its survivors that need a fix get one, then one more review round without the tool, even past the
 planned rounds. A run that uses up its rounds without such a round runs the tool once at the end, and its
@@ -94,20 +91,16 @@ profile carries only what a stage prompt must name explicitly.
 A spec is not an implementation plan. The research agent reads the target, its spec, siblings, the
 documents they cite and the code they touch, and returns (schema-forced) `requirements[]` — one line
 each, with a stable id and the checklist box it comes from — `facts[]` with sources, `plan[]`,
-`files[]`, `test_harness`, `risks[]`, `signals[]` and `anchors[]`, and writes the same as Markdown to
+`files[]`, `test_harness`, `risks[]` and `anchors[]`, and writes the same as Markdown to
 `<run>/research.md`. This output is pasted into every later prompt, with the rule to start from the anchors,
 read only the lines a stage changes or verifies, and append to `research.md` when an anchor is stale.
 
-**Signals** are cited facts, each with its source: `pass-fail-logic`, `workflow-core`,
-`format-or-determinism`, `input-parser`, `upstream-or-vendored`, or `docs-or-mechanical` when the change
-is only prose or one mechanical edit repeated. **The level** is picked by the script: any risk signal or a
-file matching `profile.heavy_paths` makes it `heavy`; otherwise `docs-or-mechanical` makes it `light`;
-otherwise `standard`. The level and its reasons are logged and returned. **Anchors** are `file:line-range`
+**Anchors** are `file:line-range`
 plus one line each: every place a later stage changes or checks.
 
 ### 2. Test-case planning, and the coverage check
 
-Skipped on a light run: every requirement goes to `verify_review`. Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
+Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
 asserts[]}`: self-contained, unique, AAA (one Act, atomic asserts), meaningful. `requirement` is copied
 byte for byte from research. A requirement with no behaviour to test goes to `verify_review`, and the
 checklist lens checks it by name; one only a run outside the suites can verify goes to `verify_launch`.
@@ -145,7 +138,7 @@ one that changed only tests runs no build or replay check, only the changed test
 
 Two lenses in parallel — checklist (every requirement id, every `verify_review` requirement) and code
 (would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`; it also rules on the mutation survivors, above).
-A light run has the checklist lens only. A diff with no production file gets one checked row saying so from the code lens.
+A diff with no production file gets one checked row saying so from the code lens.
 
 **The checklist lens** receives every requirement id and the `unverified` list implement reported. It
 returns one `checked` row per id with `status: met|unmet|unverified`; an id without a row counts as
@@ -202,11 +195,11 @@ reruns the gates and reverts when one got worse; a minor fix that moved HEAD get
 ```
 loop:
   round += 1
-  gates, if HEAD changed since the last gates step; then in parallel the level's lenses, given its lines
+  gates, if HEAD changed since the last gates step; then in parallel the lenses, given its lines
   findings = gates findings + review(round, rejections), minors set aside
   if no findings and every lens answered and round >= min_rounds:
     if the tool ran: break
-    mutation step (heavy only), rule the survivors (ruled ones set aside); none to fix: break
+    mutation step, rule the survivors (ruled ones set aside); none to fix: break
     findings = unruled survivors; if round == n: n += 1
   if findings and round == n and extra rounds left: n += 1
   if findings: fix
@@ -248,7 +241,7 @@ The 16-fixture sweep must include 8 jobs.
 
 ## Result
 
-`{status, level, level_why, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
+`{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
 verdicts, mutation (the tool's result, at most one), unlisted_cases,
 uncovered_requirements, verify_launch, verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
@@ -274,7 +267,7 @@ A config is JSON whose keys are the variant dimensions; it names only what it ch
 over `default.json`:
 
 - `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`).
-- `lenses`: the review lenses per level (`light`, `standard`, `heavy`), from `checklist` and `code`.
+- `lenses`: the review lenses, a list from `checklist` and `code`; a config's list replaces the default's.
 - `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review),
   `probe`, `same_frame` and `order` (off; on adds a draft sentence to the code lens, marked "experiment draft"
   for the experiments to settle; `order` generalises `same_frame` past games: any two paths that change one piece
@@ -284,7 +277,6 @@ over `default.json`:
 node template/render.mjs [config.json]                                    # the workflow, on stdout
 node template/render.mjs [config.json] --case case.json --prompt <label>  # one stage's prompt
 node template/render.mjs [config.json] --case case.json --prompt <label> --json
-node template/render.mjs [config.json] --case case.json --level           # the level pickLevel gives
 ```
 
 `--prompt` runs the rendered script with stub agents and prints the prompt, mailbox note included, that
@@ -292,11 +284,9 @@ the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The cas
 `{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
 commit the diff starts from: the prompt names both, the agent reads them), `gate_lines` are every gates
 step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
-have stubs (one requirement, standard level); a stage behind a review round, such as a fix, needs the
+have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
-gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code. `--level` runs the
-script on the case's `results.research` and `args.profile` and prints `{ level, why }`, read from the
-core's level log line: what `pickLevel` picks from that research output, offline.
+gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code.
 
 ### Adding a variant dimension
 

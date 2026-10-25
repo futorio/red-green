@@ -1,6 +1,6 @@
 export const meta = {
   name: 'ticket-tdd',
-  description: 'Implement one ticket: research, a review level from its signals, TDD with coverage-checked test cases, review/fix loop',
+  description: 'Implement one ticket: research, TDD with coverage-checked test cases, review/fix loop',
   whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See .claude/workflows/ticket-tdd/README.md',
   phases: [
     { title: 'Research' },
@@ -63,19 +63,6 @@ async function ask(prompt, opts) {
   return res
 }
 
-// Review levels. A risk signal or a heavy path makes a run heavy; docs or a mechanical sweep alone make it light.
-const SIGNALS = ['pass-fail-logic', 'workflow-core', 'format-or-determinism', 'input-parser', 'upstream-or-vendored']
-const LEVELS = { light: { rounds: 1, lenses: ['checklist'], plan: false, mutation: false },
-  standard: { rounds: 1, lenses: ['checklist', 'code'], plan: true, mutation: false },
-  heavy: { rounds: 2, lenses: ['checklist', 'code'], plan: true, mutation: true } }
-function pickLevel(r) {
-  const risk = r.signals.filter(x => SIGNALS.includes(x.signal)).map(x => `${x.signal} (${x.source})`)
-  const heavy = r.files.filter(f => (P.heavy_paths || []).some(rx => new RegExp(rx).test(f))).map(f => `heavy path ${f}`)
-  if (risk.length || heavy.length) return { level: 'heavy', why: risk.concat(heavy) }
-  if (r.signals.some(x => x.signal === 'docs-or-mechanical')) return { level: 'light', why: ['docs or a mechanical sweep, no risk signal'] }
-  return { level: 'standard', why: ['behaviour code, no risk signal'] }
-}
-
 const RESEARCH_SCHEMA = { type: 'object', properties: {
   requirements: { type: 'array', items: { type: 'string' } },
   facts: { type: 'array', items: { type: 'object', properties: { fact: { type: 'string' }, source: { type: 'string' } }, required: ['fact', 'source'] } },
@@ -83,9 +70,8 @@ const RESEARCH_SCHEMA = { type: 'object', properties: {
   files: { type: 'array', items: { type: 'string' } },
   test_harness: { type: 'string' },
   risks: { type: 'array', items: { type: 'string' } },
-  signals: { type: 'array', items: { type: 'object', properties: { signal: { type: 'string', enum: SIGNALS.concat('docs-or-mechanical') }, source: { type: 'string' } }, required: ['signal', 'source'] } },
   anchors: { type: 'array', items: { type: 'object', properties: { where: { type: 'string' }, what: { type: 'string' } }, required: ['where', 'what'] } },
-}, required: ['requirements', 'facts', 'plan', 'files', 'test_harness', 'risks', 'signals', 'anchors'] }
+}, required: ['requirements', 'facts', 'plan', 'files', 'test_harness', 'risks', 'anchors'] }
 
 const CASE = { type: 'object', properties: {
   id: { type: 'string' }, requirement: { type: 'string' }, title: { type: 'string' },
@@ -182,7 +168,6 @@ Output:
 - requirements: every checkable requirement, one line each, prefixed with a stable id and naming the checklist box or phrase it comes from, e.g. "R7: grammar/effects.json holds 8 entries (Checklist › Whitelist)". Cover every checklist box.
 - facts: each with its source (file and function, or file:line in a tree the project pins).
 - plan: ordered implementation steps, dependency-correct. files (every file the change will touch, repository-relative), test_harness, risks.
-- signals: each risk the change carries, with its source (file:line or ticket clause): \`pass-fail-logic\` (code that decides a check, gate or test verdict), \`workflow-core\` (the workflow scripts or prompts), \`format-or-determinism\` (a file or wire format others read, a hash, a replay, state a deterministic replay depends on), \`input-parser\` (code that parses input from outside the program), \`upstream-or-vendored\` (code another project owns). \`docs-or-mechanical\` when the change is only prose or one mechanical edit repeated, with no risk signal. A signal is a fact you can cite, not a guess; none is a valid answer. The review level is picked from them.
 - anchors: every place a later stage will change or check, as where = \`file:line-range\` and what = one line on what is there. Later stages start from these instead of searching again.
 Also write all of the above as Markdown to ${RUN}/research.md (anchors as a list); later stages read it and append to it.`,
   { model: M.research, effort: 'high', schema: RESEARCH_SCHEMA, phase: 'Research', label: 'research' })
@@ -190,12 +175,11 @@ if (!research) return { status: 'failed', stage: 'research', failures }
 const RESEARCH = JSON.stringify(research, null, 1) + `
 
 Start from the anchors above and ${RUN}/research.md: read only the lines you change or verify, search only for what they do not cover, and append a line to ${RUN}/research.md when an anchor is stale or missing.`
-const picked = A.level ? { level: A.level, why: ['args.level'] } : pickLevel(research)
-const LEVEL = LEVELS[picked.level]
-let N = A.rounds && A.rounds !== 'auto' ? A.rounds : LEVEL.rounds
-// A heavy run reviews its planned rounds in full even when the first is clean: round 2 catches majors round 1 missed.
-const MIN_ROUNDS = A.min_rounds || Math.min(N, LEVEL.rounds)
-log(`research: ${research.requirements.length} requirements; level ${picked.level} (${picked.why.join('; ')}) -> ${N} review rounds, lenses ${LEVEL.lenses.join(' + ')}`)
+let N = A.rounds && A.rounds !== 'auto' ? A.rounds : 2
+// A run reviews its planned rounds in full even when the first is clean: round 2 catches majors round 1 missed.
+const MIN_ROUNDS = A.min_rounds || Math.min(N, 2)
+const LENS_KEYS = ['checklist', 'code']
+log(`research: ${research.requirements.length} requirements -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 
 phase('Plan')
 const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is copied BYTE FOR BYTE from one of the research requirements (id prefix included). Cases must be:
@@ -207,8 +191,7 @@ Expected values come from an independent source (the ticket, the spec, a literal
 A requirement with no behaviour a test can check — a prose or documentation edit, a gate outcome — gets no case: copy it BYTE FOR BYTE into verify_review; the checklist review lens checks it. One that only a run outside the test suites can verify (a launch, a manual step) goes into verify_launch.
 `
 
-// A light run plans no cases: every requirement is checked by the checklist lens.
-let plan = !LEVEL.plan ? { cases: [], verify_launch: [], verify_review: research.requirements.slice() } : await ask(`${PRE}
+let plan = await ask(`${PRE}
 
 STAGE: test-case planning. No code is written yet. Turn the research plan into test cases for the TDD cycle of implementation; read the harness research names in test_harness to see what each case will use.
 
@@ -337,7 +320,7 @@ ${SEVERITY}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: '
 let mutated = false
 async function runMutation() {
   mutated = true
-  if (!P.mutation || !LEVEL.mutation) return []
+  if (!P.mutation) return []
   phase('Gates')
   const res = await ask(`${PRE}
 
@@ -360,7 +343,7 @@ const reqIds = research.requirements.map(idOf)
 const LENSES = [
   { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${reqIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
   { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}.${CODE_RULES}
-A test the diff weakened, deleted or left asserting nothing it promises is a finding. Mutation is a separate step's tool, run once after the review rounds on heavy runs only, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
+A test the diff weakened, deleted or left asserting nothing it promises is a finding. Mutation is a separate step's tool, run once after the review rounds, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
 ]
 async function runFix(round, toFix, label) {
   phase('Fix')
@@ -417,7 +400,7 @@ while (round < N) {
   }
   phase('Review')
   let fromHead = headNow
-  const active = LENSES.filter(l => LEVEL.lenses.includes(l.key))
+  const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
   const rej = rejections.length ? `\nREJECTED LAST ROUND — rule on each: "accept" the argument, or "insist" and restate it as a sharper finding:\n${JSON.stringify(rejections)}\n` : ''
   const past = history.length ? `\nEARLIER FINDINGS (do not restate a fixed or accepted one):\n${JSON.stringify(history)}\n` : ''
   gated = await gatesStep()
@@ -565,8 +548,6 @@ const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id
 // Freeing the run directory is the main thread's step after acceptance (README § Shape).
 return {
   status: failures.length ? 'done_with_failures' : impl.unverified.length ? 'done_unverified' : 'done',
-  level: picked.level,
-  level_why: picked.why,
   rounds_planned: N,
   rounds_run: round,
   rounds,

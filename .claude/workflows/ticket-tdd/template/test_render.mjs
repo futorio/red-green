@@ -30,10 +30,10 @@ test('T02: the CLI with no config prints the core', () => {
   assert.equal(cli(), CORE)
 })
 
-test('T03: the standard lens set changes only the standard LEVELS line', () => {
-  const out = render(variant({ lenses: Object.assign({}, DEFAULT.lenses, { standard: ['code'] }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'standard: { rounds: 1')])
-  assert.match(out, /standard: \{ rounds: 1, lenses: \['code'\], plan: true/)
+test('T03: the lens list changes only the lens keys line', () => {
+  const out = render(variant({ lenses: ['code'] }))
+  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'const LENS_KEYS = ')])
+  assert.match(out, /const LENS_KEYS = \['code'\]/)
 })
 
 test('T04: a stage model changes only the models line', () => {
@@ -54,12 +54,6 @@ test('T05b: the order duty changes only the code lens line', () => {
   assert.match(out, /ORDER RULE/)
 })
 
-test('T05c: the tight-signals duty changes only the research signals line', () => {
-  const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { tight_signals: true }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, '- signals: each risk the change carries')])
-  assert.match(out, /TIGHT SIGNALS/)
-})
-
 test('T06: test-case review off drops its sentence from the code lens and the fix review only', () => {
   const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { test_case_review: false }) }))
   assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'A test the diff weakened'), lineOf(CORE, 'STAGE: fix review')])
@@ -68,7 +62,7 @@ test('T06: test-case review off drops its sentence from the code lens and the fi
 
 test('T07: an unknown config key or lens is an error, not a silent default', () => {
   assert.throws(() => render(variant({ lens: {} })), /unknown config key: lens/)
-  assert.throws(() => render(variant({ lenses: Object.assign({}, DEFAULT.lenses, { heavy: ['mechanics'] }) })), /unknown lens: mechanics/)
+  assert.throws(() => render(variant({ lenses: ['mechanics'] })), /unknown lens: mechanics/)
 })
 
 test('T08: --prompt prints the code lens prompt of a case, with its gate lines and mailbox note', () => {
@@ -102,13 +96,4 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.equal(out.effort, 'high')
   assert.deepEqual(out.schema.required, ['verdict', 'findings', 'rulings', 'checked'])
   assert.ok('mailbox' in out.schema.properties)
-})
-
-test('T12: --level picks the review level the core would from the case\'s research result and profile', () => {
-  const research = sig => ({ requirements: ['R1: x'], facts: [], plan: [], files: ['docs/a.md', 'src/Player.cpp'], test_harness: '', risks: [], signals: sig, anchors: [] })
-  const level = (sig, profile) => JSON.parse(cli('--case', file('lv.json', { args: { profile }, results: { research: research(sig) } }), '--level'))
-  assert.deepEqual(level([{ signal: 'input-parser', source: 'a.c:1' }], {}), { level: 'heavy', why: ['input-parser (a.c:1)'] })
-  assert.deepEqual(level([], { heavy_paths: ['^src/'] }), { level: 'heavy', why: ['heavy path src/Player.cpp'] })
-  assert.deepEqual(level([{ signal: 'docs-or-mechanical', source: 'ticket' }], {}), { level: 'light', why: ['docs or a mechanical sweep, no risk signal'] })
-  assert.deepEqual(level([], {}), { level: 'standard', why: ['behaviour code, no risk signal'] })
 })

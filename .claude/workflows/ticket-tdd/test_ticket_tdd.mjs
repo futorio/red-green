@@ -21,7 +21,7 @@ const ruling = (id, kind, reason) => ({ id, ruling: kind, reason })
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
   return Object.assign({
-    research: { requirements: ['R1: one'], facts: [], plan: [], files: [], test_harness: '', risks: [], signals: [], anchors: [] },
+    research: { requirements: ['R1: one'], facts: [], plan: [], files: [], test_harness: '', risks: [], anchors: [] },
     plan: { cases: [{ id: 'C1', requirement: 'R1: one', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }], verify_launch: [], verify_review: [] },
     implement: { committed: true, head: 'bbbb111', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
     'gates:r1': { head: 'bbbb111', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [] },
@@ -59,7 +59,7 @@ async function runCore(over, rounds, extra) {
     return r && clone(r)
   }
   const parallel = thunks => Promise.all(thunks.map(async t => { try { return await t() } catch (e) { return null } }))
-  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', rounds: rounds || 1, baseline: 'b', profile: { mutation: 'MUTATION-TOOL-TEXT' }, extra_rounds: 0, level: 'heavy' }
+  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', rounds: rounds || 1, baseline: 'b', profile: { mutation: 'MUTATION-TOOL-TEXT' }, extra_rounds: 0 }
   Object.assign(args, extra)
   const result = await core(args, agent, parallel, () => {}, () => {})
   return { result, calls, events }
@@ -290,7 +290,7 @@ test('W22: a survivor the fix rejected without moving HEAD is not sent to fix ag
   assert.ok(!called(calls, 'fix:r2'))
 })
 
-test('W23: a heavy run reviews every round with both lenses', async () => {
+test('W23: a run reviews every round with both lenses', async () => {
   const major = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
   const keep = { applied: [], rejected: [{ id: 'x', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' }
   const { calls } = await runCore({
@@ -351,24 +351,11 @@ test('W31: no minors calls no minor fixer; a dead one is a failure', async () =>
   assert.equal((await runCore({ 'review:r1:code': minor, 'fix:minor': null })).result.status, 'done_with_failures')
 })
 
-test('W32: research signals and heavy paths pick the level, and args.level overrides it', async () => {
-  const research = (signals, files) => Object.assign({}, base().research, { signals, files: files || [] })
-  const standard = await runCore({ research: research([]) }, 'auto', { level: undefined })
-  assert.equal(standard.result.level, 'standard')
-  assert.ok(called(standard.calls, 'plan') && called(standard.calls, 'review:r1:code'))
-  assert.ok(!called(standard.calls, 'mutation') && !called(standard.calls, 'review:r2:code'))
-  const light = await runCore({ research: research([{ signal: 'docs-or-mechanical', source: 's' }]) }, 'auto', { level: undefined })
-  assert.equal(light.result.level, 'light')
-  assert.ok(!called(light.calls, 'plan') && !called(light.calls, 'review:r1:code') && called(light.calls, 'review:r1:checklist'))
-  const signal = await runCore({ research: research([{ signal: 'docs-or-mechanical', source: 's' }, { signal: 'format-or-determinism', source: 'f:1' }]) }, 'auto', { level: undefined })
-  assert.equal(signal.result.level, 'heavy')
-  assert.match(signal.result.level_why.join(' '), /format-or-determinism \(f:1\)/)
-  assert.ok(called(signal.calls, 'review:r2:code') && called(signal.calls, 'mutation'))
-  const path = await runCore({ research: research([], ['scripts/gate.py']) }, 'auto', { level: undefined, profile: { mutation: 'M', heavy_paths: ['^scripts/gate'] } })
-  assert.equal(path.result.level, 'heavy')
-  const forced = await runCore({ research: research([{ signal: 'format-or-determinism', source: 'f:1' }]) }, 'auto', { level: 'light' })
-  assert.equal(forced.result.level, 'light')
-  assert.match(prompt(standard.calls, 'review:r1:code'), /\/run\/research\.md/)
+test('W32: with default rounds a run plans, reviews two full rounds with both lenses, then runs the mutation tool', async () => {
+  const { result, calls } = await runCore({}, 'auto')
+  assert.equal(result.rounds_planned, 2)
+  assert.ok(called(calls, 'plan') && called(calls, 'review:r2:checklist') && called(calls, 'review:r2:code') && called(calls, 'mutation'))
+  assert.match(prompt(calls, 'review:r1:code'), /\/run\/research\.md/)
 })
 
 test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and reviewed once more, then left over', async () => {
