@@ -54,6 +54,12 @@ test('T05b: the order duty changes only the code lens line', () => {
   assert.match(out, /ORDER RULE/)
 })
 
+test('T05c: the tight-signals duty changes only the research signals line', () => {
+  const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { tight_signals: true }) }))
+  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, '- signals: each risk the change carries')])
+  assert.match(out, /TIGHT SIGNALS/)
+})
+
 test('T06: test-case review off drops its sentence from the code lens and the fix review only', () => {
   const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { test_case_review: false }) }))
   assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'A test the diff weakened'), lineOf(CORE, 'STAGE: fix review')])

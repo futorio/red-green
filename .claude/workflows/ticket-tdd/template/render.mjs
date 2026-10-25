@@ -20,6 +20,7 @@ const PROBE = ' PROBE (experiment draft): make one targeted run of the changed p
 const SAME_FRAME = ' SAME-FRAME RULE (experiment draft): for each piece of state the diff adds or writes, list the events that change it and check any two of them arriving in the same frame or tick, in both orders; a wrong result is a finding whose trigger names both events.'
 
 const ORDER = ' ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.'
+const TIGHT_SIGNALS = ' TIGHT SIGNALS (experiment draft): a signal needs a line this change will edit, add or delete; reading, calling or sitting next to such code is no signal, and a ticket clause alone is no source: cite the file:line the change edits. `format-or-determinism` only when the change alters bytes, fields or order that another program or a saved file reads, a hash input, or state a replay re-derives; a new field every reader ignores, a log line, a doc or a test fixture is none. `input-parser` only when the change edits the code that turns outside bytes into values, not code that uses values already parsed. `pass-fail-logic` only when the change edits the condition that decides a verdict, not a test that a verdict decides. `workflow-core` and `upstream-or-vendored` only when the change edits such a file. When no kind fits by these rules, give no signal.'
 
 const literal = s => s.replace(/[`\\]/g, '\\$&').replace(/\$\{/g, '\\${')
 const js = v => v === null ? 'null' : Array.isArray(v) ? `[${v.map(js).join(', ')}]` : `'${v}'`
@@ -37,6 +38,7 @@ export function render(config) {
     probe: duties.probe ? literal(PROBE) : '',
     same_frame: duties.same_frame ? literal(SAME_FRAME) : '',
     order: duties.order ? literal(ORDER) : '',
+    tight_signals: duties.tight_signals ? literal(TIGHT_SIGNALS) : '',
     'test_case_review.code': duties.test_case_review ? TEST_CASE_REVIEW_CODE : '',
     'test_case_review.fix': duties.test_case_review ? TEST_CASE_REVIEW_FIX : '',
   }
