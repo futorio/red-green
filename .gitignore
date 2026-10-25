@@ -1,2 +1,3 @@
 ablation/runs/
 __pycache__/
+.claude/worktrees/
