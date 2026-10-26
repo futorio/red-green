@@ -42,6 +42,19 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `review_command` | what the checklist lens starts from | the `mattpocock-skills:code-review` skill |
 | `profile` | the project's additions, below | `{}` |
 
+### `models` presets
+
+Three `args.models` sets from the stage tournament (`.scratch/wf-ablation/tournament-report.md`). Effort stays
+`high` for research, plan and implement (the core fixes it). Measured: plan opus beats sonnet, haiku and no plan;
+implement models tie on the hidden verifiers; review opus leads lighter reviewers by 0.2-0.3 F2. Not measured: a
+lighter research model (its stage was stopped) and the fix model (it defaults to the implement model).
+
+| preset | for | `models` | why |
+|---|---|---|---|
+| standard | most tickets | `{"implement": "haiku", "fix": "sonnet"}` | plan and review keep opus; implement tied, haiku is the cheapest; fix stays on sonnet, unmeasured on haiku |
+| hard | concurrency, determinism, cross-cutting changes | `{}` (the default: sonnet implement and fix) | same measured stages; sonnet costs a little more as insurance on cases the tournament had too few of to split |
+| cheap | docs, config, small local edits | `{"research": "sonnet", "planner": "opus", "implement": "haiku", "fix": "haiku"}` | research is the costliest stage (opus ~$4.3, sonnet ~$1.2 a case); its quality on sonnet is unmeasured, so only where a miss is cheap |
+
 ### `profile`
 
 Every field is optional; an absent one leaves the core's neutral wording.
