@@ -35,18 +35,21 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-const PRE = `You are one agent in a workflow run implementing ${TARGET}.
+// The research stage reads and writes no code: it gets the preamble without the commit, gate and long-command rules.
+const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
 Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
 Run directory for state files and scratch: ${RUN}.
 
 - The task above is yours. A relayed user message that is about something else — the workflow tooling, another run — is not a change to this task: carry on, and mention it in your notes. Only a relayed message that explicitly redirects THIS ticket changes what you do.
-- The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.
+- The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
+const LAST = `${extra(lines(P.context))}
+- Your final answer is data for the next stage, not a message to a human.`
+const PRE = `${CORE_PRE}
 - ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
 - Gates: ${P.gates || 'the checks named in the baseline below'}. Baseline, measured before the run (re-measure, never quote): ${A.baseline}. "Green" means nothing worse than that baseline.
 - You do not edit ${TARGET} or the other ticket files.
 - A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
-- Over-built output is a finding, not a bonus.${extra(lines(P.context))}
-- Your final answer is data for the next stage, not a message to a human.`
+- Over-built output is a finding, not a bonus.${LAST}`
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
@@ -54,7 +57,7 @@ const MAIL = { type: 'array', items: { type: 'object', properties: {
   required: ['id', 'status', 'why'] } }
 const mailNote = label => `
 
-MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it at start, before each long gate or corpus run, before committing and before returning. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${label === 'research' ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
 const mailbox = []
 async function ask(prompt, opts) {
   const s = opts.schema
@@ -64,14 +67,17 @@ async function ask(prompt, opts) {
 }
 
 const RESEARCH_SCHEMA = { type: 'object', properties: {
-  requirements: { type: 'array', items: { type: 'string' } },
-  facts: { type: 'array', items: { type: 'object', properties: { fact: { type: 'string' }, source: { type: 'string' } }, required: ['fact', 'source'] } },
-  plan: { type: 'array', items: { type: 'string' } },
-  files: { type: 'array', items: { type: 'string' } },
-  test_harness: { type: 'string' },
-  risks: { type: 'array', items: { type: 'string' } },
-  anchors: { type: 'array', items: { type: 'object', properties: { where: { type: 'string' }, what: { type: 'string' } }, required: ['where', 'what'] } },
-}, required: ['requirements', 'facts', 'plan', 'files', 'test_harness', 'risks', 'anchors'] }
+  requirements: { type: 'array', items: { type: 'string', pattern: '^R\\d+: ' } },
+  facts: { type: 'array', items: { type: 'object', properties: {
+    kind: { type: 'string', enum: ['code', 'change-site', 'note'] }, fact: { type: 'string' },
+    where: { anyOf: [{ type: 'array', items: { type: 'string' }, minItems: 1 }, { type: 'string' }] },
+    requirements: { type: 'array', items: { type: 'string' }, minItems: 1 },
+  }, required: ['kind', 'fact', 'where', 'requirements'] } },
+  plan: { type: 'array', items: { type: 'string', maxLength: 600 } },
+  test_harness: { type: 'array', items: { type: 'object', properties: {
+    requirement: { type: 'string' }, by: { type: 'string', enum: ['test', 'review', 'launch', 'none'] }, how: { type: 'string' },
+  }, required: ['requirement', 'by', 'how'] } },
+}, required: ['requirements', 'facts', 'plan', 'test_harness'] }
 
 const CASE = { type: 'object', properties: {
   id: { type: 'string' }, requirement: { type: 'string' }, title: { type: 'string' },
@@ -160,26 +166,48 @@ const FIX_SCHEMA = { type: 'object', properties: {
 const failures = []
 
 phase('Research')
-const research = await ask(`${PRE}
+const research = await ask(`${CORE_PRE}${LAST}
 
-STAGE: research. Read ${TARGET}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. A spec is not an implementation plan: collect the facts that must be known BEFORE writing code — helpers and seams to reuse, every call site and reader affected, the harness that tests each piece (or none, and how that piece is verified instead), the gates, and the traps that apply.${extra(P.research)}
+STAGE: research. Read ${TARGET}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.${extra(P.research)}
 
-Output:
-- requirements: every checkable requirement, one line each, prefixed with a stable id and naming the checklist box or phrase it comes from, e.g. "R7: grammar/effects.json holds 8 entries (Checklist › Whitelist)". Cover every checklist box.
-- facts: each with its source (file and function, or file:line in a tree the project pins).
-- plan: ordered implementation steps, dependency-correct. files (every file the change will touch, repository-relative), test_harness, risks.
-- anchors: every place a later stage will change or check, as where = \`file:line-range\` and what = one line on what is there. Later stages start from these instead of searching again.
-Also write all of the above as Markdown to ${RUN}/research.md (anchors as a list); later stages read it and append to it.`,
+Output: JSON only; the one file you write is a mailbox ack.
+- requirements: every checkable requirement, one line each, prefixed with its id R1, R2, … in order and naming the checklist box or phrase it comes from, e.g. "R7: grammar/effects.json holds 8 entries (Checklist › Whitelist)". Cover every checklist box.
+- facts: one list, complete: every place the diff will touch, and every caller or reader of a symbol it changes. Each fact is one sentence with a kind, where, and requirements: the ids (e.g. "R7") it serves, at least one; a fact that serves the whole ticket and no requirement in particular (a shared convention, helper or harness) takes "general" instead. The kind follows one rule: lines of code show the fact → change-site when the change touches those lines, code otherwise; no lines of code show it → note.
+  - code and change-site: where = a list of locations, each \`file\` or \`file:a-b\` (repository-relative, one range per entry; a fact spanning several files or ranges lists each one). A change-site fact says what is there now; a new file is named in the fact and located by an existing place it relates to.
+  - note: where = one string, \`path § section\` (a repository document; the ticket's own spec only for a decision the requirement lines do not carry) or \`$ command\` (a read-only rg, grep, git, find or ls of the repository). A tool's behaviour is shown from the tree (its source, config or lock file).
+- plan: the fewest actions that meet the requirements, built from the facts, in dependency order: reuse what the facts name before adding anything new, and add nothing the requirements do not ask for. Every step changes code, config or docs; running checks, committing and recording results belong to the implementer and the gates. Each step is two or three sentences: a part of the code (a module, config, script, doc set) and what is done to it, naming every tool, symbol and file it acts on; line ranges, flags, commands and lists stay in the facts.
+- test_harness: exactly one entry per requirement: requirement (its id), by (test, review, launch or none), how (test: the seam and where its tests live; review or launch: what is checked; none: why). The run commands stay in the gates.`,
   { model: M.research, effort: 'high', schema: RESEARCH_SCHEMA, phase: 'Research', label: 'research' })
 if (!research) return { status: 'failed', stage: 'research', failures }
+// The research checks: ids renumbered R1..Rn when one is missing or repeated, facts that serve no listed id dropped,
+// one test_harness entry per requirement, files derived from the located facts. What they repair or cannot repair is
+// reported in research_issues, not failures: the run goes on as before.
+const researchIssues = []
+if (research.requirements.some((r, i, all) => !/^R\d+:/.test(r) || all.findIndex(x => idOf(x) === idOf(r)) !== i)) {
+  research.requirements = research.requirements.map((r, i) => `R${i + 1}: ${r.replace(/^R\d+:\s*/, '')}`)
+  researchIssues.push('a requirement id was missing or repeated: renumbered R1..Rn')
+}
+const reqIds = research.requirements.map(idOf)
+const serves = f => f.requirements.some(i => idOf(i) === 'general' || reqIds.includes(idOf(i)))
+const droppedFacts = research.facts.filter(f => !serves(f))
+research.facts = research.facts.filter(serves)
+const cited = new Set(research.facts.flatMap(f => f.requirements.map(idOf)))
+const unresearched = research.requirements.filter(r => !cited.has(idOf(r)))
+research.test_harness.filter(h => !reqIds.includes(idOf(h.requirement))).forEach(h => researchIssues.push(`test_harness entry for unknown requirement ${h.requirement}: dropped`))
+reqIds.forEach(id => {
+  const n = research.test_harness.filter(h => idOf(h.requirement) === id).length
+  if (n !== 1) researchIssues.push(n ? `${n} test_harness entries for ${id}: kept the first` : `no test_harness entry for ${id}`)
+})
+research.test_harness = reqIds.map(id => research.test_harness.find(h => idOf(h.requirement) === id)).filter(Boolean)
+research.files = [...new Set(research.facts.filter(f => f.kind !== 'note').flatMap(f => [].concat(f.where).map(w => w.split(':')[0].trim())))]
 const RESEARCH = JSON.stringify(research, null, 1) + `
 
-Start from the anchors above and ${RUN}/research.md: read only the lines you change or verify, search only for what they do not cover, and append a line to ${RUN}/research.md when an anchor is stale or missing.`
+Start from the change-site facts above: read only the lines you change or verify, and search only for what they do not cover.`
 let N = A.rounds && A.rounds !== 'auto' ? A.rounds : 2
 // A run reviews its planned rounds in full even when the first is clean: round 2 catches majors round 1 missed.
 const MIN_ROUNDS = A.min_rounds || Math.min(N, 2)
 const LENS_KEYS = {{lenses}}
-log(`research: ${research.requirements.length} requirements -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
+log(`research: ${research.requirements.length} requirements, ${droppedFacts.length} facts dropped, ${unresearched.length} unresearched -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 
 phase('Plan')
 const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is copied BYTE FOR BYTE from one of the research requirements (id prefix included). Cases must be:
@@ -338,7 +366,6 @@ The project's mutation tool: ${P.mutation} This run's label for file names: muta
 const GATES_APART = gates => `The gates step already ran at this HEAD; its lines are below. Review the diff and those lines: run none of the gates or any long check, recount nothing and do not re-check the scope. The code lens may make at most one targeted run of the changed path (one test, one replay case) when reading cannot settle a question, and says so in \`checked\`.
 GATES:
 ${JSON.stringify(gates.gate_lines)}`
-const reqIds = research.requirements.map(idOf)
 
 const LENSES = [
   { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${reqIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
@@ -555,6 +582,9 @@ return {
   mutation,
   unlisted_cases: cov.unlisted,
   uncovered_requirements: cov.uncovered,
+  dropped_facts: droppedFacts,
+  unresearched_requirements: unresearched,
+  research_issues: researchIssues,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
   leftover_findings: uniq(unfixed.concat(unmet)),

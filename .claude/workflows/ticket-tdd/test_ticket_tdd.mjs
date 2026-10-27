@@ -17,11 +17,13 @@ const finding = (severity, where, trigger) => ({ severity, where, trigger, probl
 const survivor = i => ({ file: 'src/a.cpp', line: 9 + i, op: `op${i}`, before: `before${i}`, after: `after${i}` })
 const tool = survivors => ({ applies: true, ran: true, survivors })
 const ruling = (id, kind, reason) => ({ id, ruling: kind, reason })
+const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
+const harness = requirement => ({ requirement, by: 'test', how: 'h' })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
   return Object.assign({
-    research: { requirements: ['R1: one'], facts: [], plan: [], files: [], test_harness: '', risks: [], anchors: [] },
+    research: { requirements: ['R1: one'], facts: [fact('code', ['src/a.cpp:1-2'], 'R1')], plan: [], test_harness: [harness('R1')] },
     plan: { cases: [{ id: 'C1', requirement: 'R1: one', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }], verify_launch: [], verify_review: [] },
     implement: { committed: true, head: 'bbbb111', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
     'gates:r1': { head: 'bbbb111', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [] },
@@ -225,7 +227,7 @@ test('W08: a lens with three minors keeps the first two', async () => {
 
 test('W09: an unmet requirement goes to fix as a major, unmet and unrowed ones end in the leftover', async () => {
   const { result, calls } = await runCore({
-    research: Object.assign({}, base().research, { requirements: ['R1: one', 'R2: two', 'R3: three'] }),
+    research: Object.assign({}, base().research, { requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: ['R1', 'R2', 'R3'].map(harness) }),
     plan: Object.assign({}, base().plan, { verify_review: ['R2: two', 'R3: three'] }),
     'review:r1:checklist': clean([row('R1', { status: 'met' }), row('R2', { status: 'unmet', evidence: 'clause x fails' })]),
     'fix:r1': { applied: [{ id: 'R1-R2', what: 'w' }], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
@@ -355,7 +357,7 @@ test('W32: with default rounds a run plans, reviews two full rounds with both le
   const { result, calls } = await runCore({}, 'auto')
   assert.equal(result.rounds_planned, 2)
   assert.ok(called(calls, 'plan') && called(calls, 'review:r2:checklist') && called(calls, 'review:r2:code') && called(calls, 'mutation'))
-  assert.match(prompt(calls, 'review:r1:code'), /\/run\/research\.md/)
+  assert.match(prompt(calls, 'review:r1:code'), /Start from the change-site facts/)
 })
 
 test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and reviewed once more, then left over', async () => {
@@ -376,6 +378,72 @@ test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and 
   const left = result.leftover_findings.filter(f => f.source === 'fix review')
   assert.equal(left.length, 1)
   assert.equal(left[0].status, 'unverified')
+})
+
+// The research JSON a later stage receives.
+const researchIn = p => JSON.parse(p.split('RESEARCH:\n')[1].split('\n\nStart from')[0])
+const research = over => Object.assign({}, base().research, over)
+
+test('W35: requirement lines with a missing or repeated R<n> prefix are renumbered and reported in research_issues', async () => {
+  const { result, calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'two', 'R1: three'], test_harness: ['R1', 'R2', 'R3'].map(harness) }),
+    plan: Object.assign({}, base().plan, { verify_review: ['R2: two', 'R3: three'] }),
+  })
+  assert.deepEqual(researchIn(prompt(calls, 'plan')).requirements, ['R1: one', 'R2: two', 'R3: three'])
+  assert.equal(result.research_issues.filter(f => /renumbered/.test(f)).length, 1)
+  assert.deepEqual(result.research_issues.filter(f => /test_harness/.test(f)), [])
+  assert.equal(result.status, 'done')
+})
+
+test('W36: a general fact is kept, a fact with no valid id is dropped and listed, an uncited requirement is listed', async () => {
+  const { result, calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'R2: two'], test_harness: ['R1', 'R2'].map(harness),
+      facts: [fact('note', '$ rg x', 'general'), fact('code', ['a.js:1'], 'R9'), fact('code', ['b.js:2-3'], 'R1', 'R8')] }),
+    plan: Object.assign({}, base().plan, { verify_review: ['R2: two'] }),
+  })
+  assert.deepEqual(researchIn(prompt(calls, 'plan')).facts.map(f => f.fact), ['FACT-general', 'FACT-R1-R8'])
+  assert.deepEqual(result.dropped_facts.map(f => f.fact), ['FACT-R9'])
+  assert.deepEqual(result.unresearched_requirements, ['R2: two'])
+  assert.equal(result.status, 'done')
+})
+
+test('W37: test_harness keeps the first entry per requirement and drops unknown ids; gaps and repairs go to research_issues', async () => {
+  const entry = (requirement, how) => ({ requirement, by: 'test', how })
+  const { result, calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: [entry('R1', 'first'), entry('R1', 'second'), entry('R2', 'h'), entry('R7', 'h')] }),
+    plan: Object.assign({}, base().plan, { verify_review: ['R2: two', 'R3: three'] }),
+  })
+  assert.deepEqual(researchIn(prompt(calls, 'plan')).test_harness, [entry('R1', 'first'), entry('R2', 'h')])
+  const issues = result.research_issues.filter(f => /test_harness/.test(f))
+  assert.equal(issues.length, 3)
+  for (const id of ['R1', 'R3', 'R7']) assert.equal(issues.filter(f => f.includes(id)).length, 1, id)
+  assert.equal(result.status, 'done')
+})
+
+test('W38: files are derived from every location of the code and change-site facts', async () => {
+  const { calls } = await runCore({
+    research: research({ facts: [fact('code', ['src/a.cpp:1-5', 'src/b.h'], 'R1'), fact('change-site', ['src/a.cpp:9-10', 'src/c.cpp:3'], 'R1'),
+      fact('note', 'docs/x.md § Y', 'R1'), fact('change-site', ['src/dropped.cpp'], 'R9')] }),
+  })
+  assert.deepEqual(researchIn(prompt(calls, 'plan')).files, ['src/a.cpp', 'src/b.h', 'src/c.cpp'])
+})
+
+test('W39: the research asks for typed facts as JSON, and no prompt mentions research.md', async () => {
+  const { calls } = await runCore({})
+  const research = calls.find(c => c.label === 'research')
+  assert.deepEqual(Object.keys(research.opts.schema.properties), ['requirements', 'facts', 'plan', 'test_harness', 'mailbox'])
+  assert.deepEqual(research.opts.schema.properties.facts.items.properties.kind.enum, ['code', 'change-site', 'note'])
+  assert.equal(research.opts.schema.properties.plan.items.maxLength, 600)
+  assert.ok(new RegExp(research.opts.schema.properties.requirements.items.pattern).test('R12: x'))
+  assert.ok(!new RegExp(research.opts.schema.properties.requirements.items.pattern).test('x (R12)'))
+  for (const s of ['- code and change-site:', '- note:', '`path § section`', '`$ command`', 'Every fact is shown by']) assert.ok(research.prompt.includes(s), s)
+  assert.ok(!/Markdown/.test(research.prompt))
+  // Research commits nothing and runs no gate: the preamble and the mailbox leave those rules out, later stages keep them.
+  for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'before committing']) {
+    assert.ok(!research.prompt.includes(s), s)
+    assert.ok(prompt(calls, 'implement').includes(s), s)
+  }
+  for (const c of calls) assert.ok(!c.prompt.includes('research.md'), c.label)
 })
 
 test('W34: a minor fix that moves HEAD gets a fix-diff review', async () => {

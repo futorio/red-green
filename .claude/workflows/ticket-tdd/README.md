@@ -102,14 +102,40 @@ profile carries only what a stage prompt must name explicitly.
 ### 1. Research
 
 A spec is not an implementation plan. The research agent reads the target, its spec, siblings, the
-documents they cite and the code they touch, and returns (schema-forced) `requirements[]` — one line
-each, with a stable id and the checklist box it comes from — `facts[]` with sources, `plan[]`,
-`files[]`, `test_harness`, `risks[]` and `anchors[]`, and writes the same as Markdown to
-`<run>/research.md`. This output is pasted into every later prompt, with the rule to start from the anchors,
-read only the lines a stage changes or verifies, and append to `research.md` when an anchor is stale.
+documents they cite and the code they touch, and returns JSON only (schema-forced, no Markdown copy):
 
-**Anchors** are `file:line-range`
-plus one line each: every place a later stage changes or checks.
+- `requirements[]`: one line each, prefixed `R<n>:` and naming the checklist box it comes from;
+- `facts[]`: `{kind, fact, where, requirements}`, where `requirements` lists the ids the fact serves, or
+  `general` for one that serves the whole ticket. Kinds, picked by one rule (lines of code show it →
+  `change-site` if the change touches them, else `code`; no lines → `note`):
+  - `code`: how existing code behaves, places to recheck but not edit; `where` a list of `file` or `file:a-b`;
+  - `change-site`: a place the change will touch; `where` as for `code`;
+  - `note`: anything no lines of code show; `where` is `path § section` (a repository document) or
+    `$ command` (a read-only `rg`, `grep`, `git`, `find` or `ls` of the repository). Outside
+    documentation is not a source.
+- `plan[]`: the fewest actions in dependency order, built from the facts to meet the requirements, reusing
+  what the facts name first; every step changes code, config or docs (running checks, committing and
+  recording results are the implementer's and the gates'); each step is two or three sentences (at most 600
+  characters, schema-forced) naming the part of the code it acts on and every tool, symbol and file involved,
+  and leaves line ranges, flags, commands and lists to the facts;
+- `test_harness[]`: exactly one `{requirement, by: test|review|launch|none, how}` per requirement, no
+  run commands.
+
+Every fact is shown by lines of code, a repository document or a read-only search. The environment and the
+checks' results belong to the baseline and the gates step, and the prompt says so: without that line the
+agent probed the sandbox and filed what it found as plan steps and `$ command -v` notes. The research prompt gets the preamble
+without the commit, gate and long-command rules, and its mailbox note without the gate and commit
+checkpoints.
+
+**The research checks** are code in the script. The schema rejects a requirement line without an `R<n>: `
+prefix; lines with a repeated id are renumbered `R1..Rn`. Facts whose `requirements` name neither a listed
+id nor `general` are dropped (`dropped_facts` in the result); requirements no fact cites are listed in
+`unresearched_requirements`. `test_harness` keeps the first entry per requirement and drops entries naming
+an unknown id. Each repair, and each requirement with no `test_harness` entry, is reported in
+`research_issues`, not `failures`: the run goes on, and a requirement with no case still meets the coverage
+check. `files[]` is derived from the `where` of the `code` and
+`change-site` facts. The checked JSON is pasted into every later prompt, with the rule to start from the
+`change-site` facts and read only the lines a stage changes or verifies; no stage edits it.
 
 ### 2. Test-case planning, and the coverage check
 
@@ -256,7 +282,7 @@ The 16-fixture sweep must include 8 jobs.
 
 `{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
 verdicts, mutation (the tool's result, at most one), unlisted_cases,
-uncovered_requirements, verify_launch, verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+uncovered_requirements, dropped_facts, unresearched_requirements, research_issues, verify_launch, verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
