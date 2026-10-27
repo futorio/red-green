@@ -139,14 +139,20 @@ check. `files[]` is derived from the `where` of the `code` and
 
 ### 2. Test-case planning, and the coverage check
 
-Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
-asserts[]}`: self-contained, unique, AAA (one Act, atomic asserts), meaningful. `requirement` is copied
-byte for byte from research. A requirement with no behaviour to test goes to `verify_review`, and the
-checklist lens checks it by name; one only a run outside the suites can verify goes to `verify_launch`.
+The script routes each requirement by its `test_harness` entry: `test` goes to the planner; `review`,
+`none` and a requirement with no entry go to `verify_review`, which the checklist lens checks by name;
+`launch` goes to `verify_launch`, which leaves the run: no lens or gate looks at it, and the result lists
+each one with research's `how` for the operator to run by hand. With no `test` requirement the planner is
+not called and there are no cases.
 
-**The coverage check** is code in the script: every case must cite a listed requirement, and every
-requirement must be cited by a case or sit in a `verify_*` list. Either failure sends the plan back to
-the planner once; what is still wrong goes into the result.
+Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
+asserts[]}` for the `test` requirements only: self-contained, unique, AAA (one Act, atomic asserts),
+meaningful. `requirement` is an id; the schema accepts only the `test` ids. The script then replaces each
+id with the full requirement line, so later stages and the result see the line. The planner gets the
+preamble research gets, without the commit, gate and long-command rules.
+
+**The coverage check** is code in the script: every `test` requirement must be cited by a case. A miss
+sends the uncovered ids back to the planner once; what is still uncovered goes into the result.
 
 ### 3. Implementation
 
@@ -175,11 +181,11 @@ one that changed only tests runs no build or replay check, only the changed test
 
 ### 5. Review × n
 
-Two lenses in parallel — checklist (every requirement id, every `verify_review` requirement) and code
+Two lenses in parallel — checklist (every requirement id but the `verify_launch` ones, every `verify_review` requirement) and code
 (would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`; it also rules on the mutation survivors, above).
 A diff with no production file gets one checked row saying so from the code lens.
 
-**The checklist lens** receives every requirement id and the `unverified` list implement reported. It
+**The checklist lens** receives every requirement id except the `verify_launch` ones, and the `unverified` list implement reported. It
 returns one `checked` row per id with `status: met|unmet|unverified`; an id without a row counts as
 `unverified`. An `unmet` requirement becomes a major finding and goes to the fix like any other; an
 `unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
@@ -281,8 +287,8 @@ The 16-fixture sweep must include 8 jobs.
 ## Result
 
 `{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
-verdicts, mutation (the tool's result, at most one), unlisted_cases,
-uncovered_requirements, dropped_facts, unresearched_requirements, research_issues, verify_launch, verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+verdicts, mutation (the tool's result, at most one),
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a

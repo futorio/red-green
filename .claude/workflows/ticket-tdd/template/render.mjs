@@ -46,7 +46,7 @@ export function render(config) {
 const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run', base: 'BASE', target: '/ticket.md', baseline: 'BASELINE', profile: {} }
 const STUB_RESULTS = {
   research: { requirements: ['R1: the ticket'], facts: [], plan: [], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] },
-  plan: { cases: [{ id: 'C1', requirement: 'R1: the ticket', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }], verify_launch: [], verify_review: [] },
+  plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
   implement: { committed: true, head: 'HEAD', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
 }
 

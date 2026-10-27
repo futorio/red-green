@@ -35,7 +35,7 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-// The research stage reads and writes no code: it gets the preamble without the commit, gate and long-command rules.
+// The research and plan stages write no code: they get the preamble without the commit, gate and long-command rules.
 const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
 Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
 Run directory for state files and scratch: ${RUN}.
@@ -44,6 +44,8 @@ Run directory for state files and scratch: ${RUN}.
 - The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
 const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
+const NO_CODE = ['research', 'plan', 'replan']
+const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const PRE = `${CORE_PRE}
 - ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
 - Gates: ${P.gates || 'the checks named in the baseline below'}. Baseline, measured before the run (re-measure, never quote): ${A.baseline}. "Green" means nothing worse than that baseline.
@@ -57,7 +59,7 @@ const MAIL = { type: 'array', items: { type: 'object', properties: {
   required: ['id', 'status', 'why'] } }
 const mailNote = label => `
 
-MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${label === 'research' ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${NO_CODE.includes(label) ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
 const mailbox = []
 async function ask(prompt, opts) {
   const s = opts.schema
@@ -79,16 +81,11 @@ const RESEARCH_SCHEMA = { type: 'object', properties: {
   }, required: ['requirement', 'by', 'how'] } },
 }, required: ['requirements', 'facts', 'plan', 'test_harness'] }
 
-const CASE = { type: 'object', properties: {
-  id: { type: 'string' }, requirement: { type: 'string' }, title: { type: 'string' },
+// A case names its requirement by id, one of the ids the planner is given.
+const casesSchema = ids => ({ type: 'object', properties: { cases: { type: 'array', items: { type: 'object', properties: {
+  id: { type: 'string' }, requirement: { type: 'string', enum: ids }, title: { type: 'string' },
   arrange: { type: 'string' }, act: { type: 'string' }, asserts: { type: 'array', items: { type: 'string' } },
-}, required: ['id', 'requirement', 'title', 'arrange', 'act', 'asserts'] }
-const CASES_SCHEMA = { type: 'object', properties: {
-  cases: { type: 'array', items: CASE },
-  verify_launch: { type: 'array', items: { type: 'string' } },
-  verify_review: { type: 'array', items: { type: 'string' } },
-  notes: { type: 'string' },
-}, required: ['cases', 'verify_launch', 'verify_review'] }
+}, required: ['id', 'requirement', 'title', 'arrange', 'act', 'asserts'] } } }, required: ['cases'] })
 
 const IMPL_SCHEMA = { type: 'object', properties: {
   committed: { type: 'boolean' },
@@ -166,7 +163,7 @@ const FIX_SCHEMA = { type: 'object', properties: {
 const failures = []
 
 phase('Research')
-const research = await ask(`${CORE_PRE}${LAST}
+const research = await ask(`${NO_CODE_PRE}
 
 STAGE: research. Read ${TARGET}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.${extra(P.research)}
 
@@ -210,41 +207,39 @@ const LENS_KEYS = ['checklist', 'code']
 log(`research: ${research.requirements.length} requirements, ${droppedFacts.length} facts dropped, ${unresearched.length} unresearched -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 
 phase('Plan')
-const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is copied BYTE FOR BYTE from one of the research requirements (id prefix included). Cases must be:
+// Research's test_harness routes each requirement: test gets cases; review, none and no entry go to the checklist lens
+// alone; launch leaves the run, listed in the result with research's how.
+const harnessOf = id => research.test_harness.find(h => idOf(h.requirement) === id) || { by: 'review' }
+const lineOf = id => research.requirements.find(r => idOf(r) === id)
+const testIds = reqIds.filter(id => harnessOf(id).by === 'test')
+const checkIds = reqIds.filter(id => harnessOf(id).by !== 'launch')
+const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is the id of the one requirement it checks; only these get cases: ${testIds.join(', ')}. Cases must be:
 a) self-contained — one isolated case per group of tests;
 b) unique — no two cases check the same behaviour, and a case checks nothing outside its own requirement;
 c) AAA — Arrange: data, stubs, objects; Act: ONE call of the target; asserts: a list of atomic checks on the Act's result, each verifiable on its own (one expected value or one property per entry — never "a and b" in one entry);
 d) meaningful — traces to a requirement; nothing written for the sake of a test.
 Expected values come from an independent source (the ticket, the spec, a literal), never recomputed the way the code would.
-A requirement with no behaviour a test can check — a prose or documentation edit, a gate outcome — gets no case: copy it BYTE FOR BYTE into verify_review; the checklist review lens checks it. One that only a run outside the test suites can verify (a launch, a manual step) goes into verify_launch.
 `
 
-let plan = await ask(`${PRE}
+// With no test requirement there is nothing to plan: no planner call, no cases.
+let plan = !testIds.length ? { cases: [] } : await ask(`${NO_CODE_PRE}
 
 STAGE: test-case planning. No code is written yet. Turn the research plan into test cases for the TDD cycle of implementation; read the harness research names in test_harness to see what each case will use.
 
 ${PLAN_RULES}
 
 RESEARCH:
-${RESEARCH}`, { model: M.planner, effort: 'high', schema: CASES_SCHEMA, phase: 'Plan', label: 'plan' })
+${RESEARCH}`, { model: M.planner, effort: 'high', schema: casesSchema(testIds), phase: 'Plan', label: 'plan' })
 if (!plan) return { status: 'failed', stage: 'plan', failures }
 
-function coverage(p) {
-  const listed = new Set(research.requirements)
-  const cited = new Set(p.cases.map(c => c.requirement))
-  const skip = new Set(p.verify_launch.concat(p.verify_review))
-  return {
-    unlisted: p.cases.filter(c => !listed.has(c.requirement)).map(c => ({ id: c.id, requirement: c.requirement })),
-    uncovered: research.requirements.filter(r => !cited.has(r) && !skip.has(r)),
-  }
-}
+// Coverage: every test requirement is cited by at least one case.
+const coverage = p => testIds.filter(id => !p.cases.some(c => idOf(c.requirement) === id))
 let cov = coverage(plan)
-if (cov.unlisted.length || cov.uncovered.length) {
-  plan = await ask(`${PRE}
+if (cov.length) {
+  plan = await ask(`${NO_CODE_PRE}
 
 STAGE: test-case planning, the one replan. A code check of your cases found:
-- cases citing a requirement string not in the list — copy the right one byte for byte: ${JSON.stringify(cov.unlisted)}
-- requirements no case covers — add a case, or move it to verify_review / verify_launch per the rules: ${JSON.stringify(cov.uncovered)}
+- requirements no case covers — add a case: ${JSON.stringify(cov)}
 Keep every other case as it is, same id.
 
 ${PLAN_RULES}
@@ -253,11 +248,13 @@ YOUR PREVIOUS CASES:
 ${JSON.stringify(plan.cases)}
 
 RESEARCH:
-${RESEARCH}`, { model: M.planner, effort: 'high', schema: CASES_SCHEMA, phase: 'Plan', label: 'replan' }) || plan
+${RESEARCH}`, { model: M.planner, effort: 'high', schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
   cov = coverage(plan)
 }
-const cases = plan.cases
-log(`plan: ${cases.length} cases, ${cov.unlisted.length} unlisted, ${cov.uncovered.length} uncovered, ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
+plan.verify_review = checkIds.filter(id => !testIds.includes(id)).map(lineOf)
+plan.verify_launch = reqIds.filter(id => !checkIds.includes(id)).map(id => ({ requirement: lineOf(id), how: harnessOf(id).how }))
+const cases = plan.cases.map(c => Object.assign({}, c, { requirement: lineOf(idOf(c.requirement)) }))
+log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
 const CASES = JSON.stringify(cases, null, 1)
 
 phase('Implement')
@@ -368,7 +365,7 @@ GATES:
 ${JSON.stringify(gates.gate_lines)}`
 
 const LENSES = [
-  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${reqIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
+  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
   { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}.${CODE_RULES}
 A test the diff weakened, deleted or left asserting nothing it promises is a finding. Mutation is a separate step's tool, run once after the review rounds, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
 ]
@@ -458,9 +455,9 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     if (l.key === 'checklist') {
       const rows = {}
       res.checked.forEach(c => { rows[idOf(c.item)] = c })
-      reqIds.forEach(id => { status[id] = rows[id] ? { status: rows[id].status, evidence: rows[id].evidence } : { status: 'unverified', evidence: 'no checked row' } })
+      checkIds.forEach(id => { status[id] = rows[id] ? { status: rows[id].status, evidence: rows[id].evidence } : { status: 'unverified', evidence: 'no checked row' } })
       // unmet is fixed like any major; unverified only goes to the leftover list at the end.
-      reqIds.filter(id => status[id].status === 'unmet').forEach(id => found.push({ id: `R${round}-${id}`, source: 'checklist', severity: 'major',
+      checkIds.filter(id => status[id].status === 'unmet').forEach(id => found.push({ id: `R${round}-${id}`, source: 'checklist', severity: 'major',
         where: research.requirements.find(r => idOf(r) === id), problem: status[id].evidence, trigger: status[id].evidence,
         consequence: 'the ticket requirement is not met', fix: 'meet the requirement' }))
     }
@@ -543,7 +540,7 @@ if (!mutated && !failures.some(f => f.startsWith('fix '))) {
 // any other by source, place and problem (a rejection without a place by its id).
 const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
 const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
-const unmet = reqIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
+const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
   id, source: 'checklist', where: research.requirements.find(r => idOf(r) === id), status: status[id] ? status[id].status : 'unverified',
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
 
@@ -580,8 +577,7 @@ return {
   rounds,
   verdicts,
   mutation,
-  unlisted_cases: cov.unlisted,
-  uncovered_requirements: cov.uncovered,
+  uncovered_requirements: cov,
   dropped_facts: droppedFacts,
   unresearched_requirements: unresearched,
   research_issues: researchIssues,
