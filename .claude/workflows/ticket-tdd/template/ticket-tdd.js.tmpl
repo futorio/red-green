@@ -79,7 +79,10 @@ const RESEARCH_SCHEMA = { type: 'object', properties: {
   test_harness: { type: 'array', items: { type: 'object', properties: {
     requirement: { type: 'string' }, by: { type: 'string', enum: ['test', 'review', 'launch', 'none'] }, how: { type: 'string' },
   }, required: ['requirement', 'by', 'how'] } },
-}, required: ['requirements', 'facts', 'plan', 'test_harness'] }
+  questions: { type: 'array', items: { type: 'object', properties: {
+    requirement: { type: 'string' }, question: { type: 'string' }, settles: { type: 'string', enum: ['owner', 'outside'] },
+  }, required: ['requirement', 'question', 'settles'] } },
+}, required: ['requirements', 'facts', 'plan', 'test_harness', 'questions'] }
 
 // A case names its requirement by id, one of the ids the planner is given.
 const casesSchema = ids => ({ type: 'object', properties: { cases: { type: 'array', items: { type: 'object', properties: {
@@ -177,7 +180,8 @@ Output: JSON only; the one file you write is a mailbox ack.
   - code and change-site: where = a list of locations, each \`file\` or \`file:a-b\` (repository-relative, one range per entry; a fact spanning several files or ranges lists each one). A change-site fact says what is there now; a new file is named in the fact and located by an existing place it relates to.
   - note: where = one string, \`path § section\` (a repository document; the ticket's own spec only for a decision the requirement lines do not carry) or \`$ command\` (a read-only rg, grep, git, find or ls of the repository). A tool's behaviour is shown from the tree (its source, config or lock file).
 - plan: the fewest actions that meet the requirements, built from the facts, in dependency order: reuse what the facts name before adding anything new, and add nothing the requirements do not ask for. Every step changes code, config or docs; running checks, committing and recording results belong to the implementer and the gates. Each step is two or three sentences: a part of the code (a module, config, script, doc set) and what is done to it, naming every tool, symbol and file it acts on; line ranges, flags, commands and lists stay in the facts.
-- test_harness: exactly one entry per requirement: requirement (its id), by (test, review, launch or none), how (test: the seam and where its tests live; review or launch: what is checked; none: why). The run commands stay in the gates.`,
+- test_harness: exactly one entry per requirement: requirement (its id), by (test, review, launch or none), how (test: the seam and where its tests live; review or launch: what is checked; none: why). The run commands stay in the gates.
+- questions: every point a requirement depends on that the repository does not settle, one entry each: requirement (its id), question, settles (owner: the ticket and the spec leave it to their author; outside: the answer lies outside the repository, in running the program, outside documentation or data). An empty list says nothing was left open.`,
   { model: M.research, effort: 'high', schema: RESEARCH_SCHEMA, phase: 'Research', label: 'research' })
 if (!research) return { status: 'failed', stage: 'research', failures }
 // The research checks: ids renumbered R1..Rn when one is missing or repeated, facts that serve no listed id dropped,
@@ -200,6 +204,9 @@ reqIds.forEach(id => {
   if (n !== 1) researchIssues.push(n ? `${n} test_harness entries for ${id}: kept the first` : `no test_harness entry for ${id}`)
 })
 research.test_harness = reqIds.map(id => research.test_harness.find(h => idOf(h.requirement) === id)).filter(Boolean)
+// Research questions go to the result alone: what research could not settle is not passed on as knowledge.
+const researchQuestions = (research.questions || []).filter(q => reqIds.includes(idOf(q.requirement)) || !researchIssues.push(`question for unknown requirement ${q.requirement}: dropped`))
+delete research.questions
 research.files = [...new Set(research.facts.filter(f => f.kind !== 'note').flatMap(f => [].concat(f.where).map(w => w.split(':')[0].trim())))]
 const RESEARCH = JSON.stringify(research, null, 1) + `
 
@@ -593,6 +600,7 @@ return {
   unresearched_requirements: unresearched,
   plan_questions: questions,
   research_issues: researchIssues,
+  research_questions: researchQuestions,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
   leftover_findings: uniq(unfixed.concat(unmet)),

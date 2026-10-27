@@ -424,10 +424,20 @@ test('W38: files are derived from every location of the code and change-site fac
   assert.deepEqual(researchIn(prompt(calls, 'plan')).files, ['src/a.cpp', 'src/b.h', 'src/c.cpp'])
 })
 
+test('W48: research questions with a known id reach the result alone; no later prompt sees them', async () => {
+  const q = { requirement: 'R1', question: 'which exit code?', settles: 'owner' }
+  const { result, calls } = await runCore({ research: research({ questions: [q, Object.assign({}, q, { requirement: 'R9' })] }) })
+  assert.deepEqual(calls.find(c => c.label === 'research').opts.schema.properties.questions.items.properties.settles.enum, ['owner', 'outside'])
+  assert.match(prompt(calls, 'research'), /- questions: every point/)
+  assert.deepEqual(result.research_questions, [q])
+  assert.equal(result.research_issues.filter(f => /question for unknown requirement R9: dropped/.test(f)).length, 1)
+  calls.filter(c => c.label !== 'research').forEach(c => assert.ok(!/which exit code\?|"questions"/.test(c.prompt), c.label))
+})
+
 test('W39: the research asks for typed facts as JSON, and no prompt mentions research.md', async () => {
   const { calls } = await runCore({})
   const research = calls.find(c => c.label === 'research')
-  assert.deepEqual(Object.keys(research.opts.schema.properties), ['requirements', 'facts', 'plan', 'test_harness', 'mailbox'])
+  assert.deepEqual(Object.keys(research.opts.schema.properties), ['requirements', 'facts', 'plan', 'test_harness', 'questions', 'mailbox'])
   assert.deepEqual(research.opts.schema.properties.facts.items.properties.kind.enum, ['code', 'change-site', 'note'])
   assert.equal(research.opts.schema.properties.plan.items.maxLength, 600)
   assert.ok(new RegExp(research.opts.schema.properties.requirements.items.pattern).test('R12: x'))

@@ -120,6 +120,11 @@ documents they cite and the code they touch, and returns JSON only (schema-force
   and leaves line ranges, flags, commands and lists to the facts;
 - `test_harness[]`: exactly one `{requirement, by: test|review|launch|none, how}` per requirement, no
   run commands.
+- `questions[]`: `{requirement, question, settles: owner|outside}`, every point a requirement depends on that
+  the repository does not settle (`owner`: the ticket leaves it to its author; `outside`: running the
+  program, outside documentation or data). A question naming an unknown id is dropped and reported in
+  `research_issues`; the rest go to the result as `research_questions` and are cut from the JSON later
+  prompts get: what research could not settle is not passed on as knowledge.
 
 Every fact is shown by lines of code, a repository document or a read-only search. The environment and the
 checks' results belong to the baseline and the gates step, and the prompt says so: without that line the
@@ -301,7 +306,7 @@ The 16-fixture sweep must include 8 jobs.
 
 `{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
 verdicts, mutation (the tool's result, at most one),
-uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
