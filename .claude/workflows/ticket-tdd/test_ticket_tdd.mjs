@@ -460,8 +460,8 @@ test('W40: research routes the requirements; the planner gets only the test ones
   const { result, calls } = await runCore({ research: routed() })
   const plan = calls.find(c => c.label === 'plan')
   assert.deepEqual(plan.opts.schema.properties.cases.items.properties.requirement.enum, ['R1'])
-  assert.deepEqual(plan.opts.schema.required, ['cases'])
-  assert.deepEqual(Object.keys(plan.opts.schema.properties), ['cases', 'mailbox'])
+  assert.deepEqual(plan.opts.schema.required, ['cases', 'questions'])
+  assert.deepEqual(Object.keys(plan.opts.schema.properties), ['cases', 'questions', 'mailbox'])
   assert.match(plan.prompt, /one case for each behaviour that R1 name,/)
   assert.ok(!/verify_review|verify_launch|BYTE FOR BYTE/.test(plan.prompt))
   const checklist = prompt(calls, 'review:r1:checklist')
@@ -492,6 +492,15 @@ test('W46: two cases with the same check after the same Arrange and Act get one 
   assert.equal(count(calls, 'replan'), 1)
   assert.match(prompt(calls, 'replan'), /keep each in one case: \[\{"check":"a \| a \| x","cases":\["C1","C2"\]\}\]\. Keep every other case/)
   assert.ok(!/uncovered/.test(prompt(calls, 'replan')))
+})
+
+test('W47: the open questions of the planner reach the result with who settles each; one tied to no case is dropped', async () => {
+  const q = { requirement: 'R1', question: 'which dir wins?', reading: 'the upstream one', cases: ['C1'], settles: 'owner' }
+  const loose = Object.assign({}, q, { question: 'anything else?', cases: ['C9'] })
+  const { result, calls } = await runCore({ plan: Object.assign({}, base().plan, { questions: [q, loose] }) })
+  assert.deepEqual(calls.find(c => c.label === 'plan').opts.schema.properties.questions.items.properties.settles.enum, ['research', 'owner'])
+  assert.match(prompt(calls, 'plan'), /questions: every point the ticket and the research leave open/)
+  assert.deepEqual(result.plan_questions, [q])
 })
 
 test('W42: a test requirement no case covers gets one replan naming only it, and is reported when still uncovered', async () => {

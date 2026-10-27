@@ -161,6 +161,12 @@ check (the same assert after the same Arrange and Act, case and whitespace folde
 Either miss sends the plan back to the planner once, naming the uncovered ids and the duplicated checks;
 what is still uncovered goes into the result.
 
+**Open questions.** The planner also lists every point the ticket and research leave open that a case
+depends on: `{requirement, question, reading, cases, settles}`, `settles` `research` (the repository holds
+the answer, research did not give it) or `owner` (the ticket leaves it to its author). A question no
+listed case takes is dropped. They go to the result as `plan_questions`, for reading the run afterwards;
+no later stage gets them.
+
 ### 3. Implementation
 
 Follows `skills/implement.md` (vendored: upstream sets `disable-model-invocation`, so the agent reads it
@@ -295,7 +301,7 @@ The 16-fixture sweep must include 8 jobs.
 
 `{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
 verdicts, mutation (the tool's result, at most one),
-uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
