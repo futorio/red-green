@@ -1,6 +1,6 @@
 # Issue tracker: Local Markdown
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Issues and specs for this repo live as markdown files in `.scratch/`. The directory is git-ignored and local to one checkout: tickets and specs are working material, current when written and not a permanent source of truth (see `AGENTS.md`, Scratch). What a ticket decided that must outlive it goes into `docs/` or the code.
 
 ## Conventions
 

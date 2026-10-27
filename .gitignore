@@ -1,3 +1,5 @@
-ablation/runs/
 __pycache__/
 .claude/worktrees/
+.playwright-mcp/
+.pytest_cache/
+.scratch/

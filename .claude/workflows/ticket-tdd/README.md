@@ -44,7 +44,7 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 
 ### `models` presets
 
-Three `args.models` sets from the stage tournament (`.scratch/wf-ablation/tournament-report.md`). Effort stays
+Three `args.models` sets from the stage tournament (`.scratch/wf-ablation/tournament-report.md` in the wf-ablation repo). Effort stays
 `high` for research, plan and implement (the core fixes it). Measured: plan opus beats sonnet, haiku and no plan;
 implement models tie on the hidden verifiers; review opus leads lighter reviewers by 0.2-0.3 F2. Not measured: a
 lighter research model (its stage was stopped) and the fix model (it defaults to the implement model).
@@ -299,7 +299,7 @@ commit the diff starts from: the prompt names both, the agent reads them), `gate
 step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
-gets, which the ablation suite (`ablation/README.md`) hands to headless Claude Code.
+gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.
 
 ### Adding a variant dimension
 
