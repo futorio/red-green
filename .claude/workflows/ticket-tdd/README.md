@@ -145,14 +145,21 @@ The script routes each requirement by its `test_harness` entry: `test` goes to t
 each one with research's `how` for the operator to run by hand. With no `test` requirement the planner is
 not called and there are no cases.
 
-Before any code exists, the planner turns the plan into cases `{id, requirement, title, arrange, act,
-asserts[]}` for the `test` requirements only: self-contained, unique, AAA (one Act, atomic asserts),
-meaningful. `requirement` is an id; the schema accepts only the `test` ids. The script then replaces each
+Before any code exists, the planner turns the `test` requirements into cases `{id, requirement, title,
+arrange, act, asserts[]}`: one case for each behaviour a requirement names, its boundaries and rejections
+included, each check in one case, each case one test through the seam research's `how` names. A case tests
+behaviour, not implementation; its Arrange writes out every input and runs the real code, with a stub only
+for what a test cannot run (another program, the network, hardware, the clock), stating what the stub is
+given and what it returns or writes. The ticket and the spec are the oracle: each expected value is a single
+literal from them, and a default or precedence they leave open takes the reading their words support,
+stated in the case. `requirement` is an id; the schema accepts only the `test` ids. The script then replaces each
 id with the full requirement line, so later stages and the result see the line. The planner gets the
 preamble research gets, without the commit, gate and long-command rules.
 
-**The coverage check** is code in the script: every `test` requirement must be cited by a case. A miss
-sends the uncovered ids back to the planner once; what is still uncovered goes into the result.
+**The coverage check** is code in the script: every `test` requirement must be cited by a case, and no
+check (the same assert after the same Arrange and Act, case and whitespace folded) may sit in two cases.
+Either miss sends the plan back to the planner once, naming the uncovered ids and the duplicated checks;
+what is still uncovered goes into the result.
 
 ### 3. Implementation
 

@@ -462,7 +462,7 @@ test('W40: research routes the requirements; the planner gets only the test ones
   assert.deepEqual(plan.opts.schema.properties.cases.items.properties.requirement.enum, ['R1'])
   assert.deepEqual(plan.opts.schema.required, ['cases'])
   assert.deepEqual(Object.keys(plan.opts.schema.properties), ['cases', 'mailbox'])
-  assert.match(plan.prompt, /only these get cases: R1\./)
+  assert.match(plan.prompt, /one case for each behaviour that R1 name,/)
   assert.ok(!/verify_review|verify_launch|BYTE FOR BYTE/.test(plan.prompt))
   const checklist = prompt(calls, 'review:r1:checklist')
   assert.match(checklist, /their ids: R1, R2, R3, R5 —/)
@@ -486,13 +486,21 @@ test('W45: a stored plan whose case carries the full requirement line still expa
   assert.equal(result.cases[0].requirement, 'R1: one')
 })
 
+test('W46: two cases with the same check after the same Arrange and Act get one replan naming the check', async () => {
+  const c = base().plan.cases[0]
+  const { calls } = await runCore({ plan: { cases: [c, Object.assign({}, c, { id: 'C2', asserts: ['X ', 'y'] })] }, replan: base().plan })
+  assert.equal(count(calls, 'replan'), 1)
+  assert.match(prompt(calls, 'replan'), /keep each in one case: \[\{"check":"a \| a \| x","cases":\["C1","C2"\]\}\]\. Keep every other case/)
+  assert.ok(!/uncovered/.test(prompt(calls, 'replan')))
+})
+
 test('W42: a test requirement no case covers gets one replan naming only it, and is reported when still uncovered', async () => {
   const { result, calls } = await runCore({
     research: research({ requirements: ['R1: one', 'R2: two'], test_harness: [harness('R1'), harness('R2')] }),
     replan: base().plan,
   })
   assert.equal(count(calls, 'replan'), 1)
-  assert.match(prompt(calls, 'replan'), /requirements no case covers — add a case: \["R2"\]\n/)
+  assert.match(prompt(calls, 'replan'), /Your cases below leave R2 uncovered: add cases for each\. Keep every other case/)
   assert.ok(!/not in the list/.test(prompt(calls, 'replan')))
   assert.deepEqual(result.uncovered_requirements, ['R2'])
 })

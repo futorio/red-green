@@ -213,18 +213,15 @@ const harnessOf = id => research.test_harness.find(h => idOf(h.requirement) === 
 const lineOf = id => research.requirements.find(r => idOf(r) === id)
 const testIds = reqIds.filter(id => harnessOf(id).by === 'test')
 const checkIds = reqIds.filter(id => harnessOf(id).by !== 'launch')
-const PLAN_RULES = `Each case: {id, requirement, title, arrange, act, asserts}. \`requirement\` is the id of the one requirement it checks; only these get cases: ${testIds.join(', ')}. Cases must be:
-a) self-contained — one isolated case per group of tests;
-b) unique — no two cases check the same behaviour, and a case checks nothing outside its own requirement;
-c) AAA — Arrange: data, stubs, objects; Act: ONE call of the target; asserts: a list of atomic checks on the Act's result, each verifiable on its own (one expected value or one property per entry — never "a and b" in one entry);
-d) meaningful — traces to a requirement; nothing written for the sake of a test.
-Expected values come from an independent source (the ticket, the spec, a literal), never recomputed the way the code would.
+const PLAN_RULES = `cases: one case for each behaviour that ${testIds.join(', ')} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness \`how\` names; every case is one test, and \`requirement\` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.
+AAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.
+The ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.
 `
 
 // With no test requirement there is nothing to plan: no planner call, no cases.
 let plan = !testIds.length ? { cases: [] } : await ask(`${NO_CODE_PRE}
 
-STAGE: test-case planning. No code is written yet. Turn the research plan into test cases for the TDD cycle of implementation; read the harness research names in test_harness to see what each case will use.
+STAGE: test-case planning. No code is written yet.
 
 ${PLAN_RULES}
 
@@ -234,13 +231,19 @@ if (!plan) return { status: 'failed', stage: 'plan', failures }
 
 // Coverage: every test requirement is cited by at least one case.
 const coverage = p => testIds.filter(id => !p.cases.some(c => idOf(c.requirement) === id))
+// Duplicates: the same check after the same Arrange and Act in two cases (case and whitespace folded).
+const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim()
+function duplicates(p) {
+  const seen = {}
+  p.cases.forEach(c => c.asserts.forEach(a => { const k = `${norm(c.arrange)} | ${norm(c.act)} | ${norm(a)}`; (seen[k] = seen[k] || new Set()).add(c.id) }))
+  return Object.entries(seen).filter(([, ids]) => ids.size > 1).map(([check, ids]) => ({ check, cases: [...ids] }))
+}
 let cov = coverage(plan)
-if (cov.length) {
+let dup = duplicates(plan)
+if (cov.length || dup.length) {
   plan = await ask(`${NO_CODE_PRE}
 
-STAGE: test-case planning, the one replan. A code check of your cases found:
-- requirements no case covers — add a case: ${JSON.stringify(cov)}
-Keep every other case as it is, same id.
+STAGE: test-case planning, the one replan.${cov.length ? ` Your cases below leave ${cov.join(', ')} uncovered: add cases for each.` : ''}${dup.length ? ` These checks sit in several cases after the same Arrange and Act; keep each in one case: ${JSON.stringify(dup)}.` : ''} Keep every other case as it is, same id.
 
 ${PLAN_RULES}
 
@@ -250,11 +253,12 @@ ${JSON.stringify(plan.cases)}
 RESEARCH:
 ${RESEARCH}`, { model: M.planner, effort: 'high', schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
   cov = coverage(plan)
+  dup = duplicates(plan)
 }
 plan.verify_review = checkIds.filter(id => !testIds.includes(id)).map(lineOf)
 plan.verify_launch = reqIds.filter(id => !checkIds.includes(id)).map(id => ({ requirement: lineOf(id), how: harnessOf(id).how }))
 const cases = plan.cases.map(c => Object.assign({}, c, { requirement: lineOf(idOf(c.requirement)) }))
-log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
+log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${dup.length} duplicate checks, ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
 const CASES = JSON.stringify(cases, null, 1)
 
 phase('Implement')
