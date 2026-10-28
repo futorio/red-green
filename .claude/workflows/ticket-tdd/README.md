@@ -127,11 +127,8 @@ documents they cite and the code they touch, and returns JSON only (schema-force
   - `note`: anything no lines of code show; `where` is `path § section` (a repository document) or
     `$ command` (a read-only `rg`, `grep`, `git`, `find` or `ls` of the repository). Outside
     documentation is not a source.
-- `plan[]`: the fewest actions in dependency order, built from the facts to meet the requirements; it
-  owns the architecture (ub-mode's design rules: data shape before logic, reuse where the requirement fits
-  the existing design and rebuild the changed unit where it does not, new business logic in a pure function
-  behind the test seam, outside data checked where it enters, one writer for shared mutable state), since
-  the implementer takes none; every step changes code, config or docs (running checks, committing and
+- `plan[]`: the fewest actions in dependency order, built from the facts to meet the requirements, reusing
+  what the facts name first; every step changes code, config or docs (running checks, committing and
   recording results are the implementer's and the gates'); each step is two or three sentences (at most 600
   characters, schema-forced) naming the part of the code it acts on and every tool, symbol and file involved,
   and leaves line ranges, flags, commands and lists to the facts;
