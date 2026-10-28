@@ -775,14 +775,12 @@ test('W65: every review stage is read-only; the targeted run is every lens and t
   assert.match(prompt(calls, 'review:r1:code'), /implement\.md § Code rules/)
 })
 
-test('W67: the checklist lens quotes the statement as each id\'s promise and needs a counterexample row before met', async () => {
+test('W67: the checklist lens takes the statement as each id\'s promise and needs a counterexample row before met', async () => {
   const { calls } = await runCore({})
   const p = prompt(calls, 'review:r1:checklist')
-  assert.match(p, /Review the change against its statement: \/t\.md and every document it points to/)
-  assert.match(p, /quote the sentence of the statement it rests on/)
-  assert.match(p, /`met` \(the counterexample was tried and the promise held/)
-  assert.match(p, /Compare against the statement and the research plan below\./)
-  assert.match(prompt(calls, 'review:r1:code'), /Compare against the statement and the research plan below\./)
+  assert.match(p, /Review the change against its statement\. For each requirement id — R1 — the promise is the sentence of the statement it rests on/)
+  assert.match(p, /`met` \(the counterexample was tried and the promise held\)/)
+  for (const l of ['review:r1:checklist', 'review:r1:code']) assert.match(prompt(calls, l), /Compare against the statement \(\/t\.md and every document it points to, as written before the code\) and the research plan below\./, l)
   const rowSchema = calls.find(c => c.label === 'review:r1:checklist').opts.schema.properties.checked.items
   for (const k of ['promise', 'counterexample', 'status']) assert.ok(rowSchema.required.includes(k), k)
   assert.ok(!('promise' in calls.find(c => c.label === 'review:r1:code').opts.schema.properties.checked.items.properties))
