@@ -49,6 +49,8 @@ const LAST = `${extra(lines(P.context))}
 const noCode = label => ['gates:discover', 'research', 'plan', 'replan'].includes(label) || label.startsWith('review:')
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = '- A command that runs longer than a couple of minutes goes in the background (`run_in_background`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.'
+const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
+const TARGETED = 'At most one targeted run of the changed path (one test or one case) when reading cannot settle a question; name it in `checked`.'
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
@@ -82,7 +84,7 @@ if (P.gates) {
   phase('Gates')
   const found = await ask(`${NO_CODE_PRE}
 
-STAGE: gates discovery. Read-only: change and commit nothing in ${REPO}.
+STAGE: gates discovery. ${READ_ONLY}
 Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.
 Run each gate exactly as its \`command\` reads, once, to completion; one that cannot run that way here is a question, not a gate. gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with \`source\` the source of the gate it bears on; it stays out of gates.
 ${BG}`,
@@ -151,7 +153,7 @@ const reviewSchema = row => ({ type: 'object', properties: {
 }, required: ['verdict', 'findings', 'checked'] })
 const STATUS = { status: { type: 'string', enum: ['met', 'unmet', 'unverified'] } }
 const REVIEW_SCHEMA = reviewSchema({})
-const PRODUCTION = 'production source — not tests, docs, data or config'
+const PRODUCTION = 'production source (only tests, docs, data or config)'
 
 const SURVIVOR = { type: 'object', properties: { file: { type: 'string' }, line: { type: 'integer' }, op: { type: 'string' }, before: { type: 'string' }, after: { type: 'string' } }, required: ['file', 'line', 'op', 'before', 'after'] }
 const GATES_SCHEMA = { type: 'object', properties: {
@@ -171,8 +173,9 @@ const MUTATION_SCHEMA = { type: 'object', properties: {
   notes: { type: 'string' },
 }, required: ['head', 'tool'] }
 
-const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. Never restate a finding a fix closed as a broader future risk. After your first finding, make one more pass on a different concern before you stop; never invent a finding to fill it.`
-const CHECKED = what => `In \`checked\`, one row per ${what}: \`item\`, and in \`evidence\` one sentence naming the file, test or command output that settled it. A bare "ok" is not evidence. verdict is \`clean\` exactly when findings is empty. A review with no checked rows is read as no review.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop. An empty list is a valid answer.`
+// what: the rows' subject; none when the job already says what a row is.
+const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}: \`item\`, and in \`evidence\`` : '`evidence` is'} one sentence naming the file, test or command output that settled it. A bare "ok" is not evidence. verdict is \`clean\` exactly when findings is empty. A review with no checked rows is read as no review.`
 const idOf = s => s.split(':')[0].trim()
 function silence(res, ids) {
   if (!res.checked.length) return 'no checked rows'
@@ -375,7 +378,7 @@ async function ruleSurvivors(survivors, label) {
   if (!open.length) return
   const res = await ask(`${NO_CODE_PRE}
 
-STAGE: mutant ruling, code lens, HEAD ${headNow}. The mutation tool changed one line at a time in the lines this ticket changed, and no test failed on these mutants. Read the code and the tests and rule on each one only when you are sure: \`equivalent\` (no test could tell the mutant from the original) or \`unreachable\` (the mutated code cannot run in the product's use, e.g. a hook that does nothing in single-player play), with a one-line reason. Leave out any you cannot rule: each becomes a major finding for the fix stage. Change nothing in ${REPO}.
+STAGE: mutant ruling, code lens, HEAD ${headNow}. The mutation tool changed one line at a time in the lines this ticket changed, and no test failed on these mutants. Read the code and the tests and rule on each one only when you are sure: \`equivalent\` (no test could tell the mutant from the original) or \`unreachable\` (the mutated code cannot run in the product's use), with a one-line reason. Leave out any you cannot rule: each becomes a major finding for the fix stage. ${READ_ONLY}
 SURVIVORS:
 ${JSON.stringify(open)}`, { model: M.review, effort: 'high', schema: RULING_SCHEMA, phase: 'Review', label })
   if (!res) { failures.push(`mutant ruling ${label}`); return }
@@ -390,7 +393,7 @@ async function runGates(round, label, tag) {
   phase('Gates')
   const res = await ask(`${NO_CODE_PRE}
 
-STAGE: gates, HEAD ${headNow}. Read-only: change and commit nothing in ${REPO}.
+STAGE: gates, HEAD ${headNow}. ${READ_ONLY}
 Run each gate below from ${REPO} to completion and compare it with its baseline. One row per gate: \`line\` its summary line verbatim; \`status\` \`green\` (at its baseline or better), \`red\` (worse) or \`not_run\` (\`line\` the reason).
 GATES:
 - ${gateList('\n- ')}
@@ -425,14 +428,14 @@ The project's mutation tool: ${P.mutation} This run's label for file names: muta
   return survivorFindings(survivors)
 }
 
-const GATES_APART = gated => `The gates step already ran at this HEAD; its rows are below. Review the diff and those rows: run none of the gates or any long check. The code lens may make at most one targeted run of the changed path (one test, one replay case) when reading cannot settle a question, and says so in \`checked\`.
+const GATES_APART = gated => `The gates step already ran every gate and long check at this HEAD; review the diff and its rows below.
 GATES:
 ${gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n')}`
 
 const LENSES = [
-  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. A change the ticket does not call for is a finding.${impl.unverified.length ? ` Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches.` : ''}` },
-  { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}. You may prove a major about behaviour with a test, only as a new, uncommitted file in the repository's test directory, changing nothing else: \`proof\` is its path, the exact command and the output line that showed it red on HEAD.{{order}}${CODE_RULES}
-{{test_case_review.code}}Mutation is a separate step's tool, run once after the review rounds, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
+  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `${READ_ONLY} Check every requirement id — ${checkIds.join(', ')} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk${plan.verify_review.length ? `; these have no test and are checked only by you: ${JSON.stringify(plan.verify_review)}` : ''}. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. Scope: a change the ticket does not call for is a finding.${impl.unverified.length ? ` Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches.` : ''}` },
+  { key: 'code', schema: REVIEW_SCHEMA, job: () => `${READ_ONLY} The one exception is a proof: you may prove a major about behaviour with a test, written as a new, uncommitted file in the repository's test directory; \`proof\` is its path, the exact command and the output line that showed it red on HEAD. ${TARGETED} Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the rules of ${IMPLEMENT_SKILL} § Code rules. Over-built code is a finding.{{order}}${CODE_RULES}
+{{test_case_review.code}}If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
 ]
 async function runFix(round, toFix, label) {
   phase('Fix')
@@ -455,7 +458,7 @@ async function fixReview(fromHead, given, label) {
   phase('Review')
   const res = await ask(`${NO_CODE_PRE}
 
-STAGE: fix review, HEAD ${headNow}. A fix moved HEAD from ${fromHead}; no full review round follows it. Review its diff, \`git diff ${fromHead}..HEAD\`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{test_case_review.fix}}. Run none of the gates; at most one targeted run of the changed path when reading cannot settle a question.
+STAGE: fix review, HEAD ${headNow}. A fix moved HEAD from ${fromHead}; no full review round follows it. Review its diff, \`git diff ${fromHead}..HEAD\`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{test_case_review.fix}}. ${READ_ONLY} The gates step checks this HEAD after you. ${TARGETED}
 ${SEVERITY}
 ${CHECKED('finding it was given, item = its id, then each other thing you verified')}
 GIVEN:
@@ -489,15 +492,15 @@ while (round < N) {
   phase('Review')
   let fromHead = headNow
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  const past = history.length ? `\nEARLIER FINDINGS (do not restate a fixed one; re-raise a rejected one only as a finding whose \`problem\` answers its \`argument\`):\n${JSON.stringify(history)}\n` : ''
+  const past = history.length ? `\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose \`problem\` answers its \`argument\`):\n${JSON.stringify(history)}\n` : ''
   gated = await gatesStep()
   const lensResults = await parallel(active.map(l => () => ask(`${NO_CODE_PRE}
 
 STAGE: review, round ${round} of at most ${N} — what you do not catch ships. Lens: ${l.key}. ${l.job()}
 ${GATES_APART(gated)}
-Compare against the ticket, its spec, and the research plan below. Do not manufacture findings; an empty list is a valid answer.
+Compare against the ticket, its spec, and the research plan below.
 ${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}
-${CHECKED(l.key === 'checklist' ? 'research requirement, item = its id' : 'thing you verified')}
+${CHECKED(l.key === 'checklist' ? null : 'new or changed function or branch in the diff, item = where it is, then each other thing you verified')}
 ${past}
 RESEARCH:
 ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))

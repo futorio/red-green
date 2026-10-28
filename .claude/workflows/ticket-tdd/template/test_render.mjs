@@ -67,7 +67,7 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
   const caseFile = file('case.json', { args: { base: 'c0ffee1', target: '/case/ticket.md' }, gate_lines: ['CASE-GATE 3 of 3'] })
   const out = cli('--case', caseFile, '--prompt', 'review:r1:code')
   assert.ok(out.startsWith('You are one agent in a workflow run implementing /case/ticket.md.'))
-  assert.ok(out.includes('Lens: code. Read the code as code'))
+  assert.ok(out.includes('Lens: code. Read-only: change and commit nothing in'))
   assert.ok(out.includes('gates: green — CASE-GATE 3 of 3'))
   assert.ok(out.includes('MAILBOX. Your address is `review:r1:code`'))
   assert.ok(!out.includes('Lens: checklist'))

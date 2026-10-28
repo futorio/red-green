@@ -118,7 +118,7 @@ test('W04: the lens prompts carry each gate as name, status and line; the checkl
     assert.ok(prompt(calls, label).includes('A: green — GATE-SENTINEL 3 of 3\nB: green — B ok'), label)
     assert.ok(!/re-check the scope/.test(prompt(calls, label)), label)
   }
-  assert.match(prompt(calls, 'review:r1:checklist'), /A change the ticket does not call for is a finding\./)
+  assert.match(prompt(calls, 'review:r1:checklist'), /Scope: a change the ticket does not call for is a finding\./)
   assert.ok(!/A change the ticket does not call for/.test(prompt(calls, 'review:r1:code')))
 })
 
@@ -553,7 +553,7 @@ test('W59: lenses, fix-diff reviews and the mutant ruling get the no-code preamb
     for (const s of ['COMMITS', 'Gates:', 'before committing']) assert.ok(!p.includes(s), `${l}: ${s}`)
     assert.match(p, /Read it at start and before returning\./, l)
   }
-  assert.match(prompt(calls, 'review:r1:code'), /only as a new, uncommitted file in the repository's test directory/)
+  assert.match(prompt(calls, 'review:r1:code'), /written as a new, uncommitted file in the repository's test directory/)
   assert.ok(!/uncommitted file/.test(prompt(calls, 'review:r1:checklist')))
 })
 
@@ -638,7 +638,7 @@ test('W40: research routes the requirements; the planner gets only the test ones
   assert.match(plan.prompt, /one case for each behaviour that R1 name,/)
   assert.ok(!/verify_review|verify_launch|BYTE FOR BYTE/.test(plan.prompt))
   const checklist = prompt(calls, 'review:r1:checklist')
-  assert.match(checklist, /their ids: R1, R2, R3, R5 —/)
+  assert.match(checklist, /Check every requirement id — R1, R2, R3, R5 —/)
   assert.ok(checklist.includes(JSON.stringify(['R2: two', 'R3: three', 'R5: five'])))
   assert.ok(!/R4/.test(checklist.split('RESEARCH:')[0]))
   assert.deepEqual(result.verify_launch, [{ requirement: 'R4: four', how: 'LAUNCH-HOW' }])
@@ -759,4 +759,18 @@ test('W56: a gate named like an Object.prototype key still needs its own baselin
   const { result, calls } = await runCore({}, 1, { profile: { gates: [{ name: 'constructor', command: 'c' }] }, baseline: {} })
   assert.equal(calls.length, 0)
   assert.equal(result.status, 'failed')
+})
+
+test('W65: every review stage is read-only; the targeted run is the code lens and fix review only; no empty or project text', async () => {
+  const { calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+    mutation: mutants(1),
+  })
+  for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1', 'review:code:survivors']) assert.match(prompt(calls, l), /Read-only: change and commit nothing in \/r\./, l)
+  for (const l of ['review:r1:code', 'review:fix:r1']) assert.match(prompt(calls, l), /At most one targeted run of the changed path/, l)
+  const checklist = prompt(calls, 'review:r1:checklist')
+  assert.ok(!/targeted run|\[\]/.test(checklist.split('RESEARCH:')[0]))
+  assert.ok(!/single-player/.test(prompt(calls, 'review:code:survivors')))
+  assert.match(prompt(calls, 'review:r1:code'), /implement\.md § Code rules/)
 })

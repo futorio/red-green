@@ -210,7 +210,7 @@ scoped rerun after a fix.
 The step returns no findings; the script makes them. A `red` row is a major finding `G<round>-<name>`
 (`G<round>r-<name>` after the last fix), source `gates`, its trigger the gate's line against its
 baseline line. A `not_run` row, a declared gate with no row, and a dead step each land in `failures`.
-The lenses get each gate as `name: status — line` and run none of the gates; the code lens may make one
+The lenses get each gate as `name: status — line` and run none of the gates; the code lens and the fix-diff review may make one
 targeted run of the changed path. Scope is the checklist lens's; a number the ticket states is a
 requirement it checks.
 
