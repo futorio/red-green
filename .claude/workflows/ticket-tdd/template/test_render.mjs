@@ -92,7 +92,7 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.equal(out.prompt, cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code'))
   assert.equal(out.model, 'sonnet')
   assert.equal(out.effort, 'high')
-  assert.deepEqual(out.schema.required, ['verdict', 'findings', 'checked', 'questions'])
+  assert.deepEqual(out.schema.required, ['verdict', 'findings', 'checked'])
   assert.ok('mailbox' in out.schema.properties)
 })
 
