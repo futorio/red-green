@@ -247,10 +247,10 @@ and the output line that showed it red on HEAD. A proof on any other source's fi
 fix and is a stray (below).
 
 **Questions are not findings.** Every review stage (both lenses, every fix-diff review) returns
-`questions[]` `{where, question, settles: run|owner}`: a risk it saw and could not settle, with no
-`trigger` it can name — `run` when only a run it cannot make (a build, another machine, outside data)
-settles it, `owner` when the code does what the ticket or research says and that looks wrong. A major
-never goes there. They go to the result as `review_questions`, each with its `stage`; no fix acts on them.
+`questions[]` `{where, question}`: a risk that only a run it cannot make (a build, another machine,
+outside data) settles. A major never goes there, also when the code does what the ticket or research
+says and that is wrong: that is a major whose `problem` names the conflict. They go to the result as
+`review_questions`, each with its `stage`; no fix acts on them.
 
 **Silence is not clean.** Every reviewer returns `checked` rows — item plus the artifact that settled
 it. No rows or a `verdict` that disagrees with the findings reads as `SILENT` in `verdicts` and lands in
@@ -341,7 +341,7 @@ The 16-fixture sweep must include 8 jobs.
 `{status, rounds_planned, rounds_run, rounds[] (major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
 verdicts, mutation (the tool's result, at most one),
 gates (the gates used: declared, or discovered with their source and baseline line), gates_questions (the discovery step's questions; empty when the profile declared the gates),
-uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, review_questions (`{stage, where, question, settles}`, never fixed), verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, review_questions (`{stage, where, question}`, never fixed), verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a

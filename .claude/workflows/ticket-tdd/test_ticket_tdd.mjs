@@ -776,15 +776,15 @@ test('W65: every review stage is read-only; the targeted run is the code lens an
 })
 
 test('W66: review questions go to the result with their stage, never to a fix; every review prompt keeps majors out of them', async () => {
-  const q = (where, settles) => ({ where, question: 'q', settles })
+  const q = where => ({ where, question: 'q' })
   const { result, calls } = await runCore({
-    'review:r1:code': Object.assign({}, major, { questions: [q('a.cpp:3', 'run')] }),
-    'review:r1:checklist': Object.assign(clean([row('R1', { status: 'met' })]), { questions: [q('R1', 'owner')] }),
+    'review:r1:code': Object.assign({}, major, { questions: [q('a.cpp:3')] }),
+    'review:r1:checklist': Object.assign(clean([row('R1', { status: 'met' })]), { questions: [q('R1')] }),
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
-    'review:fix:r1': Object.assign(clean([row('x')]), { questions: [q('b.cpp:9', 'run')] }),
+    'review:fix:r1': Object.assign(clean([row('x')]), { questions: [q('b.cpp:9')] }),
   })
-  assert.deepEqual(result.review_questions.map(x => [x.stage, x.where, x.settles]).sort(),
-    [['review:fix:r1', 'b.cpp:9', 'run'], ['review:r1:checklist', 'R1', 'owner'], ['review:r1:code', 'a.cpp:3', 'run']])
+  assert.deepEqual(result.review_questions.map(x => [x.stage, x.where]).sort(),
+    [['review:fix:r1', 'b.cpp:9'], ['review:r1:checklist', 'R1'], ['review:r1:code', 'a.cpp:3']])
   assert.ok(!/a\.cpp:3/.test(prompt(calls, 'fix:r1')))
   for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) {
     assert.match(prompt(calls, l), /A major never goes in `questions`/, l)
