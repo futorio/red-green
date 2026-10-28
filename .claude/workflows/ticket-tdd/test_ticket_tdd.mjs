@@ -118,8 +118,8 @@ test('W04: the lens prompts carry each gate as name, status and line; the checkl
     assert.ok(prompt(calls, label).includes('A: green — GATE-SENTINEL 3 of 3\nB: green — B ok'), label)
     assert.ok(!/re-check the scope/.test(prompt(calls, label)), label)
   }
-  assert.match(prompt(calls, 'review:r1:checklist'), /Scope: a change the ticket does not call for is a finding\./)
-  assert.ok(!/A change the ticket does not call for/.test(prompt(calls, 'review:r1:code')))
+  assert.match(prompt(calls, 'review:r1:checklist'), /Scope: a change the statement does not call for is a finding\./)
+  assert.ok(!/does not call for/.test(prompt(calls, 'review:r1:code')))
 })
 
 test('W05: a red gate is one major finding made by the script; on the recheck it is left over, a green gate makes none', async () => {
@@ -638,7 +638,7 @@ test('W40: research routes the requirements; the planner gets only the test ones
   assert.match(plan.prompt, /one case for each behaviour that R1 name,/)
   assert.ok(!/verify_review|verify_launch|BYTE FOR BYTE/.test(plan.prompt))
   const checklist = prompt(calls, 'review:r1:checklist')
-  assert.match(checklist, /Check every requirement id — R1, R2, R3, R5 —/)
+  assert.match(checklist, /For each requirement id — R1, R2, R3, R5 —/)
   assert.ok(checklist.includes(JSON.stringify(['R2: two', 'R3: three', 'R5: five'])))
   assert.ok(!/R4/.test(checklist.split('RESEARCH:')[0]))
   assert.deepEqual(result.verify_launch, [{ requirement: 'R4: four', how: 'LAUNCH-HOW' }])
@@ -761,16 +761,29 @@ test('W56: a gate named like an Object.prototype key still needs its own baselin
   assert.equal(result.status, 'failed')
 })
 
-test('W65: every review stage is read-only; the targeted run is the code lens and fix review only; no empty or project text', async () => {
+test('W65: every review stage is read-only; the targeted run is every lens and the fix review; no empty or project text', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
     mutation: mutants(1),
   })
   for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1', 'review:code:survivors']) assert.match(prompt(calls, l), /Read-only: change and commit nothing in \/r\./, l)
-  for (const l of ['review:r1:code', 'review:fix:r1']) assert.match(prompt(calls, l), /At most one targeted run of the changed path/, l)
+  for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) assert.match(prompt(calls, l), /At most one targeted run of the changed path/, l)
   const checklist = prompt(calls, 'review:r1:checklist')
-  assert.ok(!/targeted run|\[\]/.test(checklist.split('RESEARCH:')[0]))
+  assert.ok(!/\[\]/.test(checklist.split('RESEARCH:')[0]))
   assert.ok(!/single-player/.test(prompt(calls, 'review:code:survivors')))
   assert.match(prompt(calls, 'review:r1:code'), /implement\.md § Code rules/)
+})
+
+test('W67: the checklist lens quotes the statement as each id\'s promise and needs a counterexample row before met', async () => {
+  const { calls } = await runCore({})
+  const p = prompt(calls, 'review:r1:checklist')
+  assert.match(p, /Review the change against its statement: \/t\.md and every document it points to/)
+  assert.match(p, /quote the sentence of the statement it rests on/)
+  assert.match(p, /`met` \(the counterexample was tried and the promise held/)
+  assert.match(p, /Compare against the statement and the research plan below\./)
+  assert.match(prompt(calls, 'review:r1:code'), /Compare against the statement and the research plan below\./)
+  const rowSchema = calls.find(c => c.label === 'review:r1:checklist').opts.schema.properties.checked.items
+  for (const k of ['promise', 'counterexample', 'status']) assert.ok(rowSchema.required.includes(k), k)
+  assert.ok(!('promise' in calls.find(c => c.label === 'review:r1:code').opts.schema.properties.checked.items.properties))
 })

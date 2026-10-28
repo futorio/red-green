@@ -210,8 +210,8 @@ scoped rerun after a fix.
 The step returns no findings; the script makes them. A `red` row is a major finding `G<round>-<name>`
 (`G<round>r-<name>` after the last fix), source `gates`, its trigger the gate's line against its
 baseline line. A `not_run` row, a declared gate with no row, and a dead step each land in `failures`.
-The lenses get each gate as `name: status — line` and run none of the gates; the code lens and the fix-diff review may make one
-targeted run of the changed path. Scope is the checklist lens's; a number the ticket states is a
+The lenses get each gate as `name: status — line` and run none of the gates; both lenses and the fix-diff review may make one
+targeted run of the changed path. Scope is the checklist lens's; a number the statement gives is a
 requirement it checks.
 
 ### 5. Review × n
@@ -220,11 +220,15 @@ Two lenses in parallel — checklist (every requirement id but the `verify_launc
 (would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`; it also rules on the mutation survivors, above).
 A diff with no production file gets one checked row saying so from the code lens.
 
-**The checklist lens** receives every requirement id except the `verify_launch` ones, and the `unverified` list implement reported. It
-returns one `checked` row per id with `status: met|unmet|unverified`; an id without a row counts as
+**The checklist lens** reviews the change against its statement: the target and every document it
+points to, as written before the code. It receives every requirement id except the `verify_launch` ones,
+and the `unverified` list implement reported. For each id it quotes the statement's sentence as the
+`promise` and tries a `counterexample`, the input most likely to make the promise false on the diff;
+it returns one `checked` row per id with `promise`, `counterexample` and `status: met|unmet|unverified`,
+`met` only when the counterexample was tried and the promise held. An id without a row counts as
 `unverified`. An `unmet` requirement becomes a major finding and goes to the fix like any other; an
 `unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
-the requirements, and a change the ticket does not call for is one.
+the requirements, and a change the statement does not call for is one.
 
 **Mutation cannot be skipped silently.** The mutation step reports whether the tool applied and ran; one
 that applied and did not run, or a dead step, lands in `failures`.
