@@ -774,3 +774,20 @@ test('W65: every review stage is read-only; the targeted run is the code lens an
   assert.ok(!/single-player/.test(prompt(calls, 'review:code:survivors')))
   assert.match(prompt(calls, 'review:r1:code'), /implement\.md § Code rules/)
 })
+
+test('W66: review questions go to the result with their stage, never to a fix; every review prompt keeps majors out of them', async () => {
+  const q = (where, settles) => ({ where, question: 'q', settles })
+  const { result, calls } = await runCore({
+    'review:r1:code': Object.assign({}, major, { questions: [q('a.cpp:3', 'run')] }),
+    'review:r1:checklist': Object.assign(clean([row('R1', { status: 'met' })]), { questions: [q('R1', 'owner')] }),
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+    'review:fix:r1': Object.assign(clean([row('x')]), { questions: [q('b.cpp:9', 'run')] }),
+  })
+  assert.deepEqual(result.review_questions.map(x => [x.stage, x.where, x.settles]).sort(),
+    [['review:fix:r1', 'b.cpp:9', 'run'], ['review:r1:checklist', 'R1', 'owner'], ['review:r1:code', 'a.cpp:3', 'run']])
+  assert.ok(!/a\.cpp:3/.test(prompt(calls, 'fix:r1')))
+  for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) {
+    assert.match(prompt(calls, l), /A major never goes in `questions`/, l)
+    assert.ok(calls.find(c => c.label === l).opts.schema.required.includes('questions'), l)
+  }
+})

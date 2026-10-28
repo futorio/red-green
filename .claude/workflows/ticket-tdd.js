@@ -149,8 +149,11 @@ const reviewSchema = row => ({ type: 'object', properties: {
   verdict: { type: 'string', enum: ['clean', 'findings'] },
   findings: { type: 'array', items: FINDING },
   checked: { type: 'array', items: { type: 'object', properties: Object.assign({ item: { type: 'string' }, evidence: { type: 'string' } }, row), required: ['item', 'evidence'].concat(Object.keys(row)) } },
+  questions: { type: 'array', items: { type: 'object', properties: {
+    where: { type: 'string' }, question: { type: 'string' }, settles: { type: 'string', enum: ['run', 'owner'] },
+  }, required: ['where', 'question', 'settles'] } },
   notes: { type: 'string' },
-}, required: ['verdict', 'findings', 'checked'] })
+}, required: ['verdict', 'findings', 'checked', 'questions'] })
 const STATUS = { status: { type: 'string', enum: ['met', 'unmet', 'unverified'] } }
 const REVIEW_SCHEMA = reviewSchema({})
 const PRODUCTION = 'production source (only tests, docs, data or config)'
@@ -173,7 +176,11 @@ const MUTATION_SCHEMA = { type: 'object', properties: {
   notes: { type: 'string' },
 }, required: ['head', 'tool'] }
 
-const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop. An empty list is a valid answer.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop. An empty list is a valid answer.
+QUESTIONS. Each risk you saw and could not settle here, with no \`trigger\` you can name: where, question, settles (run: a run you cannot make here settles it, such as a build, another machine or outside data; owner: the code does what the ticket or research says, and that looks wrong). A major never goes in \`questions\`: whatever has a trigger and a consequence is a finding. Questions go to the result alone; no fix acts on them. An empty list says nothing was left open.`
+// Review questions go to the result alone, with the stage that asked them.
+const reviewQuestions = []
+const asked = (res, stage) => reviewQuestions.push(...(res.questions || []).map(q => Object.assign({ stage }, q)))
 // what: the rows' subject; none when the job already says what a row is.
 const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}: \`item\`, and in \`evidence\`` : '`evidence` is'} one sentence naming the file, test or command output that settled it. A bare "ok" is not evidence. verdict is \`clean\` exactly when findings is empty. A review with no checked rows is read as no review.`
 const idOf = s => s.split(':')[0].trim()
@@ -470,6 +477,7 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: REVIEW_SCHEMA, phase: '
   const quiet = silence(res)
   if (quiet) failures.push(`fix review ${label} silent: ${quiet}`)
   verdicts.push({ round: label, lens: 'fix review', verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
+  asked(res, label)
   return tidy(res.findings).map((f, k) => proven(Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f)))
 }
 
@@ -513,6 +521,7 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     const quiet = silence(res)
     if (quiet) { failures.push(`review r${round} ${l.key} silent: ${quiet}`); reviewed = false }
     verdicts.push({ round, lens: l.key, verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
+    asked(res, `review:r${round}:${l.key}`)
     if (l.key === 'checklist') {
       const rows = {}
       res.checked.forEach(c => { rows[idOf(c.item)] = c })
@@ -645,6 +654,7 @@ return {
   research_questions: researchQuestions,
   gates: GATES,
   gates_questions: gatesQuestions,
+  review_questions: reviewQuestions,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
   leftover_findings: uniq(unfixed.concat(unmet)),
