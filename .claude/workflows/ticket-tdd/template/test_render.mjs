@@ -97,3 +97,8 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.deepEqual(out.schema.required, ['verdict', 'findings', 'rulings', 'checked'])
   assert.ok('mailbox' in out.schema.properties)
 })
+
+test('T12: a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
+  const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
+  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': ran — FOUND-GATE ok'))
+})

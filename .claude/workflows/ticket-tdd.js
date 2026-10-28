@@ -76,7 +76,7 @@ const failures = []
 // Its questions go to the result alone.
 let gatesQuestions = []
 if (P.gates) {
-  const unmeasured = GATES.filter(g => !(g.name in BASELINE)).map(g => g.name)
+  const unmeasured = GATES.filter(g => !Object.hasOwn(BASELINE, g.name)).map(g => g.name)
   if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 } else {
   phase('Gates')
@@ -380,9 +380,9 @@ Run every gate named above from ${REPO}, each to completion: never cut a gate sh
   else headNow = res.head || headNow
   const rows = GATES.map(g => (res && res.gates.find(r => r.name === g.name)) || { name: g.name, status: 'not_run', line: res ? 'no row' : 'the gates step died' })
   if (res) rows.filter(r => r.status === 'not_run').forEach(r => failures.push(`gates ${label}: ${r.name} not run: ${r.line}`))
+  const vs = r => `${r.line} (baseline: ${BASELINE[r.name]})`
   return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'failed').map(r => ({
-    id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name,
-    problem: `${r.line} (baseline: ${BASELINE[r.name]})`, trigger: `${r.line} (baseline: ${BASELINE[r.name]})`,
+    id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: vs(r), trigger: vs(r),
     consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' })) }
 }
 

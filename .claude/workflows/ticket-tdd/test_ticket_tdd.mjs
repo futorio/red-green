@@ -631,3 +631,9 @@ test('W55: with profile.gates given no discovery step runs, and the result carri
   assert.deepEqual(result.gates, [{ name: 'tests', command: 'npm test' }])
   assert.deepEqual(result.gates_questions, [])
 })
+
+test('W56: a gate named like an Object.prototype key still needs its own baseline entry', async () => {
+  const { result, calls } = await runCore({}, 1, { profile: { gates: [{ name: 'constructor', command: 'c' }] }, baseline: {} })
+  assert.equal(calls.length, 0)
+  assert.equal(result.status, 'failed')
+})

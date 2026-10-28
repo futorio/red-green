@@ -363,7 +363,7 @@ node template/render.mjs [config.json] --case case.json --prompt <label> --json
 the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The case is
 `{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
 commit the diff starts from: the prompt names both, the agent reads them; the stub args declare one gate,
-`gates`; a case whose profile declares none needs a `gates:discover` result), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
+`gates`; a case whose profile declares none gets a stub discovery step that finds that same gate), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.
