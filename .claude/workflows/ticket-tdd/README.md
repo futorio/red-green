@@ -188,8 +188,20 @@ no later stage gets them.
 
 ### 3. Implementation
 
-Follows `skills/implement.md` (vendored: upstream sets `disable-model-invocation`, so the agent reads it
-by path; `tdd/` sits beside it) and `profile.code_rules`. Cases are taken one per red → green cycle.
+Follows `skills/implement.md` and `tdd/` beside it, and `profile.code_rules`. Cases are taken one per
+red → green cycle.
+
+The skills are vendored and read by path (upstream sets `disable-model-invocation`). `implement.md` is
+built from `mattpocock-skills` 1.2.3 `skills/engineering/implement/SKILL.md` and the in-loop and fix rules
+of [ub-mode](https://github.com/unclebob/ub-mode) (Laziness Protocol, Boundary Discipline's entry check,
+Type System Discipline's compiler rule, Make Operations Idempotent, Fix Root Causes); its § Code rules is
+cited by the fix and the code lens. Not taken from ub-mode: the architecture and design rules (data shape
+first, Redesign From First Principles, Model the Domain, pure business logic, shared state), which belong
+before implementation; Attack the Premise; its tools (crapper, dryer, mutator); Build the Lever, Outcome-
+Oriented Execution, Refactoring and the Practice section. `tdd/` is mattpocock's `tdd` with the seams taken
+from the cases, no `/codebase-design` pointer, and three ub-mode loop rules (red for the right reason,
+honest or unverified, a test fails when every function returns nothing); Sequence work into verifiable
+units and Test Behavior, Not Implementation were already there.
 Before reporting, every boundary the ticket states (a limit, an empty input, a missing key, an error path,
 an exit code) gets a phrase row, tested at its requirement's seam when no case covers it; then the
 deliverable is called the way its consumer calls it and fed every input, mode and data file the ticket
@@ -204,8 +216,8 @@ checklist lens gets the whole list. Whether every boundary phrase has a row is l
 
 **Questions.** `{requirement, question, reading, settles: owner|plan}`: `plan` when the plan contradicts the
 ticket and the implementer followed the ticket, `owner` when the ticket leaves it open or it needs a
-redesign or an architecture decision, which the implementer never makes. One for an unknown requirement is dropped with a log
-line. They go to the result as `implement_questions` and to no stage.
+redesign or an architecture decision, which the implementer reports and leaves. One for an unknown
+requirement is dropped with a log line. They go to the result as `implement_questions` and to no stage.
 
 **If implementation made no commit** — `head` still at `base` — the stage runs once more, told that the
 previous attempt made no commit and given its notes; a second such result ends the run as `failed`

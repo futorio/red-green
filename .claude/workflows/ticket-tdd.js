@@ -331,14 +331,14 @@ const CASES = JSON.stringify(cases, null, 1)
 phase('Implement')
 const implementPrompt = retry => `${PRE}
 
-STAGE: implementation.${retry ? ` A previous attempt at this stage made NO commit (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it, and its code rules.${CODE_RULES}
-Use the research facts and plan; do not re-derive what they settle.
+STAGE: implementation.${retry ? ` A previous attempt at this stage made NO commit (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it.${CODE_RULES}
+Build on the research facts and plan: what they settle is settled.
 
 Before reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row; one no case covers is tested at the seam its requirement's test_harness names. Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in \`unverified\`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.
 
-Run the gates once, at the end, before you commit — not at the start, not before and after. ${A.one_commit ? 'Create the ONE commit when the gate is at baseline or better; if it cannot get there, do not commit and say exactly what is red.' : 'Commit as you go.'}
+Run the gates once, at the end, before you commit.${A.one_commit ? ' Create the ONE commit when the gate is at baseline or better; if it cannot get there, leave it uncommitted and say exactly what is red.' : ''}
 
-Report: head (\`git rev-parse HEAD\`); checks: one row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted), each with its requirement id and either test (file + test name) or unverified (why there is none); unverified; questions: requirement, question, reading (the one you took), settles (plan: the plan contradicts the ticket and you followed the ticket; owner: the ticket leaves it open, or it needs a redesign or an architecture decision); notes.
+Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open or it needs a redesign or an architecture decision); notes.
 
 CASES:
 ${CASES}

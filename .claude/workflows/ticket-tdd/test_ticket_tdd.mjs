@@ -21,7 +21,7 @@ const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requiremen
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
 const check = (ref, extra) => Object.assign({ kind: 'case', ref, requirement: 'R1', test: { file: 'f', name: 't' } }, extra)
-const gatesAt = (head, ...rows) =>({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
+const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
