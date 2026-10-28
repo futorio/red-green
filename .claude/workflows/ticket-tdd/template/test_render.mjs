@@ -70,7 +70,7 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
   const out = cli('--case', caseFile, '--prompt', 'review:r1:code')
   assert.ok(out.startsWith('You are one agent in a workflow run implementing /case/ticket.md.'))
   assert.ok(out.includes('Lens: code. Read the code as code'))
-  assert.ok(out.includes('["CASE-GATE 3 of 3"]'))
+  assert.ok(out.includes('gates: ran — CASE-GATE 3 of 3'))
   assert.ok(out.includes('MAILBOX. Your address is `review:r1:code`'))
   assert.ok(!out.includes('Lens: checklist'))
 })

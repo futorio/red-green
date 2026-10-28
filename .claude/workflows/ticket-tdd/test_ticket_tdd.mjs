@@ -19,6 +19,8 @@ const tool = survivors => ({ applies: true, ran: true, survivors })
 const ruling = (id, kind, reason) => ({ id, ruling: kind, reason })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
+const gate = (name, status, line) => ({ name, status, line })
+const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'ran', '17 of 17')] })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
@@ -26,7 +28,7 @@ function base(over) {
     research: { requirements: ['R1: one'], facts: [fact('code', ['src/a.cpp:1-2'], 'R1')], plan: [], test_harness: [harness('R1')] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
     implement: { committed: true, head: 'bbbb111', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
-    'gates:r1': { head: 'bbbb111', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [] },
+    'gates:r1': gatesAt('bbbb111'),
     'review:r1:checklist': clean([row('R1', { status: 'met' })]),
     'review:r1:code': clean([row('x')]),
     'review:r2:checklist': clean([row('R1', { status: 'met' })]),
@@ -40,8 +42,8 @@ function base(over) {
     'review:fix:r2': clean([row('x')]),
     'review:fix:r3': clean([row('x')]),
     'review:fix:minor': clean([row('x')]),
-    'gates:r1:recheck': { head: 'cccc222', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [] },
-    'gates:r2:recheck': { head: 'cccc222', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [] },
+    'gates:r1:recheck': gatesAt('cccc222'),
+    'gates:r2:recheck': gatesAt('cccc222'),
   }, over)
 }
 
@@ -61,7 +63,7 @@ async function runCore(over, rounds, extra) {
     return r && clone(r)
   }
   const parallel = thunks => Promise.all(thunks.map(async t => { try { return await t() } catch (e) { return null } }))
-  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', rounds: rounds || 1, baseline: 'b', profile: { mutation: 'MUTATION-TOOL-TEXT' }, extra_rounds: 0 }
+  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', rounds: rounds || 1, baseline: { tests: '17 of 17' }, profile: { mutation: 'MUTATION-TOOL-TEXT', gates: [{ name: 'tests', command: 'npm test' }] }, extra_rounds: 0 }
   Object.assign(args, extra)
   const result = await core(args, agent, parallel, () => {}, () => {})
   return { result, calls, events }
@@ -108,44 +110,91 @@ test('W03: the lenses start after the gates step of their round returns', async 
   assert.ok(at('review:r1:code start') > at('gates:r1 resolved'))
 })
 
-test('W04: the lens prompts carry the gate lines, gates findings pass through tidy', async () => {
-  const { result, calls } = await runCore({
-    'gates:r1': { head: 'bbbb111', gate_lines: ['GATE-SENTINEL 17 of 17'], changed_files: ['src/a.cpp'], counts: [],
-      findings: [finding('major', 'g.py:1', ''), finding('major', 'g.py:2', 'run g')] },
-    'fix:r1': { applied: [{ id: 'G1-2', what: 'w' }], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
-  })
-  assert.ok(prompt(calls, 'review:r1:checklist').includes('GATE-SENTINEL'))
-  assert.ok(prompt(calls, 'review:r1:code').includes('GATE-SENTINEL'))
-  const down = result.advisory.filter(f => f.where === 'g.py:1')
-  assert.equal(down.length, 1)
-  assert.equal(down[0].severity, 'minor')
-  assert.match(prompt(calls, 'fix:r1'), /g\.py:2/)
+// Two declared gates, A and B, with their baselines.
+const twoGates = { profile: { mutation: 'MUTATION-TOOL-TEXT', gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }, baseline: { A: 'A-BASE 3 of 3', B: 'B-BASE ok' } }
+
+test('W04: the lens prompts carry each gate as name, status and line; the checklist job carries the scope sentence', async () => {
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'ran', 'GATE-SENTINEL 3 of 3'), gate('B', 'ran', 'B ok')) }, 1, twoGates)
+  for (const label of ['review:r1:checklist', 'review:r1:code']) {
+    assert.ok(prompt(calls, label).includes('A: ran — GATE-SENTINEL 3 of 3\nB: ran — B ok'), label)
+    assert.ok(!/re-check the scope/.test(prompt(calls, label)), label)
+  }
+  assert.match(prompt(calls, 'review:r1:checklist'), /A change the ticket does not call for is a finding\./)
+  assert.ok(!/A change the ticket does not call for/.test(prompt(calls, 'review:r1:code')))
 })
 
-test('W05: a gates finding that comes back after the last fix appears once in the leftover, a new one is not lost', async () => {
-  const again = { head: 'cccc222', gate_lines: ['ok'], changed_files: ['src/a.cpp'], counts: [], findings: [finding('major', 'g.py:2', 'run g'), finding('major', 'OTHER.py:5', 'run o')] }
+test('W05: a failed gate is one major finding made by the script; on the recheck it is left over, a ran gate makes none', async () => {
   const { result, calls } = await runCore({
-    'gates:r1': Object.assign({}, base()['gates:r1'], { findings: [finding('major', 'g.py:2', 'run g')] }),
-    'fix:r1': { applied: [], rejected: [{ id: 'G1-1', argument: 'a' }], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r1:recheck': again,
-  })
-  assert.ok(called(calls, 'gates:r1:recheck'))
-  assert.deepEqual(result.leftover_findings.filter(f => f.source === 'gates').map(f => f.where).sort(), ['OTHER.py:5', 'g.py:2'])
+    'gates:r1': gatesAt('bbbb111', gate('A', 'failed', 'A-RED 2 of 3'), gate('B', 'ran', 'B ok')),
+    'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'gates:r1:recheck': gatesAt('cccc222', gate('A', 'failed', 'A-STILL-RED 1 of 3'), gate('B', 'ran', 'B ok')),
+    mutation: { head: 'cccc222', tool: tool([]) },
+  }, 1, twoGates)
+  const sent = JSON.parse(prompt(calls, 'fix:r1').split('FINDINGS:\n')[1].split('\n\nRESEARCH:')[0])
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].id, 'G1-A')
+  assert.equal(sent[0].source, 'gates')
+  assert.equal(sent[0].severity, 'major')
+  assert.equal(sent[0].where, 'A')
+  assert.match(sent[0].problem, /A-RED 2 of 3.*A-BASE 3 of 3/)
+  assert.match(sent[0].trigger, /A-RED 2 of 3.*A-BASE 3 of 3/)
+  const left = result.leftover_findings.filter(f => f.source === 'gates')
+  assert.deepEqual(left.map(f => f.id), ['G1r-A'])
+  assert.match(left[0].problem, /A-STILL-RED 1 of 3/)
+  assert.equal(result.advisory.filter(f => f.source === 'gates').length, 0)
+  assert.equal(result.status, 'done')
 })
 
-test('W14: after a fix the gates step is told the gated HEAD and the scoping', async () => {
+test('W14: after a fix that moved HEAD the gates step runs every gate, with no scoping', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r2': Object.assign({}, base()['gates:r1'], { head: 'cccc222' }),
+    'gates:r2': gatesAt('cccc222'),
     mutation: { head: 'cccc222', tool: tool([]) },
   }, 2)
-  assert.ok(!/already ran at/.test(prompt(calls, 'gates:r1')))
   const second = prompt(calls, 'gates:r2')
-  assert.match(second, /already ran at bbbb111/)
-  assert.match(second, /git diff --name-only bbbb111\.\.HEAD/)
-  assert.match(second, /Only docs[^.]*changed: no build, replay check or test/)
-  assert.match(second, /Only tests changed: no build or replay check, only the changed test files/)
+  assert.ok(!/already ran at|git diff --name-only|docs only|tests only/.test(second))
+  assert.equal(second.replace(/cccc222/g, 'H').replace(/gates:r2/g, 'L'), prompt(calls, 'gates:r1').replace(/bbbb111/g, 'H').replace(/gates:r1/g, 'L'))
+})
+
+test('W49: the gates step names every declared gate with its command and baseline, and its schema takes only their names', async () => {
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'ran', 'a'), gate('B', 'ran', 'b')) }, 1, twoGates)
+  const call = calls.find(c => c.label === 'gates:r1')
+  for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(call.prompt.includes(s), s)
+  assert.ok(prompt(calls, 'implement').includes('A: `make a` (baseline: A-BASE 3 of 3)'))
+  const item = call.opts.schema.properties.gates.items
+  assert.deepEqual(item.properties.name.enum, ['A', 'B'])
+  assert.deepEqual(item.properties.status.enum, ['ran', 'failed', 'not_run'])
+  assert.deepEqual(Object.keys(call.opts.schema.properties), ['head', 'gates', 'notes', 'mailbox'])
+  assert.match(call.prompt, /never cut a gate short/)
+  for (const w of [/scope/i, /recount/i, /changed_files/, /git diff/, /SEVERITY/, /blocker/, /already ran at/]) assert.ok(!w.test(call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]), String(w))
+})
+
+test('W50: a not_run row and a declared gate with no row each add a failure naming the gate and the step', async () => {
+  const { result } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'not_run', 'no time')) }, 1, twoGates)
+  assert.equal(result.status, 'done_with_failures')
+  assert.equal(result.failures.filter(f => /gates:r1/.test(f) && /\bA\b/.test(f)).length, 1)
+  assert.equal(result.failures.filter(f => /gates:r1/.test(f) && /\bB\b/.test(f)).length, 1)
+  assert.equal(result.leftover_findings.filter(f => f.source === 'gates').length, 0)
+})
+
+test('W51: a declared gate without a baseline entry fails the run before any agent is called', async () => {
+  const { result, calls } = await runCore({}, 1, { profile: twoGates.profile, baseline: { A: 'a' } })
+  assert.equal(calls.length, 0)
+  assert.equal(result.status, 'failed')
+  assert.match(result.note, /\bB\b/)
+  assert.ok(!/\bA\b/.test(result.note.replace(/baseline/g, '')))
+})
+
+test('W52: the result records per round the gates rows that gated its HEAD, and the recheck rows', async () => {
+  const { result } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'ran', 'RECHECK 17 of 17')),
+    mutation: { head: 'cccc222', tool: tool([]) },
+  })
+  assert.deepEqual(result.rounds[0].gates, [gate('tests', 'ran', '17 of 17')])
+  assert.deepEqual(result.rounds[0].recheck, [gate('tests', 'ran', 'RECHECK 17 of 17')])
 })
 
 test('W15: a fix that leaves HEAD alone reuses the gates result', async () => {
@@ -165,7 +214,7 @@ test('W24: the mutation tool runs once, in its own step after a clean round, nev
   const { calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r2': Object.assign({}, base()['gates:r1'], { head: 'cccc222' }),
+    'gates:r2': gatesAt('cccc222'),
     mutation: { head: 'cccc222', tool: tool([]) },
   }, 2)
   assert.equal(count(calls, 'mutation'), 1)
@@ -179,7 +228,7 @@ test('W25: survivors get a fix and one more round without the tool, past the pla
   const { result, calls } = await runCore({
     mutation: mutants(1),
     'fix:r1': { applied: [{ id: 'M-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r2': Object.assign({}, base()['gates:r1'], { head: 'cccc222' }),
+    'gates:r2': gatesAt('cccc222'),
   }, 1)
   assert.ok(called(calls, 'review:r2:code'))
   assert.equal(count(calls, 'mutation'), 1)
@@ -259,13 +308,11 @@ test('W18: a dead ruling agent, mutation step or gates step is a failure', async
   assert.equal(noGates.result.status, 'done_with_failures')
 })
 
-test('W19: id-only rejections and reused gates ids each stay one finding', async () => {
-  const gates = Object.assign({}, base()['gates:r1'], { findings: [finding('major', 'g.py:2', 'run g')] })
-  const late = Object.assign({}, gates, { head: 'cccc222', findings: [finding('major', 'g.py:7', 'run h')] })
+test('W19: id-only rejections and a gate failed again with a new line each stay one finding', async () => {
   const { result } = await runCore({
-    'gates:r1': gates,
-    'fix:r1': { applied: [], rejected: [{ id: 'G1-1', argument: 'a' }, { id: 'Z1', argument: 'a' }, { id: 'Z2', argument: 'a' }], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r1:recheck': late,
+    'gates:r1': gatesAt('bbbb111', gate('tests', 'failed', 'RED 1')),
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }, { id: 'Z1', argument: 'a' }, { id: 'Z2', argument: 'a' }], committed: false, head: 'cccc222', gate_output: '' },
+    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'failed', 'RED 2')),
     mutation: { head: 'cccc222', tool: tool([]) },
   })
   assert.deepEqual(['Z1', 'Z2'].map(id => withIds(result.leftover_findings, id).length), [1, 1])
@@ -307,7 +354,7 @@ test('W28: with extra_rounds, a major fixed in the last planned round gets one m
   const { result, calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
-    'gates:r2': Object.assign({}, base()['gates:r1'], { head: 'cccc222' }),
+    'gates:r2': gatesAt('cccc222'),
     mutation: { head: 'cccc222', tool: tool([]) },
   }, 1, { extra_rounds: 1 })
   assert.ok(called(calls, 'review:r2:code'))
@@ -320,10 +367,10 @@ test('W29: with extra_rounds, a major still found in the extra round is fixed an
   const { result, calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
-    'gates:r2': Object.assign({}, base()['gates:r1'], { head: 'cccc222' }),
+    'gates:r2': gatesAt('cccc222'),
     'review:r2:code': again,
     'fix:r2': { applied: [{ id: 'R2-code-1', what: 'w' }], rejected: [], committed: true, head: 'dddd333', gate_output: '' },
-    'gates:r2:recheck': Object.assign({}, base()['gates:r1'], { head: 'dddd333' }),
+    'gates:r2:recheck': gatesAt('dddd333'),
     mutation: { head: 'dddd333', tool: tool([]) },
   }, 1, { extra_rounds: 1 })
   assert.ok(!called(calls, 'review:r3:code'))
@@ -367,7 +414,7 @@ test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and 
     'review:fix:r1': late,
     'fix:r1:review': { applied: [{ id: 'F1-1', what: 'w' }], rejected: [], committed: true, head: 'dddd333', gate_output: '' },
     'review:fix:r1:1': late,
-    'gates:r1:recheck': Object.assign({}, base()['gates:r1'], { head: 'dddd333' }),
+    'gates:r1:recheck': gatesAt('dddd333'),
     mutation: { head: 'dddd333', tool: tool([]) },
   })
   assert.match(prompt(calls, 'review:fix:r1'), /git diff bbbb111\.\.HEAD/)

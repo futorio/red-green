@@ -29,6 +29,9 @@ const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.
 const P = A.profile || {}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
+// profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
+const GATES = P.gates || []
+const BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
 
 const COMMIT_RULE = A.one_commit
@@ -48,7 +51,7 @@ const NO_CODE = ['research', 'plan', 'replan']
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const PRE = `${CORE_PRE}
 - ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
-- Gates: ${P.gates || 'the checks named in the baseline below'}. Baseline, measured before the run (re-measure, never quote): ${A.baseline}. "Green" means nothing worse than that baseline.
+- Gates: ${GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 - You do not edit ${TARGET} or the other ticket files.
 - A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
 - Over-built output is a finding, not a bonus.${LAST}`
@@ -123,12 +126,11 @@ const PRODUCTION = 'production source — not tests, docs, data or config'
 const SURVIVOR = { type: 'object', properties: { file: { type: 'string' }, line: { type: 'integer' }, op: { type: 'string' }, before: { type: 'string' }, after: { type: 'string' } }, required: ['file', 'line', 'op', 'before', 'after'] }
 const GATES_SCHEMA = { type: 'object', properties: {
   head: { type: 'string' },
-  gate_lines: { type: 'array', items: { type: 'string' } },
-  changed_files: { type: 'array', items: { type: 'string' } },
-  counts: { type: 'array', items: { type: 'string' } },
-  findings: { type: 'array', items: FINDING },
+  gates: { type: 'array', items: { type: 'object', properties: {
+    name: { type: 'string', enum: GATES.map(g => g.name) }, status: { type: 'string', enum: ['ran', 'failed', 'not_run'] }, line: { type: 'string' },
+  }, required: ['name', 'status', 'line'] } },
   notes: { type: 'string' },
-}, required: ['head', 'gate_lines', 'changed_files', 'counts', 'findings'] }
+}, required: ['head', 'gates'] }
 const MUTATION_SCHEMA = { type: 'object', properties: {
   head: { type: 'string' },
   tool: { type: 'object', properties: {
@@ -168,6 +170,8 @@ const FIX_SCHEMA = { type: 'object', properties: {
 }, required: ['applied', 'rejected', 'committed', 'head', 'gate_output'] }
 
 const failures = []
+const unmeasured = GATES.filter(g => !(g.name in BASELINE)).map(g => g.name)
+if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 
 phase('Research')
 const research = await ask(`${NO_CODE_PRE}
@@ -340,22 +344,21 @@ ${JSON.stringify(open)}`, { model: M.review, effort: 'high', schema: RULING_SCHE
   }
 }
 
-async function runGates(round, label, since, tag) {
+// The gates step only executes; the script turns its rows into findings and failures.
+async function runGates(round, label, tag) {
   phase('Gates')
   const res = await ask(`${PRE}
 
-STAGE: gates, HEAD ${headNow}. This runs once per HEAD, before the reviewers, who run none of the gates and get your gate_lines. Change nothing in ${REPO} and commit nothing. The mutation tool is not a gate here: it runs once per run, in its own step.${since ? ` Gates already ran at ${since} and a fix has moved HEAD: run only what \`git diff --name-only ${since}..HEAD\` can affect. Only docs (prose no program reads) changed: no build, replay check or test; say "skipped: docs only" in gate_lines. Only tests changed: no build or replay check, only the changed test files; say "skipped: tests only" in gate_lines for the rest. The static checks always run; anything else changed: every gate.` : ''}
-1. Run every gate named above, from ${REPO}. gate_lines: each gate's summary line, verbatim. A gate worse than the baseline is a finding.
-2. Scope: \`git diff --stat ${BASE}..HEAD\`. changed_files: \`git diff --name-only ${BASE}..HEAD\`. A change the ticket does not call for is a finding.
-3. Recount from disk every count the ticket names; counts: one line each, the ticket's number and the disk's. A mismatch is a finding; so is a generated file that differs from what its generator produces.
-${SEVERITY}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates', label })
-  if (!res) {
-    failures.push(`gates ${label}`)
-    return { head: headNow, gate_lines: ['the gates step died: run none, and say so in notes'], changed_files: [], counts: [], found: [], scoped: true }
-  }
-  if (!res.gate_lines.length) failures.push(`gates ${label} silent: no gate lines`)
-  headNow = res.head || headNow
-  return Object.assign({}, res, { scoped: !!since, found: tidy(res.findings).map((f, k) => Object.assign({ id: `G${round}${tag || ''}-${k + 1}`, source: 'gates' }, f)) })
+STAGE: gates, HEAD ${headNow}. This runs once per HEAD, before the reviewers, who run none of the gates and get your rows. Change nothing in ${REPO} and commit nothing. The mutation tool is not a gate here: it runs once per run, in its own step.
+Run every gate named above from ${REPO}, each to completion: never cut a gate short; a long one runs in the background until it finishes. One row per gate: \`line\` its summary line verbatim; \`status\` \`ran\` (at its baseline or better), \`failed\` (worse than its baseline) or \`not_run\` (\`line\` the reason).`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates', label })
+  if (!res) failures.push(`gates ${label}`)
+  else headNow = res.head || headNow
+  const rows = GATES.map(g => (res && res.gates.find(r => r.name === g.name)) || { name: g.name, status: 'not_run', line: res ? 'no row' : 'the gates step died' })
+  if (res) rows.filter(r => r.status === 'not_run').forEach(r => failures.push(`gates ${label}: ${r.name} not run: ${r.line}`))
+  return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'failed').map(r => ({
+    id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name,
+    problem: `${r.line} (baseline: ${BASELINE[r.name]})`, trigger: `${r.line} (baseline: ${BASELINE[r.name]})`,
+    consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' })) }
 }
 
 // The mutation tool runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
@@ -378,12 +381,12 @@ The project's mutation tool: ${P.mutation} This run's label for file names: muta
   return survivorFindings(survivors)
 }
 
-const GATES_APART = gates => `The gates step already ran at this HEAD; its lines are below. Review the diff and those lines: run none of the gates or any long check, recount nothing and do not re-check the scope. The code lens may make at most one targeted run of the changed path (one test, one replay case) when reading cannot settle a question, and says so in \`checked\`.
+const GATES_APART = gated => `The gates step already ran at this HEAD; its rows are below. Review the diff and those rows: run none of the gates or any long check. The code lens may make at most one targeted run of the changed path (one test, one replay case) when reading cannot settle a question, and says so in \`checked\`.
 GATES:
-${JSON.stringify(gates.gate_lines)}`
+${gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n')}`
 
 const LENSES = [
-  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
+  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. A change the ticket does not call for is a finding. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
   { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}.${CODE_RULES}
 A test the diff weakened, deleted or left asserting nothing it promises is a finding. Mutation is a separate step's tool, run once after the review rounds, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
 ]
@@ -438,7 +441,7 @@ while (round < N) {
   const fresh = !gated || !same(gated.head, headNow)
   const gatesStep = async () => {
     if (!fresh) return gated
-    return runGates(round, `gates:r${round}`, gated && gated.head)
+    return runGates(round, `gates:r${round}`)
   }
   phase('Review')
   let fromHead = headNow
@@ -485,7 +488,7 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
   advisory.push(...found.filter(f => f.severity === 'minor'))
   if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
   const bySeverity = s => found.filter(f => f.severity === s).length
-  rounds.push({ round, blocker: bySeverity('blocker'), major: bySeverity('major'), minor: bySeverity('minor') })
+  rounds.push({ round, blocker: bySeverity('blocker'), major: bySeverity('major'), minor: bySeverity('minor'), gates: gated.gates })
   log(`round ${round}: ${toFix.length} to fix (${bySeverity('blocker')} blocker, ${bySeverity('major')} major)`)
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
@@ -541,10 +544,9 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     }
     if (!same(headNow, gated.head)) {
       // The last fix moved HEAD and no review follows: the gates step checks it.
-      gated = await runGates(round, `gates:r${round}:recheck`, gated.head, 'r')
-      const lateFound = gated.found
-      unfixed.push(...lateFound.filter(f => f.severity !== 'minor'))
-      advisory.push(...lateFound.filter(f => f.severity === 'minor'))
+      gated = await runGates(round, `gates:r${round}:recheck`, 'r')
+      rounds[rounds.length - 1].recheck = gated.gates
+      unfixed.push(...gated.found)
     }
   }
 }

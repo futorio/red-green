@@ -21,7 +21,7 @@ research
 
 Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
 when the profile names a tool. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
-one, and runs before the lenses of its round, which get its lines. A fix that no full round follows gets a
+one, and runs before the lenses of its round, which get its rows. A fix that no full round follows gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
 ## Parameters (`args`)
@@ -33,7 +33,7 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `tools` | checkout of this repository (it holds `.claude/workflows/ticket-tdd/`) | required |
 | `run` | scratch directory for state files | required |
 | `base` | the commit the run starts from; review diffs against it | required |
-| `baseline` | the gate summary lines measured at `base`, as one string | required |
+| `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research | required |
 | `rounds` | max review rounds `n`, or `auto` | `2` |
 | `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
 | `extra_rounds` | full rounds added when the last planned round has blockers or majors to fix | `0` (the fix-diff review sees the fix) |
@@ -61,9 +61,9 @@ Every field is optional; an absent one leaves the core's neutral wording.
 
 | field | type | where it lands |
 |---|---|---|
-| `gates` | string | every agent: what "the gates" are |
+| `gates` | `{name, command}[]`, names unique | the code-writing agents' preamble (name, command, baseline) and the gates step |
 | `commit` | string | every agent: commit-message rule appended to the core's |
-| `context` | string[] | every agent: extra preamble lines (search traps, what not to touch) |
+| `context` | string[] | every agent: extra preamble lines (search traps, what not to touch, gate guidance such as tiers that never run in a run or one heavy check at a time) |
 | `research` | string | research: where decisions live, which harnesses exist |
 | `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
@@ -90,8 +90,8 @@ profile carries only what a stage prompt must name explicitly.
 
 1. **Worktree** — `git worktree add ../wt-<name> -b wf/<name> <branch>`, when another session may be
    committing to the branch.
-2. **Baseline** — run the gates in the worktree; their summary lines, and any failure already there
-   with its cause, become `args.baseline`.
+2. **Baseline** — run each gate of `profile.gates` in the worktree; its summary line, and any failure
+   already there with its cause, becomes `args.baseline[<its name>]`.
 3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`, or the project's wrapper the same way. A launch by `name` runs the scripts as they were at session start, not as on disk.
 4. **After** — check every lens returned a verdict and `failures` is empty; read the commits; re-run the
    gates; fast-forward the branch; free the run directory (`git worktree prune`, then delete every
@@ -186,16 +186,18 @@ told so; a second empty result ends the run as `failed` before any review.
 ### 4. Gates
 
 One agent, run once per HEAD, before the lenses of its round, and skipped when HEAD has not changed
-since the last gates step (implement and every fix report `head`). It runs the profile's gates and
-returns their summary lines verbatim, the changed files (`git diff --stat base..HEAD` scope), and a recount
-of every count the ticket names. A gate worse than the baseline, a change the
-ticket does not call for or a wrong count comes back as a finding; the script numbers it
-`G<round>-<n>` (`G<round>r-<n>` after the last fix) and passes it through `tidy` when the step returns. The lenses get its gate lines and
-run none of the gates; the code lens may make one targeted run of the changed path.
+since the last gates step (implement and every fix report `head`). It only executes: it runs every gate
+`profile.gates` declares, to completion (a long one in the background, never cut short), compares each
+with its baseline line, and returns one row per gate, `{name, status, line}`: `status` `ran` (at its
+baseline or better), `failed` (worse) or `not_run` (`line` the reason); the schema accepts only the
+declared names. Every HEAD gets every gate: there is no scoped rerun after a fix.
 
-After a fix the step is told the HEAD it last gated and reruns only what `git diff --name-only <that
-HEAD>..HEAD` can affect: a fix that changed only docs runs no build, replay check or test;
-one that changed only tests runs no build or replay check, only the changed test files. Such a step is `scoped`.
+The step returns no findings; the script makes them. A `failed` row is a major finding `G<round>-<name>`
+(`G<round>r-<name>` after the last fix), source `gates`, its trigger the gate's line against its
+baseline line. A `not_run` row, a declared gate with no row, and a dead step each land in `failures`.
+The lenses get each gate as `name: status — line` and run none of the gates; the code lens may make one
+targeted run of the changed path. Scope is the checklist lens's; a number the ticket states is a
+requirement it checks.
 
 ### 5. Review × n
 
@@ -207,7 +209,7 @@ A diff with no production file gets one checked row saying so from the code lens
 returns one `checked` row per id with `status: met|unmet|unverified`; an id without a row counts as
 `unverified`. An `unmet` requirement becomes a major finding and goes to the fix like any other; an
 `unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
-the requirements.
+the requirements, and a change the ticket does not call for is one.
 
 **Mutation cannot be skipped silently.** The mutation step reports whether the tool applied and ran; one
 that applied and did not run, or a dead step, lands in `failures`.
@@ -258,7 +260,7 @@ reruns the gates and reverts when one got worse; a minor fix that moved HEAD get
 ```
 loop:
   round += 1
-  gates, if HEAD changed since the last gates step; then in parallel the lenses, given its lines
+  gates (every gate), if HEAD changed since the last gates step; then in parallel the lenses, given its rows
   findings = gates findings + review(round, rejections), minors set aside
   if no findings and every lens answered and round >= min_rounds:
     if the tool ran: break
@@ -267,7 +269,7 @@ loop:
   if findings and round == n and extra rounds left: n += 1
   if findings: fix
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
-    gates once more if the fix moved HEAD (its findings are leftover); break
+    gates once more if the fix moved HEAD (its failed gates are leftover); break
 after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
 minor fix → fix-diff review
 ```
@@ -304,7 +306,7 @@ The 16-fixture sweep must include 8 jobs.
 
 ## Result
 
-`{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected),
+`{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
 verdicts, mutation (the tool's result, at most one),
 uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
@@ -318,7 +320,7 @@ lens killed by an API error reads as `DIED` in `verdicts`, one that answered wit
 `ticket-tdd.js` as an async function with a stub `agent()` that returns recorded results keyed by label,
 and checks what the script does with them: `tidy`, survivor rulings, checklist statuses, the
 deduplicated leftover, the run status, and that the lenses start after the gates step and get its
-lines. A change to the core's control flow gets a case there.
+rows. A change to the core's control flow gets a case there.
 
 ## Template
 
@@ -345,8 +347,8 @@ node template/render.mjs [config.json] --case case.json --prompt <label> --json
 `--prompt` runs the rendered script with stub agents and prints the prompt, mailbox note included, that
 the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The case is
 `{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
-commit the diff starts from: the prompt names both, the agent reads them), `gate_lines` are every gates
-step's lines, and `results[label]` is an earlier stage's recorded result. Research, plan and implement
+commit the diff starts from: the prompt names both, the agent reads them; the stub args declare one gate,
+`gates`), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.

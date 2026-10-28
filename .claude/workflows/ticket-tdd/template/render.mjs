@@ -41,9 +41,9 @@ export function render(config) {
   return TEMPLATE.replace(/\{\{([\w.]+)\}\}/g, (_, k) => slots[k])
 }
 
-// A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of
-// every gates step; results[label] is the recorded result of an earlier stage (null: the agent died).
-const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run', base: 'BASE', target: '/ticket.md', baseline: 'BASELINE', profile: {} }
+// A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of the
+// declared gates, in order, in every gates step; results[label] is the recorded result of an earlier stage (null: the agent died).
+const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run', base: 'BASE', target: '/ticket.md', baseline: { gates: 'BASELINE' }, profile: { gates: [{ name: 'gates', command: 'GATES' }] } }
 const STUB_RESULTS = {
   research: { requirements: ['R1: the ticket'], facts: [], plan: [], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] },
   plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
@@ -55,10 +55,10 @@ function drive(source, kase, stop) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source.replace('export const meta', 'const meta'))
   const results = Object.assign({}, STUB_RESULTS, kase.results)
-  const gates = { head: 'HEAD', gate_lines: kase.gate_lines || ['GATES'], changed_files: [], counts: [], findings: [] }
+  const gates = names => ({ head: 'HEAD', gates: names.map((name, i) => ({ name, status: 'ran', line: (kase.gate_lines || [])[i] || 'GATES' })) })
   const agent = async (prompt, opts) => {
     if (stop(prompt, opts)) return new Promise(() => {})
-    const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates : null
+    const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates(opts.schema.properties.gates.items.properties.name.enum) : null
     return r && JSON.parse(JSON.stringify(r))
   }
   const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
