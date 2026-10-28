@@ -92,7 +92,7 @@ profile carries only what a stage prompt must name explicitly.
 2. **Baseline** — run each gate of `profile.gates` in the worktree; its summary line, and any failure
    already there with its cause, becomes `args.baseline[<its name>]`. Without `profile.gates` the run
    discovers the gates and measures the baseline itself; copy the result's `gates` into the profile.
-3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`, or the project's wrapper the same way. A launch by `name` runs the scripts as they were at session start, not as on disk.
+3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`; the project's specifics come in `args.profile`, never in a wrapper script. A launch by `name` runs the scripts as they were at session start, not as on disk.
 4. **After** — check every lens returned a verdict and `failures` is empty; read the commits; re-run the
    gates; fast-forward the branch; free the run directory (`git worktree prune`, then delete every
    directory under `run`, keeping its top-level files); remove the worktree.
