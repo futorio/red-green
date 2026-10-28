@@ -30,15 +30,15 @@ const P = A.profile || {}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
 // profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
-const GATES = P.gates || []
-const BASELINE = typeof A.baseline === 'object' && A.baseline || {}
+let GATES = P.gates || []
+let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
 
 const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-// The research and plan stages write no code: they get the preamble without the commit, gate and long-command rules.
+// The gates discovery, research and plan stages write no code: they get the preamble without the commit, gate and long-command rules.
 const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
 Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
 Run directory for state files and scratch: ${RUN}.
@@ -47,14 +47,8 @@ Run directory for state files and scratch: ${RUN}.
 - The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
 const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
-const NO_CODE = ['research', 'plan', 'replan']
+const NO_CODE = ['gates:discover', 'research', 'plan', 'replan']
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
-const PRE = `${CORE_PRE}
-- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
-- Gates: ${GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
-- You do not edit ${TARGET} or the other ticket files.
-- A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
-- Over-built output is a finding, not a bonus.${LAST}`
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
@@ -70,6 +64,40 @@ async function ask(prompt, opts) {
   if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
   return res
 }
+
+const DISCOVER_SCHEMA = { type: 'object', properties: {
+  gates: { type: 'array', items: { type: 'object', properties: {
+    name: { type: 'string' }, command: { type: 'string' }, source: { type: 'string' }, line: { type: 'string' } }, required: ['name', 'command', 'source', 'line'] } },
+  questions: { type: 'array', items: { type: 'object', properties: {
+    command: { type: 'string' }, source: { type: 'string' }, question: { type: 'string' } }, required: ['command', 'source', 'question'] } },
+}, required: ['gates', 'questions'] }
+const failures = []
+// Declared gates need a baseline each; with none declared, the discovery step finds them and measures the baseline.
+// Its questions go to the result alone.
+let gatesQuestions = []
+if (P.gates) {
+  const unmeasured = GATES.filter(g => !(g.name in BASELINE)).map(g => g.name)
+  if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
+} else {
+  phase('Gates')
+  const found = await ask(`${NO_CODE_PRE}
+
+STAGE: gates discovery. The profile names no gates: find this project's gates and measure each once on the base tree. Change nothing in ${REPO} and commit nothing.
+Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.
+gates: each gate you find, run once to completion: name, command, source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, two sources disagree), with its source; it stays out of gates.`,
+    { model: M.gates, effort: 'medium', schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
+  if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', failures }
+  GATES = found.gates
+  BASELINE = Object.fromEntries(GATES.map(g => [g.name, g.line]))
+  gatesQuestions = found.questions.filter(q => GATES.some(g => g.source === q.source) || log(`gates question from unknown source ${q.source}: dropped`))
+}
+
+const PRE = `${CORE_PRE}
+- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
+- Gates: ${GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
+- You do not edit ${TARGET} or the other ticket files.
+- A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
+- Over-built output is a finding, not a bonus.${LAST}`
 
 const RESEARCH_SCHEMA = { type: 'object', properties: {
   requirements: { type: 'array', items: { type: 'string', pattern: '^R\\d+: ' } },
@@ -169,9 +197,6 @@ const FIX_SCHEMA = { type: 'object', properties: {
   gate_output: { type: 'string' },
 }, required: ['applied', 'rejected', 'committed', 'head', 'gate_output'] }
 
-const failures = []
-const unmeasured = GATES.filter(g => !(g.name in BASELINE)).map(g => g.name)
-if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 
 phase('Research')
 const research = await ask(`${NO_CODE_PRE}
@@ -603,6 +628,8 @@ return {
   plan_questions: questions,
   research_issues: researchIssues,
   research_questions: researchQuestions,
+  gates: GATES,
+  gates_questions: gatesQuestions,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
   leftover_findings: uniq(unfixed.concat(unmet)),

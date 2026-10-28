@@ -587,3 +587,47 @@ test('W44: plan and replan get the no-code preamble and the short mailbox checkp
     assert.match(p, /Read it at start and before returning\./, label)
   }
 })
+
+// A profile without gates, and what the discovery step finds.
+const noGates = { profile: { mutation: 'MUTATION-TOOL-TEXT' }, baseline: 'ignored' }
+const discovered = (over) => Object.assign({
+  gates: [{ name: 'lint', command: 'npm run lint', source: 'AGENTS.md', line: 'LINT-BASE 0 errors' }, { name: 'test', command: 'npm test', source: 'AGENTS.md', line: 'TEST-BASE 9 of 9' }],
+  questions: [],
+}, over)
+
+test('W53: with no profile.gates the discovery step runs first, and its gates and lines drive the gates step and the preamble', async () => {
+  const q = { command: 'npm run e2e', source: 'AGENTS.md', question: 'needs a browser: a gate?' }
+  const { result, calls } = await runCore({
+    'gates:discover': discovered({ questions: [q, Object.assign({}, q, { source: 'Makefile' })] }),
+    'gates:r1': gatesAt('bbbb111', gate('lint', 'ran', 'l'), gate('test', 'ran', 't')),
+  }, 1, noGates)
+  assert.deepEqual(calls.slice(0, 2).map(c => c.label), ['gates:discover', 'research'])
+  const call = calls[0]
+  assert.equal(call.opts.model, 'sonnet')
+  assert.ok(call.prompt.includes('Where: the repo\'s agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.'))
+  for (const s of ['COMMITS', 'Gates:', 'run_in_background']) assert.ok(!call.prompt.includes(s), s)
+  assert.deepEqual(Object.keys(call.opts.schema.properties.gates.items.properties), ['name', 'command', 'source', 'line'])
+  assert.deepEqual(Object.keys(call.opts.schema.properties.questions.items.properties), ['command', 'source', 'question'])
+  assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['lint', 'test'])
+  assert.ok(prompt(calls, 'implement').includes('lint: `npm run lint` (baseline: LINT-BASE 0 errors); test: `npm test` (baseline: TEST-BASE 9 of 9)'))
+  assert.deepEqual(result.gates, discovered().gates)
+  assert.deepEqual(result.gates_questions, [q])
+  calls.slice(1).forEach(c => assert.ok(!/needs a browser/.test(c.prompt), c.label))
+  assert.equal(result.status, 'done')
+})
+
+test('W54: a discovery step that dies or finds no gate fails the run before research', async () => {
+  for (const r of [null, discovered({ gates: [] })]) {
+    const { result, calls } = await runCore({ 'gates:discover': r }, 1, noGates)
+    assert.equal(result.status, 'failed')
+    assert.equal(result.stage, 'gates:discover')
+    assert.ok(!called(calls, 'research'))
+  }
+})
+
+test('W55: with profile.gates given no discovery step runs, and the result carries the declared gates and no questions', async () => {
+  const { result, calls } = await runCore({})
+  assert.ok(!called(calls, 'gates:discover'))
+  assert.deepEqual(result.gates, [{ name: 'tests', command: 'npm test' }])
+  assert.deepEqual(result.gates_questions, [])
+})

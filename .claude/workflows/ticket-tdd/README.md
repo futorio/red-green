@@ -13,7 +13,7 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 ## Shape
 
 ```
-research
+[gates discovery] → research
   → ( test-case planning → coverage → implementation )
   → ( gates → review → fix ) × n → fix-diff review
   → [mutation] → minor fix → fix-diff review
@@ -33,7 +33,7 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `tools` | checkout of this repository (it holds `.claude/workflows/ticket-tdd/`) | required |
 | `run` | scratch directory for state files | required |
 | `base` | the commit the run starts from; review diffs against it | required |
-| `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research | required |
+| `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research; ignored when `profile.gates` is absent | required with `profile.gates` |
 | `rounds` | max review rounds `n`, or `auto` | `2` |
 | `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
 | `extra_rounds` | full rounds added when the last planned round has blockers or majors to fix | `0` (the fix-diff review sees the fix) |
@@ -61,7 +61,7 @@ Every field is optional; an absent one leaves the core's neutral wording.
 
 | field | type | where it lands |
 |---|---|---|
-| `gates` | `{name, command}[]`, names unique | the code-writing agents' preamble (name, command, baseline) and the gates step |
+| `gates` | `{name, command}[]`, names unique | the code-writing agents' preamble (name, command, baseline) and the gates step; absent: the gates discovery step finds them |
 | `commit` | string | every agent: commit-message rule appended to the core's |
 | `context` | string[] | every agent: extra preamble lines (search traps, what not to touch, gate guidance such as tiers that never run in a run or one heavy check at a time) |
 | `research` | string | research: where decisions live, which harnesses exist |
@@ -91,13 +91,27 @@ profile carries only what a stage prompt must name explicitly.
 1. **Worktree** — `git worktree add ../wt-<name> -b wf/<name> <branch>`, when another session may be
    committing to the branch.
 2. **Baseline** — run each gate of `profile.gates` in the worktree; its summary line, and any failure
-   already there with its cause, becomes `args.baseline[<its name>]`.
+   already there with its cause, becomes `args.baseline[<its name>]`. Without `profile.gates` the run
+   discovers the gates and measures the baseline itself; copy the result's `gates` into the profile.
 3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`, or the project's wrapper the same way. A launch by `name` runs the scripts as they were at session start, not as on disk.
 4. **After** — check every lens returned a verdict and `failures` is empty; read the commits; re-run the
    gates; fast-forward the branch; free the run directory (`git worktree prune`, then delete every
    directory under `run`, keeping its top-level files); remove the worktree.
 
 ## Stages
+
+### 0. Gates discovery
+
+Only when `profile.gates` is absent, before research: one agent (`gates:discover`, `models.gates`, the
+no-code preamble) finds the project's gates — in the repository's agent instructions, then CI config,
+then the task runner; the first source that names gates wins. A gate is a command CI or those
+instructions require before a commit; it runs with no human, network or secrets, passes or fails by exit
+code and writes nothing to the tree. It runs each one once on the base tree and returns `gates[]`
+`{name, command, source, line}` and `questions[]` `{command, source, question}` for the commands it is
+unsure of. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
+question whose `source` none of the returned gates has is dropped with a log line; the rest go to the
+result as `gates_questions`, and no later stage gets them. A dead step, or one that finds no gate, ends the
+run as `failed` before research.
 
 ### 1. Research
 
@@ -308,6 +322,7 @@ The 16-fixture sweep must include 8 jobs.
 
 `{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
 verdicts, mutation (the tool's result, at most one),
+gates (the gates used: declared, or discovered with their source and baseline line), gates_questions (the discovery step's questions; empty when the profile declared the gates),
 uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
@@ -348,7 +363,7 @@ node template/render.mjs [config.json] --case case.json --prompt <label> --json
 the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The case is
 `{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
 commit the diff starts from: the prompt names both, the agent reads them; the stub args declare one gate,
-`gates`), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
+`gates`; a case whose profile declares none needs a `gates:discover` result), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.
