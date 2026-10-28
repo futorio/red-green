@@ -85,10 +85,10 @@ if (P.gates) {
 
 STAGE: gates discovery. Read-only: change and commit nothing in ${REPO}.
 Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.
-Run each gate you find once, to completion. gates: name, command, source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with \`source\` the source of the gate it bears on; it stays out of gates.
+Run each gate exactly as its \`command\` reads, once, to completion; one that cannot run that way here is a question, not a gate. gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with \`source\` the source of the gate it bears on; it stays out of gates.
 ${BG}`,
     { model: M.gates, effort: 'medium', schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
-  if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', failures }
+  if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', gates_questions: found ? found.questions : [], failures }
   GATES = found.gates
   BASELINE = Object.fromEntries(GATES.map(g => [g.name, g.line]))
   gatesQuestions = found.questions.filter(q => GATES.some(g => g.source === q.source) || log(`gates question from unknown source ${q.source}: dropped`))

@@ -611,6 +611,7 @@ test('W53: with no profile.gates the discovery step runs first, and its gates an
   for (const s of ['COMMITS', 'Gates:']) assert.ok(!call.prompt.includes(s), s)
   assert.match(call.prompt, /run_in_background/)
   assert.match(call.prompt, /`source` the source of the gate it bears on/)
+  assert.match(call.prompt, /Run each gate exactly as its `command` reads, once, to completion; one that cannot run that way here is a question/)
   assert.deepEqual(Object.keys(call.opts.schema.properties.gates.items.properties), ['name', 'command', 'source', 'line'])
   assert.deepEqual(Object.keys(call.opts.schema.properties.questions.items.properties), ['command', 'source', 'question'])
   assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['lint', 'test'])
@@ -628,6 +629,10 @@ test('W54: a discovery step that dies or finds no gate fails the run before rese
     assert.equal(result.stage, 'gates:discover')
     assert.ok(!called(calls, 'research'))
   }
+  // A project where no gate can run here: the questions saying why are the result.
+  const q = { command: 'make check', source: 'AGENTS.md', question: 'make is not installed' }
+  const { result } = await runCore({ 'gates:discover': discovered({ gates: [], questions: [q] }) }, 1, noGates)
+  assert.deepEqual(result.gates_questions, [q])
 })
 
 test('W55: with profile.gates given no discovery step runs, and the result carries the declared gates and no questions', async () => {

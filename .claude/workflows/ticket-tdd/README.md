@@ -106,12 +106,13 @@ Only when `profile.gates` is absent, before research: one agent (`gates:discover
 no-code preamble plus the long-command rule) finds the project's gates — in the repository's agent instructions, then CI config,
 then the task runner; the first source that names gates wins. A gate is a command CI or those
 instructions require before a commit; it runs with no human, network or secrets, passes or fails by exit
-code and writes nothing to the tree. It runs each one once on the base tree and returns `gates[]`
+code and writes nothing to the tree. It runs each one once on the base tree, exactly as its `command`
+reads; one that cannot run that way there becomes a question, not a gate. It returns `gates[]`
 `{name, command, source, line}` and `questions[]` `{command, source, question}` for the commands it is
 unsure of, `source` being the source of the gate a question bears on. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
 question whose `source` none of the returned gates has is dropped with a log line; the rest go to the
 result as `gates_questions`, and no later stage gets them. A dead step, or one that finds no gate, ends the
-run as `failed` before research.
+run as `failed` before research; the latter keeps its `gates_questions`, which say why.
 
 ### 1. Research
 
