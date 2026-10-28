@@ -226,7 +226,8 @@ and the `unverified` list implement reported. For each id it quotes the statemen
 `promise` and tries a `counterexample`, the input most likely to make the promise false on the diff;
 it returns one `checked` row per id with `promise`, `counterexample` and `status: met|unmet|unverified`,
 `met` only when the counterexample was tried and the promise held. An id without a row counts as
-`unverified`. An `unmet` requirement becomes a major finding and goes to the fix like any other; an
+`unverified`. An `unmet` requirement becomes a major finding — the promise and evidence as its `problem`,
+the counterexample as its `trigger` — and goes to the fix like any other; an
 `unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
 the requirements, and a change the statement does not call for is one.
 

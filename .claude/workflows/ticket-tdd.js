@@ -516,11 +516,11 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     if (l.key === 'checklist') {
       const rows = {}
       res.checked.forEach(c => { rows[idOf(c.item)] = c })
-      checkIds.forEach(id => { status[id] = rows[id] ? { status: rows[id].status, evidence: rows[id].evidence } : { status: 'unverified', evidence: 'no checked row' } })
+      checkIds.forEach(id => { status[id] = rows[id] ? { status: rows[id].status, promise: rows[id].promise, counterexample: rows[id].counterexample, evidence: rows[id].evidence } : { status: 'unverified', evidence: 'no checked row' } })
       // unmet is fixed like any major; unverified only goes to the leftover list at the end.
       checkIds.filter(id => status[id].status === 'unmet').forEach(id => found.push({ id: `R${round}-${id}`, source: 'checklist', severity: 'major',
-        where: research.requirements.find(r => idOf(r) === id), problem: status[id].evidence, trigger: status[id].evidence,
-        consequence: 'the ticket requirement is not met', fix: 'meet the requirement' }))
+        where: research.requirements.find(r => idOf(r) === id), problem: `${status[id].promise} — ${status[id].evidence}`, trigger: status[id].counterexample,
+        consequence: 'the statement\'s promise is not met', fix: 'keep the promise' }))
     }
     found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })

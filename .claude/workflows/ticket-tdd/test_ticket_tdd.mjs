@@ -785,3 +785,14 @@ test('W67: the checklist lens takes the statement as each id\'s promise and need
   for (const k of ['promise', 'counterexample', 'status']) assert.ok(rowSchema.required.includes(k), k)
   assert.ok(!('promise' in calls.find(c => c.label === 'review:r1:code').opts.schema.properties.checked.items.properties))
 })
+
+test('W68: an unmet row reaches the fix with its promise as the problem and its counterexample as the trigger', async () => {
+  const { calls } = await runCore({
+    'review:r1:checklist': clean([row('R1', { status: 'unmet', promise: 'PROMISE-SENT', counterexample: 'COUNTER-SENT', evidence: 'EVIDENCE-SENT' })]),
+    'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], committed: false, head: 'bbbb111', gate_output: '' },
+  })
+  const sent = JSON.parse(prompt(calls, 'fix:r1').split('FINDINGS:\n')[1].split('\n\n')[0].split('\nRESEARCH:')[0]).find(f => f.id === 'R1-R1')
+  assert.equal(sent.trigger, 'COUNTER-SENT')
+  assert.match(sent.problem, /PROMISE-SENT.*EVIDENCE-SENT/)
+  assert.ok(!/ticket/.test(sent.consequence))
+})
