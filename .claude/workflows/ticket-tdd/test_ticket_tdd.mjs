@@ -842,8 +842,8 @@ test('W73: implement questions with a known id reach implement_questions alone; 
   assert.equal(result.status, 'done')
 })
 
-test('W74: HEAD still at base gets one retry told no commit was made; HEAD moved gets none, even with no rows', async () => {
-  const atBase = Object.assign({}, base().implement, { head: 'aaaa000', notes: 'NOTES-SENT' })
+test('W74: HEAD still at base with no tested row gets one retry told no commit was made; HEAD moved, or a tested row, gets none', async () => {
+  const atBase = Object.assign({}, base().implement, { head: 'aaaa000', checks: [], notes: 'NOTES-SENT' })
   const { calls } = await runCore({ implement: atBase, 'implement:retry': base().implement })
   assert.equal(count(calls, 'implement:retry'), 1)
   assert.match(prompt(calls, 'implement:retry'), /A previous attempt at this stage made NO commit \(HEAD still aaaa000\); its notes: "NOTES-SENT"\./)
@@ -851,4 +851,12 @@ test('W74: HEAD still at base gets one retry told no commit was made; HEAD moved
   assert.ok(!called(moved.calls, 'implement:retry'))
   const twice = await runCore({ implement: atBase, 'implement:retry': atBase })
   assert.equal(twice.result.status, 'failed')
+  // Work left uncommitted behind a gate that cannot go green here still goes to review.
+  const uncommitted = await runCore({ implement: Object.assign({}, base().implement, { head: 'aaaa000' }) })
+  assert.ok(!called(uncommitted.calls, 'implement:retry'))
+})
+
+test('W75: the implement prompt asks for a question\'s requirement as its id', async () => {
+  const { calls } = await runCore({})
+  assert.match(prompt(calls, 'implement'), /questions \(requirement: its id;/)
 })

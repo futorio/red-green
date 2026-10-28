@@ -218,9 +218,9 @@ checklist lens gets the whole list. Whether every boundary phrase has a row is l
 ticket and the implementer followed the ticket, `owner` when the ticket leaves it open. One for an unknown
 requirement is dropped with a log line. They go to the result as `implement_questions` and to no stage.
 
-**If implementation made no commit** — `head` still at `base` — the stage runs once more, told that the
-previous attempt made no commit and given its notes; a second such result ends the run as `failed`
-before any review.
+**If implementation made nothing** — `head` still at `base` and no `checks` row with a test — the stage
+runs once more, told that the previous attempt made no commit and given its notes; a second such result
+ends the run as `failed` before any review. Work left uncommitted with tested rows goes to review.
 
 ### 4. Gates
 

@@ -338,7 +338,7 @@ Before reporting, go through the ticket's sentences for each boundary it states 
 
 Run the gates once, at the end, before you commit.${A.one_commit ? ' Create the ONE commit when the gate is at baseline or better; if it cannot get there, leave it uncommitted and say exactly what is red.' : ''}
 
-Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open); notes.
+Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open); notes.
 
 CASES:
 ${CASES}
@@ -347,8 +347,9 @@ RESEARCH:
 ${RESEARCH}`
 let impl = await ask(implementPrompt(null), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement' })
 const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
-// Made nothing: no commit. Uncommitted work does not count; the retry is told so.
-const madeNothing = r => !r || same(r.head, BASE)
+// Made nothing: no commit and no tested row. Work left uncommitted behind a gate that cannot go green here, with
+// tests to show, goes to review.
+const madeNothing = r => !r || (same(r.head, BASE) && !r.checks.some(c => c.test))
 if (madeNothing(impl)) {
   log('implement made no commit; retrying once')
   impl = await ask(implementPrompt(impl ? impl.notes || 'none' : 'agent died'), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement:retry' })
