@@ -566,7 +566,7 @@ test('W60: the checklist lens starts from no code-review skill, and review_comma
 const proof = { path: 'tests/proof_a.test.js', command: 'npm test -- proof_a', red: 'FAIL proof_a: expected 1, got 2' }
 const proven = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', 't'), { proof })] }
 
-test('W61: a code-lens proof reaches the fix with its rules; a proof on a checklist finding is dropped', async () => {
+test('W61: a code-lens proof reaches the fix with its rules; a proof on a checklist finding is not sent and is a stray', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': proven,
     'review:r1:checklist': { verdict: 'findings', checked: [row('R1', { status: 'met' })], findings: [Object.assign(finding('major', 'b:1', 't'), { proof: Object.assign({}, proof, { path: 'tests/other.js' }) })] },
@@ -581,8 +581,35 @@ test('W61: a code-lens proof reaches the fix with its rules; a proof on a checkl
   assert.match(call.prompt, /rejected only with an argument against the test/)
   assert.match(call.prompt, /rewrite it into the suite in its style and commit it, or delete it/)
   assert.deepEqual(call.opts.schema.properties.proofs.items.properties.outcome.enum, ['rewritten', 'deleted'])
+  assert.deepEqual(result.stray_proofs, [{ id: 'R1-checklist-1', path: 'tests/other.js' }])
+})
+
+test('W63: the fix accounts for a proof by its id even when it spells the path differently', async () => {
+  const { result } = await runCore({
+    'review:r1:code': proven,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: `./${proof.path}`, outcome: 'deleted' }], committed: true, head: 'cccc222', gate_output: '' },
+  })
   assert.deepEqual(result.stray_proofs, [])
   assert.equal(result.status, 'done')
+})
+
+test('W64: a proof on a minor goes to the minor fixer to delete; a stray from a round fix does not skip the minor fix', async () => {
+  const minorProof = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', ''), { proof })] }
+  const kept = await runCore({
+    'review:r1:code': minorProof,
+    'fix:minor': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'deleted' }], committed: false, head: 'bbbb111', gate_output: '' },
+  })
+  assert.match(prompt(kept.calls, 'fix:minor'), /Delete the file of every finding with a `proof`/)
+  assert.deepEqual(kept.result.stray_proofs, [])
+  assert.equal(kept.result.status, 'done')
+  const both = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', 't'), { proof }), finding('minor', 'b:1', '')] }
+  const leaked = await runCore({
+    'review:r1:code': both,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+  })
+  assert.ok(called(leaked.calls, 'fix:minor'))
+  assert.deepEqual(leaked.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
+  assert.equal(leaked.result.status, 'done_with_failures')
 })
 
 test('W62: a proof the fix does not account for, or whose fix died, is a stray and a failure', async () => {

@@ -243,8 +243,8 @@ missed.
 
 **Proof is optional.** A code-lens major about behaviour may carry `proof: {path, command, red}`: a
 test the lens wrote as a new, uncommitted file in the repository's test directory, the command it ran
-and the output line that showed it red on HEAD. A proof on any other source's finding is dropped with a
-log line.
+and the output line that showed it red on HEAD. A proof on any other source's finding is not sent to a
+fix and is a stray (below).
 
 **Silence is not clean.** Every reviewer returns `checked` rows — item plus the artifact that settled
 it. No rows or a `verdict` that disagrees with the findings reads as `SILENT` in `verdicts` and lands in
@@ -263,9 +263,10 @@ split or the user" rather than patched a third time. The fix reports its `head` 
 **Proofs.** A finding with a proof reaches the fix with it. The fix runs its command first: green on HEAD
 is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test.
 Every proof is rewritten into the suite in its style and committed, or deleted, and reported in `proofs`
-(`{id, path, outcome: rewritten|deleted}`). A sent proof whose path the fix does not report, and a proof
-no fix was sent (its fix died, the run stopped, it sat on a minor), is a stray: one `failures` entry each
-and a `{id, path}` row in `stray_proofs`.
+(`{id, path, outcome: rewritten|deleted}`). A proof on a minor goes to the minor fix, which deletes it. A
+sent proof the fix reports by neither id nor path, and a proof no fix was sent (its fix died, the run
+stopped), is a stray: a `{id, path}` row in `stray_proofs` and, at the end of the run, one `failures`
+entry each (so a stray never skips the minor fix).
 
 **The fix-diff review.** The last round's fix gets one reviewer (`review:fix:r<n>`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
 rejected, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
@@ -296,7 +297,7 @@ loop:
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
     gates once more if the fix moved HEAD (its red gates are leftover); break
 after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
-minor fix; every proof no fix was sent is a stray
+minor fix (deletes the proofs on minors); every proof no fix was sent is a stray; strays become failures
 ```
 
 ## Mailbox

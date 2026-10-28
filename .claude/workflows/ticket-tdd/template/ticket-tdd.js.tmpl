@@ -203,12 +203,15 @@ const FIX_SCHEMA = { type: 'object', properties: {
 const proofs = []
 const settled = new Set()
 const strayProofs = []
-const stray = f => { settled.add(f.id); strayProofs.push({ id: f.id, path: f.proof.path }); failures.push(`stray proof ${f.id}: ${f.proof.path}`) }
+const stray = f => { settled.add(f.id); strayProofs.push({ id: f.id, path: f.proof.path }) }
+// A proof from another source is not sent to a fix, but its file may exist: it is a stray, never dropped silently.
 function proven(f) {
-  if (f.proof && f.source !== 'code') { log(`proof on ${f.id} from ${f.source}: dropped`); delete f.proof }
+  if (f.proof && f.source !== 'code') { stray(f); delete f.proof }
   if (f.proof) proofs.push(f)
   return f
 }
+const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
+  .forEach(f => res.proofs.some(p => p.id === f.id || p.path === f.proof.path) ? settled.add(f.id) : stray(f))
 
 
 phase('Research')
@@ -553,7 +556,7 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
       const r = fix.rejected.find(x => x.id === f.id)
       history.push(Object.assign({ id: f.id, round, where: f.where, problem: f.problem, outcome: fix.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument }))
     })
-    toFix.filter(f => f.proof && !settled.has(f.id)).forEach(f => fix.proofs.some(p => p.path === f.proof.path) ? settled.add(f.id) : stray(f))
+    reconcile(toFix, fix)
     headNow = fix.head || headNow
   }
   if (round === N) {
@@ -610,14 +613,17 @@ if (cheap.length && !failures.length) {
   phase('Fix')
   minorFix = await ask(`${PRE}
 
-STAGE: minor fixes. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} Apply each finding below whose fix is cheap: a few lines in files this run already changed, no new test file, no change of design. Reject every other one with a one-line reason; it stays advisory. Verify before you agree; never delete the thing a finding is about to silence it. Re-run the gates; if any gate is worse than before your edit, revert your edits and reject them all. ${A.one_commit ? 'Fold the change into the one commit with --amend, rewriting its message' : 'Commit'}. Report head: \`git rev-parse HEAD\` after your last change.
+STAGE: minor fixes. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} Apply each finding below whose fix is cheap: a few lines in files this run already changed, no new test file, no change of design. Reject every other one with a one-line reason; it stays advisory. Verify before you agree; never delete the thing a finding is about to silence it. Re-run the gates; if any gate is worse than before your edit, revert your edits and reject them all.${cheap.some(f => f.proof) ? ' Delete the file of every finding with a `proof`, applied or not, and report each in `proofs`.' : ''} ${A.one_commit ? 'Fold the change into the one commit with --amend, rewriting its message' : 'Commit'}. Report head: \`git rev-parse HEAD\` after your last change.
 
 FINDINGS:
 ${JSON.stringify(cheap, null, 1)}`, { model: M.fix, effort: 'medium', schema: FIX_SCHEMA, phase: 'Fix', label: 'fix:minor' })
   if (!minorFix) failures.push('fix minor')
+  else reconcile(cheap, minorFix)
 }
-// A proof no fix was sent (its fix died, the run stopped, a minor) is a stray too.
+// A proof no fix was sent (its fix died, the run stopped) is a stray too; strays count as failures only here, so
+// one never skips the minor fix.
 proofs.filter(f => !settled.has(f.id)).forEach(stray)
+strayProofs.forEach(s => failures.push(`stray proof ${s.id}: ${s.path}`))
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
 // Freeing the run directory is the main thread's step after acceptance (README § Shape).
