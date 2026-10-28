@@ -103,12 +103,12 @@ profile carries only what a stage prompt must name explicitly.
 ### 0. Gates discovery
 
 Only when `profile.gates` is absent, before research: one agent (`gates:discover`, `models.gates`, the
-no-code preamble) finds the project's gates — in the repository's agent instructions, then CI config,
+no-code preamble plus the long-command rule) finds the project's gates — in the repository's agent instructions, then CI config,
 then the task runner; the first source that names gates wins. A gate is a command CI or those
 instructions require before a commit; it runs with no human, network or secrets, passes or fails by exit
 code and writes nothing to the tree. It runs each one once on the base tree and returns `gates[]`
 `{name, command, source, line}` and `questions[]` `{command, source, question}` for the commands it is
-unsure of. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
+unsure of, `source` being the source of the gate a question bears on. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
 question whose `source` none of the returned gates has is dropped with a log line; the rest go to the
 result as `gates_questions`, and no later stage gets them. A dead step, or one that finds no gate, ends the
 run as `failed` before research.
@@ -200,13 +200,14 @@ told so; a second empty result ends the run as `failed` before any review.
 ### 4. Gates
 
 One agent, run once per HEAD, before the lenses of its round, and skipped when HEAD has not changed
-since the last gates step (implement and every fix report `head`). It only executes: it runs every gate
-`profile.gates` declares, to completion (a long one in the background, never cut short), compares each
-with its baseline line, and returns one row per gate, `{name, status, line}`: `status` `ran` (at its
-baseline or better), `failed` (worse) or `not_run` (`line` the reason); the schema accepts only the
-declared names. Every HEAD gets every gate: there is no scoped rerun after a fix.
+since the last gates step (implement and every fix report `head`). It only executes, read-only, under the
+no-code preamble plus the long-command rule: it runs every gate `profile.gates` declares (listed in its
+own prompt with their baselines) to completion, compares each with its baseline line, and returns one row
+per gate, `{name, status, line}`: `status` `green` (at its baseline or better), `red` (worse) or `not_run`
+(`line` the reason); the schema accepts only the declared names. Every HEAD gets every gate: there is no
+scoped rerun after a fix.
 
-The step returns no findings; the script makes them. A `failed` row is a major finding `G<round>-<name>`
+The step returns no findings; the script makes them. A `red` row is a major finding `G<round>-<name>`
 (`G<round>r-<name>` after the last fix), source `gates`, its trigger the gate's line against its
 baseline line. A `not_run` row, a declared gate with no row, and a dead step each land in `failures`.
 The lenses get each gate as `name: status — line` and run none of the gates; the code lens may make one
@@ -283,7 +284,7 @@ loop:
   if findings and round == n and extra rounds left: n += 1
   if findings: fix
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
-    gates once more if the fix moved HEAD (its failed gates are leftover); break
+    gates once more if the fix moved HEAD (its red gates are leftover); break
 after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
 minor fix → fix-diff review
 ```
@@ -363,7 +364,7 @@ node template/render.mjs [config.json] --case case.json --prompt <label> --json
 the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The case is
 `{ args, gate_lines, results }`: `args` override stub args (`target` is the ticket path, `base` the
 commit the diff starts from: the prompt names both, the agent reads them; the stub args declare one gate,
-`gates`; a case whose profile declares none gets a stub discovery step that finds that same gate), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `ran`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
+`gates`; a case whose profile declares none gets a stub discovery step that finds that same gate), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `green`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.

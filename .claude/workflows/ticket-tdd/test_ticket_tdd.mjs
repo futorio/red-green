@@ -20,7 +20,7 @@ const ruling = (id, kind, reason) => ({ id, ruling: kind, reason })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
-const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'ran', '17 of 17')] })
+const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
@@ -114,20 +114,20 @@ test('W03: the lenses start after the gates step of their round returns', async 
 const twoGates = { profile: { mutation: 'MUTATION-TOOL-TEXT', gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }, baseline: { A: 'A-BASE 3 of 3', B: 'B-BASE ok' } }
 
 test('W04: the lens prompts carry each gate as name, status and line; the checklist job carries the scope sentence', async () => {
-  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'ran', 'GATE-SENTINEL 3 of 3'), gate('B', 'ran', 'B ok')) }, 1, twoGates)
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'GATE-SENTINEL 3 of 3'), gate('B', 'green', 'B ok')) }, 1, twoGates)
   for (const label of ['review:r1:checklist', 'review:r1:code']) {
-    assert.ok(prompt(calls, label).includes('A: ran — GATE-SENTINEL 3 of 3\nB: ran — B ok'), label)
+    assert.ok(prompt(calls, label).includes('A: green — GATE-SENTINEL 3 of 3\nB: green — B ok'), label)
     assert.ok(!/re-check the scope/.test(prompt(calls, label)), label)
   }
   assert.match(prompt(calls, 'review:r1:checklist'), /A change the ticket does not call for is a finding\./)
   assert.ok(!/A change the ticket does not call for/.test(prompt(calls, 'review:r1:code')))
 })
 
-test('W05: a failed gate is one major finding made by the script; on the recheck it is left over, a ran gate makes none', async () => {
+test('W05: a red gate is one major finding made by the script; on the recheck it is left over, a green gate makes none', async () => {
   const { result, calls } = await runCore({
-    'gates:r1': gatesAt('bbbb111', gate('A', 'failed', 'A-RED 2 of 3'), gate('B', 'ran', 'B ok')),
+    'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'A-RED 2 of 3'), gate('B', 'green', 'B ok')),
     'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
-    'gates:r1:recheck': gatesAt('cccc222', gate('A', 'failed', 'A-STILL-RED 1 of 3'), gate('B', 'ran', 'B ok')),
+    'gates:r1:recheck': gatesAt('cccc222', gate('A', 'red', 'A-STILL-RED 1 of 3'), gate('B', 'green', 'B ok')),
     mutation: { head: 'cccc222', tool: tool([]) },
   }, 1, twoGates)
   const sent = JSON.parse(prompt(calls, 'fix:r1').split('FINDINGS:\n')[1].split('\n\nRESEARCH:')[0])
@@ -158,16 +158,19 @@ test('W14: after a fix that moved HEAD the gates step runs every gate, with no s
 })
 
 test('W49: the gates step names every declared gate with its command and baseline, and its schema takes only their names', async () => {
-  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'ran', 'a'), gate('B', 'ran', 'b')) }, 1, twoGates)
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }, 1, twoGates)
   const call = calls.find(c => c.label === 'gates:r1')
-  for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(call.prompt.includes(s), s)
+  const stage = call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]
+  for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(stage.includes(s), s)
   assert.ok(prompt(calls, 'implement').includes('A: `make a` (baseline: A-BASE 3 of 3)'))
   const item = call.opts.schema.properties.gates.items
   assert.deepEqual(item.properties.name.enum, ['A', 'B'])
-  assert.deepEqual(item.properties.status.enum, ['ran', 'failed', 'not_run'])
+  assert.deepEqual(item.properties.status.enum, ['green', 'red', 'not_run'])
   assert.deepEqual(Object.keys(call.opts.schema.properties), ['head', 'gates', 'notes', 'mailbox'])
-  assert.match(call.prompt, /never cut a gate short/)
-  for (const w of [/scope/i, /recount/i, /changed_files/, /git diff/, /SEVERITY/, /blocker/, /already ran at/]) assert.ok(!w.test(call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]), String(w))
+  assert.match(stage, /to completion/)
+  assert.match(stage, /run_in_background/)
+  for (const w of [/scope/i, /recount/i, /changed_files/, /git diff/, /SEVERITY/, /blocker/, /already ran at/, /mutation/i, /reviewers/, /cut a gate short/]) assert.ok(!w.test(stage), String(w))
+  for (const s of ['COMMITS', 'Gates:', 'Over-built']) assert.ok(!call.prompt.includes(s), s)
 })
 
 test('W50: a not_run row and a declared gate with no row each add a failure naming the gate and the step', async () => {
@@ -190,11 +193,11 @@ test('W52: the result records per round the gates rows that gated its HEAD, and 
   const { result } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
-    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'ran', 'RECHECK 17 of 17')),
+    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'green', 'RECHECK 17 of 17')),
     mutation: { head: 'cccc222', tool: tool([]) },
   })
-  assert.deepEqual(result.rounds[0].gates, [gate('tests', 'ran', '17 of 17')])
-  assert.deepEqual(result.rounds[0].recheck, [gate('tests', 'ran', 'RECHECK 17 of 17')])
+  assert.deepEqual(result.rounds[0].gates, [gate('tests', 'green', '17 of 17')])
+  assert.deepEqual(result.rounds[0].recheck, [gate('tests', 'green', 'RECHECK 17 of 17')])
 })
 
 test('W15: a fix that leaves HEAD alone reuses the gates result', async () => {
@@ -308,11 +311,11 @@ test('W18: a dead ruling agent, mutation step or gates step is a failure', async
   assert.equal(noGates.result.status, 'done_with_failures')
 })
 
-test('W19: id-only rejections and a gate failed again with a new line each stay one finding', async () => {
+test('W19: id-only rejections and a gate red again with a new line each stay one finding', async () => {
   const { result } = await runCore({
-    'gates:r1': gatesAt('bbbb111', gate('tests', 'failed', 'RED 1')),
+    'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')),
     'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }, { id: 'Z1', argument: 'a' }, { id: 'Z2', argument: 'a' }], committed: false, head: 'cccc222', gate_output: '' },
-    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'failed', 'RED 2')),
+    'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'red', 'RED 2')),
     mutation: { head: 'cccc222', tool: tool([]) },
   })
   assert.deepEqual(['Z1', 'Z2'].map(id => withIds(result.leftover_findings, id).length), [1, 1])
@@ -599,13 +602,15 @@ test('W53: with no profile.gates the discovery step runs first, and its gates an
   const q = { command: 'npm run e2e', source: 'AGENTS.md', question: 'needs a browser: a gate?' }
   const { result, calls } = await runCore({
     'gates:discover': discovered({ questions: [q, Object.assign({}, q, { source: 'Makefile' })] }),
-    'gates:r1': gatesAt('bbbb111', gate('lint', 'ran', 'l'), gate('test', 'ran', 't')),
+    'gates:r1': gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't')),
   }, 1, noGates)
   assert.deepEqual(calls.slice(0, 2).map(c => c.label), ['gates:discover', 'research'])
   const call = calls[0]
   assert.equal(call.opts.model, 'sonnet')
   assert.ok(call.prompt.includes('Where: the repo\'s agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.'))
-  for (const s of ['COMMITS', 'Gates:', 'run_in_background']) assert.ok(!call.prompt.includes(s), s)
+  for (const s of ['COMMITS', 'Gates:']) assert.ok(!call.prompt.includes(s), s)
+  assert.match(call.prompt, /run_in_background/)
+  assert.match(call.prompt, /`source` the source of the gate it bears on/)
   assert.deepEqual(Object.keys(call.opts.schema.properties.gates.items.properties), ['name', 'command', 'source', 'line'])
   assert.deepEqual(Object.keys(call.opts.schema.properties.questions.items.properties), ['command', 'source', 'question'])
   assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['lint', 'test'])

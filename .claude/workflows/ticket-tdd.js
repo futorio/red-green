@@ -49,6 +49,7 @@ const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
 const NO_CODE = ['gates:discover', 'research', 'plan', 'replan']
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
+const BG = '- A command that runs longer than a couple of minutes goes in the background (`run_in_background`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.'
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
@@ -82,9 +83,10 @@ if (P.gates) {
   phase('Gates')
   const found = await ask(`${NO_CODE_PRE}
 
-STAGE: gates discovery. The profile names no gates: find this project's gates and measure each once on the base tree. Change nothing in ${REPO} and commit nothing.
+STAGE: gates discovery. Read-only: change and commit nothing in ${REPO}.
 Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.
-gates: each gate you find, run once to completion: name, command, source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, two sources disagree), with its source; it stays out of gates.`,
+Run each gate you find once, to completion. gates: name, command, source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with \`source\` the source of the gate it bears on; it stays out of gates.
+${BG}`,
     { model: M.gates, effort: 'medium', schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
   if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', failures }
   GATES = found.gates
@@ -92,11 +94,12 @@ gates: each gate you find, run once to completion: name, command, source (the fi
   gatesQuestions = found.questions.filter(q => GATES.some(g => g.source === q.source) || log(`gates question from unknown source ${q.source}: dropped`))
 }
 
+const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
 const PRE = `${CORE_PRE}
 - ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
-- Gates: ${GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
+- Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 - You do not edit ${TARGET} or the other ticket files.
-- A command that runs longer than a couple of minutes goes in the background (\`run_in_background\`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.
+${BG}
 - Over-built output is a finding, not a bonus.${LAST}`
 
 const RESEARCH_SCHEMA = { type: 'object', properties: {
@@ -155,7 +158,7 @@ const SURVIVOR = { type: 'object', properties: { file: { type: 'string' }, line:
 const GATES_SCHEMA = { type: 'object', properties: {
   head: { type: 'string' },
   gates: { type: 'array', items: { type: 'object', properties: {
-    name: { type: 'string', enum: GATES.map(g => g.name) }, status: { type: 'string', enum: ['ran', 'failed', 'not_run'] }, line: { type: 'string' },
+    name: { type: 'string', enum: GATES.map(g => g.name) }, status: { type: 'string', enum: ['green', 'red', 'not_run'] }, line: { type: 'string' },
   }, required: ['name', 'status', 'line'] } },
   notes: { type: 'string' },
 }, required: ['head', 'gates'] }
@@ -372,16 +375,19 @@ ${JSON.stringify(open)}`, { model: M.review, effort: 'high', schema: RULING_SCHE
 // The gates step only executes; the script turns its rows into findings and failures.
 async function runGates(round, label, tag) {
   phase('Gates')
-  const res = await ask(`${PRE}
+  const res = await ask(`${NO_CODE_PRE}
 
-STAGE: gates, HEAD ${headNow}. This runs once per HEAD, before the reviewers, who run none of the gates and get your rows. Change nothing in ${REPO} and commit nothing. The mutation tool is not a gate here: it runs once per run, in its own step.
-Run every gate named above from ${REPO}, each to completion: never cut a gate short; a long one runs in the background until it finishes. One row per gate: \`line\` its summary line verbatim; \`status\` \`ran\` (at its baseline or better), \`failed\` (worse than its baseline) or \`not_run\` (\`line\` the reason).`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates', label })
+STAGE: gates, HEAD ${headNow}. Read-only: change and commit nothing in ${REPO}.
+Run each gate below from ${REPO} to completion and compare it with its baseline. One row per gate: \`line\` its summary line verbatim; \`status\` \`green\` (at its baseline or better), \`red\` (worse) or \`not_run\` (\`line\` the reason).
+GATES:
+- ${gateList('\n- ')}
+${BG}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates', label })
   if (!res) failures.push(`gates ${label}`)
   else headNow = res.head || headNow
   const rows = GATES.map(g => (res && res.gates.find(r => r.name === g.name)) || { name: g.name, status: 'not_run', line: res ? 'no row' : 'the gates step died' })
   if (res) rows.filter(r => r.status === 'not_run').forEach(r => failures.push(`gates ${label}: ${r.name} not run: ${r.line}`))
   const vs = r => `${r.line} (baseline: ${BASELINE[r.name]})`
-  return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'failed').map(r => ({
+  return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'red').map(r => ({
     id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: vs(r), trigger: vs(r),
     consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' })) }
 }

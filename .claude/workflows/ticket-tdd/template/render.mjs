@@ -56,7 +56,7 @@ function drive(source, kase, stop) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source.replace('export const meta', 'const meta'))
   const results = Object.assign({}, STUB_RESULTS, kase.results)
-  const gates = names => ({ head: 'HEAD', gates: names.map((name, i) => ({ name, status: 'ran', line: (kase.gate_lines || [])[i] || 'GATES' })) })
+  const gates = names => ({ head: 'HEAD', gates: names.map((name, i) => ({ name, status: 'green', line: (kase.gate_lines || [])[i] || 'GATES' })) })
   const agent = async (prompt, opts) => {
     if (stop(prompt, opts)) return new Promise(() => {})
     const r = opts.label in results ? results[opts.label] : opts.label.startsWith('gates:') ? gates(opts.schema.properties.gates.items.properties.name.enum) : null

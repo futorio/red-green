@@ -70,7 +70,7 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
   const out = cli('--case', caseFile, '--prompt', 'review:r1:code')
   assert.ok(out.startsWith('You are one agent in a workflow run implementing /case/ticket.md.'))
   assert.ok(out.includes('Lens: code. Read the code as code'))
-  assert.ok(out.includes('gates: ran — CASE-GATE 3 of 3'))
+  assert.ok(out.includes('gates: green — CASE-GATE 3 of 3'))
   assert.ok(out.includes('MAILBOX. Your address is `review:r1:code`'))
   assert.ok(!out.includes('Lens: checklist'))
 })
@@ -100,5 +100,5 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
 
 test('T12: a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
   const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
-  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': ran — FOUND-GATE ok'))
+  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
 })
