@@ -843,7 +843,7 @@ test('W73: implement questions with a known id reach implement_questions alone; 
   assert.equal(result.status, 'done')
 })
 
-test('W74: HEAD still at base with no tested row gets one retry told no commit was made; HEAD moved, or a tested row, gets none', async () => {
+test('W74: HEAD still at base gets one retry told no commit was made, even with tested rows; HEAD moved gets none', async () => {
   const atBase = Object.assign({}, base().implement, { head: 'aaaa000', checks: [], notes: 'NOTES-SENT' })
   const { calls } = await runCore({ implement: atBase, 'implement:retry': base().implement })
   assert.equal(count(calls, 'implement:retry'), 1)
@@ -852,12 +852,22 @@ test('W74: HEAD still at base with no tested row gets one retry told no commit w
   assert.ok(!called(moved.calls, 'implement:retry'))
   const twice = await runCore({ implement: atBase, 'implement:retry': atBase })
   assert.equal(twice.result.status, 'failed')
-  // Work left uncommitted behind a gate that cannot go green here still goes to review.
-  const uncommitted = await runCore({ implement: Object.assign({}, base().implement, { head: 'aaaa000' }) })
-  assert.ok(!called(uncommitted.calls, 'implement:retry'))
+  // Work left uncommitted is committed by the retry, so review never reads an empty diff.
+  const uncommitted = await runCore({ implement: Object.assign({}, base().implement, { head: 'aaaa000' }), 'implement:retry': base().implement })
+  assert.equal(count(uncommitted.calls, 'implement:retry'), 1)
 })
 
 test('W75: the implement prompt asks for a question\'s requirement as its id', async () => {
   const { calls } = await runCore({})
   assert.match(prompt(calls, 'implement'), /questions \(requirement: its id;/)
+})
+
+test('W76: implement commits its work as it stands, a red gate going to the fix; fix keeps the green bar; one commit is created by implement', async () => {
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')) })
+  assert.match(prompt(calls, 'implement'), /Commit your work as it stands, even with a gate worse than its baseline/)
+  assert.ok(!prompt(calls, 'implement').includes('Commit only with the gate at its baseline or better'))
+  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with the gate at its baseline or better'))
+  const one = await runCore({}, 1, { one_commit: true })
+  assert.match(prompt(one.calls, 'implement'), /The implementation stage creates it/)
+  assert.ok(!/leave it uncommitted/.test(prompt(one.calls, 'implement')))
 })

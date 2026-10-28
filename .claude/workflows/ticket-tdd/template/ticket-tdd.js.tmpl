@@ -34,7 +34,7 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
 
 const COMMIT_RULE = A.one_commit
-  ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
+  ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
 // The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
@@ -96,12 +96,14 @@ ${BG}`,
 }
 
 const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
-const PRE = `${CORE_PRE}
-- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. Commit only with the gate at its baseline or better.
+// Implement commits its work as it stands; a gate it left worse reaches the fix as a gates finding. Fixes keep the bar.
+const preWith = bar => `${CORE_PRE}
+- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. ${bar}
 - Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 - You do not edit ${TARGET} or the other ticket files.
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`
+const PRE = preWith('Commit only with the gate at its baseline or better.')
 
 const RESEARCH_SCHEMA = { type: 'object', properties: {
   requirements: { type: 'array', items: { type: 'string', pattern: '^R\\d+: ' } },
@@ -329,14 +331,14 @@ log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${dup.length} duplica
 const CASES = JSON.stringify(cases, null, 1)
 
 phase('Implement')
-const implementPrompt = retry => `${PRE}
+const implementPrompt = retry => `${preWith('Commit your work as it stands, even with a gate worse than its baseline: the gates step hands what is red to the fix.')}
 
 STAGE: implementation.${retry ? ` A previous attempt at this stage made NO commit (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it.${CODE_RULES}
 Build on the research facts and plan: what they settle is settled.
 
 Before reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row with a test at the seam its requirement's test_harness names; a phrase row is unverified only when this environment cannot run its test (no tool, no data, no binary). Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in \`unverified\`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.
 
-Run the gates once, at the end, before you commit.${A.one_commit ? ' Create the ONE commit when the gate is at baseline or better; if it cannot get there, leave it uncommitted and say exactly what is red.' : ''}
+Run the gates once, at the end, before you commit; say in notes which gate is worse than its baseline.
 
 Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open); notes.
 
@@ -347,9 +349,9 @@ RESEARCH:
 ${RESEARCH}`
 let impl = await ask(implementPrompt(null), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement' })
 const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
-// Made nothing: no commit and no tested row. Work left uncommitted behind a gate that cannot go green here, with
-// tests to show, goes to review.
-const madeNothing = r => !r || (same(r.head, BASE) && !r.checks.some(c => c.test))
+// Made nothing: no commit. Implement commits even with a red gate, so work left uncommitted gets the retry, which
+// commits it; review never reads an empty diff.
+const madeNothing = r => !r || same(r.head, BASE)
 if (madeNothing(impl)) {
   log('implement made no commit; retrying once')
   impl = await ask(implementPrompt(impl ? impl.notes || 'none' : 'agent died'), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement:retry' })
