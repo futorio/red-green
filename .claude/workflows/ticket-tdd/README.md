@@ -218,8 +218,7 @@ Report: `head`, `checks`, `unverified`, `questions`, notes.
 checklist lens gets the whole list. Whether every boundary phrase has a row is left to that lens.
 
 **Questions.** `{requirement, question, reading, settles: owner|plan}`: `plan` when the plan contradicts the
-ticket and the implementer followed the ticket, `owner` when the ticket leaves it open or it needs a
-redesign or an architecture decision, which the implementer reports and leaves. One for an unknown
+ticket and the implementer followed the ticket, `owner` when the ticket leaves it open. One for an unknown
 requirement is dropped with a log line. They go to the result as `implement_questions` and to no stage.
 
 **If implementation made no commit** — `head` still at `base` — the stage runs once more, told that the

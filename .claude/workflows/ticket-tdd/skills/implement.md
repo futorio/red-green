@@ -15,8 +15,7 @@ Every rule below binds the code the ticket changes; code it does not touch is le
 - Type errors are fixed at their cause.
 - An operation run twice, or after a crash halfway through, ends in the same state.
 
-Architecture comes from the research plan. A redesign, or any question of architecture, is reported,
-not acted on.
+Architecture comes from the research plan.
 
 ## Fix
 

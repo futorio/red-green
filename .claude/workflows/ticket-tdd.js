@@ -338,7 +338,7 @@ Before reporting, go through the ticket's sentences for each boundary it states 
 
 Run the gates once, at the end, before you commit.${A.one_commit ? ' Create the ONE commit when the gate is at baseline or better; if it cannot get there, leave it uncommitted and say exactly what is red.' : ''}
 
-Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open or it needs a redesign or an architecture decision); notes.
+Report: head (\`git rev-parse HEAD\`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted); unverified; questions (reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open); notes.
 
 CASES:
 ${CASES}
