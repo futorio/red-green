@@ -20,14 +20,15 @@ const ruling = (id, kind, reason) => ({ id, ruling: kind, reason })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
-const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
+const check = (ref, extra) => Object.assign({ kind: 'case', ref, requirement: 'R1', test: { file: 'f', name: 't' } }, extra)
+const gatesAt = (head, ...rows) =>({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
 function base(over) {
   return Object.assign({
     research: { requirements: ['R1: one'], facts: [fact('code', ['src/a.cpp:1-2'], 'R1')], plan: [], test_harness: [harness('R1')] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
-    implement: { committed: true, head: 'bbbb111', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
+    implement: { head: 'bbbb111', checks: [check('C1')], unverified: [], questions: [] },
     'gates:r1': gatesAt('bbbb111'),
     'review:r1:checklist': clean([row('R1', { status: 'met' })]),
     'review:r1:code': clean([row('x')]),
@@ -795,4 +796,59 @@ test('W68: an unmet row reaches the fix with its promise as the problem and its 
   assert.equal(sent.trigger, 'COUNTER-SENT')
   assert.match(sent.problem, /PROMISE-SENT.*EVIDENCE-SENT/)
   assert.ok(!/ticket/.test(sent.consequence))
+})
+
+test('W69: the implement schema asks for checks and questions, and no tests, committed, commits or gate_output', async () => {
+  const { calls } = await runCore({})
+  const props = calls.find(c => c.label === 'implement').opts.schema.properties
+  for (const k of ['checks', 'questions']) assert.ok(k in props, k)
+  for (const k of ['tests', 'committed', 'commits', 'gate_output']) assert.ok(!(k in props), k)
+  assert.deepEqual(props.checks.items.properties.kind.enum, ['case', 'phrase'])
+  assert.deepEqual(props.checks.items.anyOf, [{ required: ['test'] }, { required: ['unverified'] }])
+  assert.deepEqual(props.questions.items.properties.settles.enum, ['owner', 'plan'])
+  assert.match(prompt(calls, 'implement'), /each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row/)
+})
+
+test('W70: a case with no case row lands in unverified and the run is done_unverified; a phrase row does not stand for it', async () => {
+  const implement = Object.assign({}, base().implement, { checks: [check('"C1"', { kind: 'phrase' })] })
+  const { result } = await runCore({ implement })
+  assert.deepEqual(result.unverified, ['case C1: no check reported'])
+  assert.equal(result.status, 'done_unverified')
+})
+
+test('W71: an unverified row, case or phrase, lands in unverified and in the checklist lens prompt', async () => {
+  const phrase = check('"an empty list is rejected"', { kind: 'phrase', test: undefined, unverified: 'NO-HARNESS' })
+  const implement = Object.assign({}, base().implement, { checks: [check('C1', { test: undefined, unverified: 'NO-TOOL' }), phrase], unverified: ['FREE-TEXT'] })
+  const { result, calls } = await runCore({ implement })
+  const want = ['FREE-TEXT', 'C1: NO-TOOL', '"an empty list is rejected": NO-HARNESS']
+  assert.deepEqual(result.unverified, want)
+  assert.ok(prompt(calls, 'review:r1:checklist').includes(JSON.stringify(want)))
+  assert.equal(result.status, 'done_unverified')
+})
+
+test('W72: the result\'s implement entry is the checks and the notes', async () => {
+  const implement = Object.assign({}, base().implement, { notes: 'NOTES' })
+  const { result } = await runCore({ implement })
+  assert.deepEqual(result.implement, { checks: [check('C1')], notes: 'NOTES' })
+  assert.equal(result.status, 'done')
+})
+
+test('W73: implement questions with a known id reach implement_questions alone; one for an unknown id is dropped', async () => {
+  const q = { requirement: 'R1', question: 'QUESTION-SENT', reading: 'the ticket\'s', settles: 'plan' }
+  const implement = Object.assign({}, base().implement, { questions: [q, Object.assign({}, q, { requirement: 'R9' })] })
+  const { result, calls } = await runCore({ implement })
+  assert.deepEqual(result.implement_questions, [q])
+  assert.ok(calls.filter(c => c.label !== 'implement').every(c => !c.prompt.includes('QUESTION-SENT')))
+  assert.equal(result.status, 'done')
+})
+
+test('W74: HEAD still at base gets one retry told no commit was made; HEAD moved gets none, even with no rows', async () => {
+  const atBase = Object.assign({}, base().implement, { head: 'aaaa000', notes: 'NOTES-SENT' })
+  const { calls } = await runCore({ implement: atBase, 'implement:retry': base().implement })
+  assert.equal(count(calls, 'implement:retry'), 1)
+  assert.match(prompt(calls, 'implement:retry'), /A previous attempt at this stage made NO commit \(HEAD still aaaa000\); its notes: "NOTES-SENT"\./)
+  const moved = await runCore({ implement: Object.assign({}, base().implement, { checks: [] }) })
+  assert.ok(!called(moved.calls, 'implement:retry'))
+  const twice = await runCore({ implement: atBase, 'implement:retry': atBase })
+  assert.equal(twice.result.status, 'failed')
 })

@@ -129,15 +129,20 @@ const casesSchema = ids => ({ type: 'object', properties: { cases: { type: 'arra
     cases: { type: 'array', items: { type: 'string' } }, settles: { type: 'string', enum: ['research', 'owner'] },
   }, required: ['requirement', 'question', 'reading', 'cases', 'settles'] } } }, required: ['cases', 'questions'] })
 
+// A check row proves a case (ref: its id) or a boundary phrase of the ticket (ref: its words, quoted) by a test, or says why not.
 const IMPL_SCHEMA = { type: 'object', properties: {
-  committed: { type: 'boolean' },
   head: { type: 'string' },
-  commits: { type: 'array', items: { type: 'string' } },
-  tests: { type: 'array', items: { type: 'object', properties: { case_id: { type: 'string' }, file: { type: 'string' }, test: { type: 'string' } }, required: ['case_id', 'file', 'test'] } },
-  gate_output: { type: 'string' },
+  checks: { type: 'array', items: { type: 'object', properties: {
+    kind: { type: 'string', enum: ['case', 'phrase'] }, ref: { type: 'string' }, requirement: { type: 'string' },
+    test: { type: 'object', properties: { file: { type: 'string' }, name: { type: 'string' } }, required: ['file', 'name'] },
+    unverified: { type: 'string' },
+  }, required: ['kind', 'ref', 'requirement'], anyOf: [{ required: ['test'] }, { required: ['unverified'] }] } },
   unverified: { type: 'array', items: { type: 'string' } },
+  questions: { type: 'array', items: { type: 'object', properties: {
+    requirement: { type: 'string' }, question: { type: 'string' }, reading: { type: 'string' }, settles: { type: 'string', enum: ['owner', 'plan'] },
+  }, required: ['requirement', 'question', 'reading', 'settles'] } },
   notes: { type: 'string' },
-}, required: ['committed', 'head', 'commits', 'tests', 'gate_output', 'unverified'] }
+}, required: ['head', 'checks', 'unverified', 'questions'] }
 
 const FINDING = { type: 'object', properties: {
   severity: { type: 'string', enum: ['major', 'minor'] },
@@ -326,14 +331,14 @@ const CASES = JSON.stringify(cases, null, 1)
 phase('Implement')
 const implementPrompt = retry => `${PRE}
 
-STAGE: implementation.${retry ? ` A previous attempt at this stage produced NO change (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it, and its code rules.${CODE_RULES}
-Take the cases one at a time, red then green. Use the research facts and plan; do not re-derive what they settle.
+STAGE: implementation.${retry ? ` A previous attempt at this stage made NO commit (HEAD still ${BASE}); its notes: ${JSON.stringify(retry)}. Implement the ticket now.` : ''} Read ${IMPLEMENT_SKILL} and follow it, with the tdd/ directory beside it, and its code rules.${CODE_RULES}
+Use the research facts and plan; do not re-derive what they settle.
 
-Before reporting, call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in \`unverified\`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.
+Before reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row; one no case covers is tested at the seam its requirement's test_harness names. Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in \`unverified\`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.
 
-Run the tests you write as you go; run the gates once, at the end, before you commit — not at the start, not before and after. ${A.one_commit ? 'Create the ONE commit when the gate is at baseline or better; if it cannot get there, do not commit and say exactly what is red.' : 'Commit as you go.'}
+Run the gates once, at the end, before you commit — not at the start, not before and after. ${A.one_commit ? 'Create the ONE commit when the gate is at baseline or better; if it cannot get there, do not commit and say exactly what is red.' : 'Commit as you go.'}
 
-Report: committed, head (\`git rev-parse HEAD\`), commits (sha + subject), tests (case_id -> file + test name, one row per case implemented), unverified, gate_output (each gate's summary line, verbatim), notes.
+Report: head (\`git rev-parse HEAD\`); checks: one row per case (ref: its id) and per boundary phrase (ref: the ticket's words, quoted), each with its requirement id and either test (file + test name) or unverified (why there is none); unverified; questions: requirement, question, reading (the one you took), settles (plan: the plan contradicts the ticket and you followed the ticket; owner: the ticket leaves it open, or it needs a redesign wider than the unit the ticket changes); notes.
 
 CASES:
 ${CASES}
@@ -341,20 +346,26 @@ ${CASES}
 RESEARCH:
 ${RESEARCH}`
 let impl = await ask(implementPrompt(null), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement' })
-const madeNothing = r => !r || (r.head.startsWith(BASE.slice(0, 7)) && !r.tests.length)
+const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
+// Made nothing: no commit. Uncommitted work does not count; the retry is told so.
+const madeNothing = r => !r || same(r.head, BASE)
 if (madeNothing(impl)) {
-  log('implement produced nothing; retrying once')
+  log('implement made no commit; retrying once')
   impl = await ask(implementPrompt(impl ? impl.notes || 'none' : 'agent died'), { model: M.implement, effort: 'high', schema: IMPL_SCHEMA, phase: 'Implement', label: 'implement:retry' })
-  if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts produced no change; nothing was reviewed', research, cases, failures }
+  if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts made no commit; nothing was reviewed', research, cases, failures }
 }
-log(`implement: committed=${impl.committed}, ${impl.tests.length} tests mapped`)
+// A case with no case row, and every row that says why it has no test, join the free-text unverified list.
+const rowless = cases.filter(c => !impl.checks.some(r => r.kind === 'case' && r.ref === c.id)).map(c => `case ${c.id}: no check reported`)
+impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unverified).map(r => `${r.ref}: ${r.unverified}`))
+log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without one`)
+// Implement questions go to the result alone, like research's.
+const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
 
 const mutation = []
 
 // The gates step runs once per HEAD, before the lenses, which get its lines. HEAD moves only when implement or a fix commits.
 let headNow = impl.head
 let gated = null
-const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
 const ruled = new Map()
 const keyOf = s => `${s.file}|${s.before}|${s.after}`
 // A survivor the code lens ruled is a minor finding (advisory, outside tidy's cap); every other one is a major, made by the script, not a lens.
@@ -643,6 +654,7 @@ return {
   plan_questions: questions,
   research_issues: researchIssues,
   research_questions: researchQuestions,
+  implement_questions: implementQuestions,
   gates: GATES,
   gates_questions: gatesQuestions,
   verify_launch: plan.verify_launch,
@@ -652,7 +664,7 @@ return {
   minor_fixes: minorFix && { applied: minorFix.applied, rejected: minorFix.rejected },
   stray_proofs: strayProofs,
   unverified: impl.unverified,
-  implement: { committed: impl.committed, commits: impl.commits, gate_output: impl.gate_output, notes: impl.notes },
+  implement: { checks: impl.checks, notes: impl.notes },
   mailbox,
   failures,
 }

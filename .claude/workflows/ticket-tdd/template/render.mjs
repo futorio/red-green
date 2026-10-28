@@ -44,7 +44,7 @@ const STUB_RESULTS = {
   research: { requirements: ['R1: the ticket'], facts: [], plan: [], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] },
   plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
   'gates:discover': { gates: [{ name: 'gates', command: 'GATES', source: 'STUB', line: 'BASELINE' }], questions: [] },
-  implement: { committed: true, head: 'HEAD', tests: [{ case_id: 'C1', file: 'f', test: 't' }], unverified: [], gate_output: 'g', commits: [] },
+  implement: { head: 'HEAD', checks: [{ kind: 'case', ref: 'C1', requirement: 'R1', test: { file: 'f', name: 't' } }], unverified: [], questions: [] },
 }
 
 // Runs the core on a case: agents answer from the case's results, except `stop`, which never answers.

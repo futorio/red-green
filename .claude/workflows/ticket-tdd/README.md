@@ -190,12 +190,26 @@ no later stage gets them.
 
 Follows `skills/implement.md` (vendored: upstream sets `disable-model-invocation`, so the agent reads it
 by path; `tdd/` sits beside it) and `profile.code_rules`. Cases are taken one per red → green cycle.
-Before reporting, the deliverable is called the way its consumer calls it and fed every input, mode and
-data file the ticket names; what was not run that way is listed in `unverified`, an empty list being a
-claim that all of it was. Report: `head`, commits, tests by case id, `unverified`, gate lines.
+Before reporting, every boundary the ticket states (a limit, an empty input, a missing key, an error path,
+an exit code) gets a phrase row, tested at its requirement's seam when no case covers it; then the
+deliverable is called the way its consumer calls it and fed every input, mode and data file the ticket
+names; what was not run that way is listed in `unverified`, an empty list being a claim that all of it was.
+Report: `head`, `checks`, `unverified`, `questions`, notes.
 
-**If implementation changed nothing** — `head` still at `base` and no tests — the stage runs once more,
-told so; a second empty result ends the run as `failed` before any review.
+**Checks.** One row per case (`ref`: its id) and per boundary phrase (`ref`: the ticket's words, quoted),
+`{kind: case|phrase, ref, requirement, test?: {file, name}, unverified?}`, each with a `test` or an
+`unverified` reason (the schema enforces one). The script adds `case <id>: no check reported` to
+`unverified` for each case with no `case` row, and `<ref>: <reason>` for each row with `unverified`; the
+checklist lens gets the whole list. Whether every boundary phrase has a row is left to that lens.
+
+**Questions.** `{requirement, question, reading, settles: owner|plan}`: `plan` when the plan contradicts the
+ticket and the implementer followed the ticket, `owner` when the ticket leaves it open or it needs a
+redesign wider than the unit the ticket changes. One for an unknown requirement is dropped with a log
+line. They go to the result as `implement_questions` and to no stage.
+
+**If implementation made no commit** — `head` still at `base` — the stage runs once more, told that the
+previous attempt made no commit and given its notes; a second such result ends the run as `failed`
+before any review.
 
 ### 4. Gates
 
@@ -340,9 +354,9 @@ The 16-fixture sweep must include 8 jobs.
 `{status, rounds_planned, rounds_run, rounds[] (major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
 verdicts, mutation (the tool's result, at most one),
 gates (the gates used: declared, or discovered with their source and baseline line), gates_questions (the discovery step's questions; empty when the profile declared the gates),
-uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
-implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
-when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, implement_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
+implement (`{checks, notes}`), mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
+when `failures` is not empty, else `done_unverified` when `unverified` (implement's list with its check rows folded in) is not empty,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
 lens killed by an API error reads as `DIED` in `verdicts`, one that answered without evidence as `SILENT`.
 
