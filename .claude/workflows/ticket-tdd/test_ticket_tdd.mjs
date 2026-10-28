@@ -807,6 +807,7 @@ test('W69: the implement schema asks for checks and questions, and no tests, com
   assert.deepEqual(props.checks.items.anyOf, [{ required: ['test'] }, { required: ['unverified'] }])
   assert.deepEqual(props.questions.items.properties.settles.enum, ['owner', 'plan'])
   assert.match(prompt(calls, 'implement'), /each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row/)
+  assert.match(prompt(calls, 'implement'), /a phrase row is unverified only when this environment cannot run its test/)
 })
 
 test('W70: a case with no case row lands in unverified and the run is done_unverified; a phrase row does not stand for it', async () => {

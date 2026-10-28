@@ -203,7 +203,7 @@ from the cases, no `/codebase-design` pointer, and three ub-mode loop rules (red
 honest or unverified, a test fails when every function returns nothing); Sequence work into verifiable
 units and Test Behavior, Not Implementation were already there.
 Before reporting, every boundary the ticket states (a limit, an empty input, a missing key, an error path,
-an exit code) gets a phrase row, tested at its requirement's seam when no case covers it; then the
+an exit code) gets a phrase row with a test at its requirement's seam, unverified only when the environment cannot run that test; then the
 deliverable is called the way its consumer calls it and fed every input, mode and data file the ticket
 names; what was not run that way is listed in `unverified`, an empty list being a claim that all of it was.
 Report: `head`, `checks`, `unverified`, `questions`, notes.
