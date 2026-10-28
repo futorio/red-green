@@ -204,7 +204,7 @@ checklist lens gets the whole list. Whether every boundary phrase has a row is l
 
 **Questions.** `{requirement, question, reading, settles: owner|plan}`: `plan` when the plan contradicts the
 ticket and the implementer followed the ticket, `owner` when the ticket leaves it open or it needs a
-redesign wider than the unit the ticket changes. One for an unknown requirement is dropped with a log
+redesign or an architecture decision, which the implementer never makes. One for an unknown requirement is dropped with a log
 line. They go to the result as `implement_questions` and to no stage.
 
 **If implementation made no commit** — `head` still at `base` — the stage runs once more, told that the

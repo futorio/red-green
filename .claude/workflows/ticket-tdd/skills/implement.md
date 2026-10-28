@@ -2,16 +2,17 @@
 
 Built from `mattpocock-skills` 1.2.3, `skills/engineering/implement/SKILL.md` (vendored because upstream
 sets `disable-model-invocation: true` and a workflow agent cannot load it), and from the rules of
-[ub-mode](https://github.com/unclebob/ub-mode) for the TDD loop, design, fixing and architecture. The
+[ub-mode](https://github.com/unclebob/ub-mode) for the TDD loop, in-loop code rules and fixing. The
 `tdd` skill beside it (`tdd/`) is vendored; its `SKILL.md` takes the seams the cases name with no
 confirmation from a user, gains three ub-mode loop rules, and no longer points refactoring at the
 `code-review` skill. Changes against upstream implement:
 
 - `/tdd` points at `tdd/SKILL.md` here; the seams and cases come from the test-case planning stage,
   not from the user; "use /code-review" is dropped: review is its own stage of the workflow;
-- the design and fix sections are ub-mode's, bound to the code the ticket changes; not taken: its
-  glossary, Attack the Premise, Build the Lever, Crapper, Dryer, Mutator, Refactoring, Keep a Log,
-  Guard the Context Window, Worktree Cleanup, Commit and Push;
+- the in-loop and fix sections are ub-mode's, bound to the code the ticket changes; not taken: its
+  architecture and design rules (data shape first, Redesign From First Principles, Model the Domain,
+  pure business logic, separate shared state), Attack the Premise, Build the Lever, Crapper, Dryer,
+  Mutator, Refactoring, Keep a Log, Guard the Context Window, Worktree Cleanup, Commit and Push;
 - the code rules section points at the repository's rules and the workflow's `profile.code_rules`,
   and adds the size-paydown rule.
 
@@ -29,20 +30,16 @@ Run the static gates and single test files regularly, and the full test suite on
 
 Commit your work to the current branch as you go, as the workflow's commit rule says.
 
-## Design
+## In the loop
 
-- Get the data shape right before you write the logic.
-- One decision lives in one place.
 - Ship the smallest edit that solves the problem. Take complexity out before you add anything.
+- One decision lives in one place.
 - Check data where it enters; inside, trust it. Parse outside data once, where it comes in.
-- Make the illegal state impossible to write. Do not silence the compiler.
+- Do not silence the compiler.
 - An operation run twice, or after a crash halfway through, ends in the same state.
-- What does not need the same mutable state gets its own; shared state has one writer, enforced by
-  the structure.
-- Put new business logic in a pure function.
-- Do not bolt the new requirement onto a design that fights it: the unit the ticket changes may be
-  rebuilt as if the requirement had been there from the start. A redesign wider than that unit is a
-  question, not an act.
+
+You make no architecture decision. A redesign, or any question of architecture, goes in `questions`
+and is not acted on.
 
 ## Fix
 
