@@ -16,12 +16,12 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 [gates discovery] → research
   → ( test-case planning → coverage → implementation )
   → ( gates → review → fix ) × n → fix-diff review
-  → [mutation] → minor fix → fix-diff review
+  → [mutation] → minor fix
 ```
 
 Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
 when the profile names a tool. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
-one, and runs before the lenses of its round, which get its rows. A fix that no full round follows gets a
+one, and runs before the lenses of its round, which get its rows. The last round's fix, which no full round follows, gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
 ## Parameters (`args`)
@@ -36,10 +36,9 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research; ignored when `profile.gates` is absent | required with `profile.gates` |
 | `rounds` | max review rounds `n`, or `auto` | `2` |
 | `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
-| `extra_rounds` | full rounds added when the last planned round has blockers or majors to fix | `0` (the fix-diff review sees the fix) |
+| `extra_rounds` | full rounds added when the last planned round has majors to fix | `0` (the fix-diff review sees the fix) |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
 | `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement |
-| `review_command` | what the checklist lens starts from | the `mattpocock-skills:code-review` skill |
 | `profile` | the project's additions, below | `{}` |
 
 ### `models` presets
@@ -230,18 +229,22 @@ the requirements, and a change the ticket does not call for is one.
 **Mutation cannot be skipped silently.** The mutation step reports whether the tool applied and ran; one
 that applied and did not run, or a dead step, lands in `failures`.
 
-Each round the lenses also receive every finding of the earlier rounds with its outcome — `fixed`,
-`rejected` or `accepted` — and rule on last round's rejections: `accept`, or `insist` with a sharper
-finding.
+Every review stage (the lenses, the fix-diff review, the mutant ruling) gets the preamble of the stages
+that write no code: no commit rules, no gate list. Each round the lenses also receive every finding of
+the earlier rounds with its outcome — `fixed`, or `rejected` with the fixer's `argument`; a rejected
+finding is raised again only as a finding whose `problem` answers that argument.
 
-**Severity has a bar.** `blocker` only when a named artifact in this diff is wrong now, the fix must
-change this diff, and a guard-adding fix names a valid input that still passes; `major` is a concrete
-defect missing one of those; everything else is `minor`. A finding carries a `trigger` (a reachable
-input or path) and a `consequence` (what breaks); the script turns a blocker or major with an empty
-`trigger` into a minor and keeps at most two minors per lens. Minors go to `advisory`: never sent to the round's
+**Severity is `major` or `minor`.** `major` is a concrete defect in this diff with a `trigger` (a
+reachable input or path) and a `consequence` (what breaks); everything else is `minor`. The script turns a
+major with an empty `trigger` into a minor and keeps at most two minors per lens. Minors go to `advisory`: never sent to the round's
 fix, never holding a round open; the minor fix after the rounds applies the cheap ones. One root cause is one finding; a closed finding is not restated
 as a broader risk; from round 2 a new finding on code the last fix did not change says why it was
 missed.
+
+**Proof is optional.** A code-lens major about behaviour may carry `proof: {path, command, red}`: a
+test the lens wrote as a new, uncommitted file in the repository's test directory, the command it ran
+and the output line that showed it red on HEAD. A proof on any other source's finding is dropped with a
+log line.
 
 **Silence is not clean.** Every reviewer returns `checked` rows — item plus the artifact that settled
 it. No rows or a `verdict` that disagrees with the findings reads as `SILENT` in `verdicts` and lands in
@@ -257,18 +260,24 @@ the same failure could take. From round 2 the agent sees the
 earlier rounds' fixes, and a cause already fixed twice is rejected as "recurs after two fixes: needs a
 split or the user" rather than patched a third time. The fix reports its `head` (the script's once-per-HEAD check reads it).
 
-**The fix-diff review.** The last round's fix, and the minor fix, get one reviewer (`review:fix:r<n>`,
-`review:fix:minor`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
+**Proofs.** A finding with a proof reaches the fix with it. The fix runs its command first: green on HEAD
+is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test.
+Every proof is rewritten into the suite in its style and committed, or deleted, and reported in `proofs`
+(`{id, path, outcome: rewritten|deleted}`). A sent proof whose path the fix does not report, and a proof
+no fix was sent (its fix died, the run stopped, it sat on a minor), is a stray: one `failures` entry each
+and a `{id, path}` row in `stray_proofs`.
+
+**The fix-diff review.** The last round's fix gets one reviewer (`review:fix:r<n>`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
 rejected, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
 last round get one more fix (`fix:r<n>:review`) and one more fix-diff review; what is still found is left
-over as `unverified`. Its majors after the minor fix are left over. `extra_rounds` instead adds full rounds.
+over as `unverified`. `extra_rounds` instead adds full rounds.
 
 ### 6b. Minor fix
 
 One agent (`models.fix`) after the rounds and the mutation step, skipped when
 there is no minor finding or a stage failed. It applies each advisory finding whose fix is cheap (a few
 lines in files the run changed, no new test file, no change of design), rejects the rest with a reason,
-reruns the gates and reverts when one got worse; a minor fix that moved HEAD gets a fix-diff review. Ruled survivors are not sent. Applied findings leave
+reruns the gates and reverts when one got worse; no fix-diff review follows it. Ruled survivors are not sent. Applied findings leave
 `advisory`; the result's `minor_fixes` lists what it applied and rejected.
 
 ### Loop exit
@@ -277,17 +286,17 @@ reruns the gates and reverts when one got worse; a minor fix that moved HEAD get
 loop:
   round += 1
   gates (every gate), if HEAD changed since the last gates step; then in parallel the lenses, given its rows
-  findings = gates findings + review(round, rejections), minors set aside
+  findings = gates findings + review(round, earlier findings), minors set aside
   if no findings and every lens answered and round >= min_rounds:
     if the tool ran: break
     mutation step, rule the survivors (ruled ones set aside); none to fix: break
     findings = unruled survivors; if round == n: n += 1
   if findings and round == n and extra rounds left: n += 1
-  if findings: fix
+  if findings: fix; a sent proof it does not report is a stray
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
     gates once more if the fix moved HEAD (its red gates are leftover); break
 after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
-minor fix → fix-diff review
+minor fix; every proof no fix was sent is a stray
 ```
 
 ## Mailbox
@@ -322,10 +331,10 @@ The 16-fixture sweep must include 8 jobs.
 
 ## Result
 
-`{status, rounds_planned, rounds_run, rounds[] (blocker/major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
+`{status, rounds_planned, rounds_run, rounds[] (major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
 verdicts, mutation (the tool's result, at most one),
 gates (the gates used: declared, or discovered with their source and baseline line), gates_questions (the discovery step's questions; empty when the profile declared the gates),
-uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, accepted_rejections,
+uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
 implement, mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when implement listed anything in `unverified`,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
@@ -350,10 +359,10 @@ over `default.json`:
 
 - `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`).
 - `lenses`: the review lenses, a list from `checklist` and `code`; a config's list replaces the default's.
-- `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review),
-  `probe`, `same_frame` and `order` (off; on adds a draft sentence to the code lens, marked "experiment draft"
-  for the experiments to settle; `order` generalises `same_frame` past games: any two paths that change one piece
-  of state within one unit of processing, in both orders and repeated).
+- `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review) and
+  `order` (off; on adds a draft sentence to the code lens, marked "experiment draft" for the experiments
+  to settle: any two paths that change one piece of state within one unit of processing, in both orders
+  and repeated). A key the default does not name, in `models` or `duties`, is an error.
 
 ```
 node template/render.mjs [config.json]                                    # the workflow, on stdout

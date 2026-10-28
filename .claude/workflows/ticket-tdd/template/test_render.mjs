@@ -42,10 +42,8 @@ test('T04: a stage model changes only the models line', () => {
   assert.match(out, /review: 'sonnet'/)
 })
 
-test('T05: the same-frame duty changes only the code lens line', () => {
-  const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { same_frame: true }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, "key: 'code'")])
-  assert.match(out, /SAME-FRAME/)
+test('T05: a config naming the removed probe or same_frame duty is an unknown-key error', () => {
+  for (const k of ['probe', 'same_frame']) assert.throws(() => render(variant({ duties: { [k]: true } })), new RegExp(`unknown config key: duties.${k}`))
 })
 
 test('T05b: the order duty changes only the code lens line', () => {
@@ -77,9 +75,9 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
 
 test('T09: --prompt renders the config it is given', () => {
   const caseFile = file('case2.json', {})
-  const cfg = file('probe.json', variant({ duties: Object.assign({}, DEFAULT.duties, { probe: true }) }))
-  assert.ok(cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code').includes('PROBE'))
-  assert.ok(!cli('--case', caseFile, '--prompt', 'review:r1:code').includes('PROBE'))
+  const cfg = file('order.json', variant({ duties: Object.assign({}, DEFAULT.duties, { order: true }) }))
+  assert.ok(cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code').includes('ORDER RULE'))
+  assert.ok(!cli('--case', caseFile, '--prompt', 'review:r1:code').includes('ORDER RULE'))
 })
 
 test('T10: a stage the case does not reach is an error naming it', () => {
@@ -94,7 +92,7 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.equal(out.prompt, cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code'))
   assert.equal(out.model, 'sonnet')
   assert.equal(out.effort, 'high')
-  assert.deepEqual(out.schema.required, ['verdict', 'findings', 'rulings', 'checked'])
+  assert.deepEqual(out.schema.required, ['verdict', 'findings', 'checked'])
   assert.ok('mailbox' in out.schema.properties)
 })
 

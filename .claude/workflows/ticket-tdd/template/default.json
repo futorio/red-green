@@ -1,5 +1,5 @@
 {
   "models": { "research": "opus", "planner": null, "implement": "sonnet", "gates": "sonnet", "review": "opus", "fix": null },
   "lenses": ["checklist", "code"],
-  "duties": { "probe": false, "test_case_review": true, "same_frame": false, "order": false }
+  "duties": { "test_case_review": true, "order": false }
 }

@@ -12,7 +12,7 @@ const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', SOUR
 
 const clone = x => JSON.parse(JSON.stringify(x))
 const row = (item, extra) => Object.assign({ item, evidence: 'e' }, extra)
-const clean = rows => ({ verdict: 'clean', findings: [], rulings: [], checked: rows })
+const clean = rows => ({ verdict: 'clean', findings: [], checked: rows })
 const finding = (severity, where, trigger) => ({ severity, where, trigger, problem: 'p', consequence: 'c', fix: 'f' })
 const survivor = i => ({ file: 'src/a.cpp', line: 9 + i, op: `op${i}`, before: `before${i}`, after: `after${i}` })
 const tool = survivors => ({ applies: true, ran: true, survivors })
@@ -41,7 +41,6 @@ function base(over) {
     'review:fix:r1:1': clean([row('x')]),
     'review:fix:r2': clean([row('x')]),
     'review:fix:r3': clean([row('x')]),
-    'review:fix:minor': clean([row('x')]),
     'gates:r1:recheck': gatesAt('cccc222'),
     'gates:r2:recheck': gatesAt('cccc222'),
   }, over)
@@ -73,14 +72,14 @@ const prompt = (calls, label) => calls.find(c => c.label === label).prompt
 const called = (calls, label) => calls.some(c => c.label === label)
 const count = (calls, label) => calls.filter(c => c.label === label).length
 const withIds = (xs, id) => xs.filter(x => x.id === id)
-const major = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
+const major = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
 const mutants = (...ids) => ({ head: 'bbbb111', tool: tool(ids.map(survivor)) })
 
 test('W01: ruled survivors go to advisory past the minor cap, an unruled one to fix as a major', async () => {
   const { result, calls } = await runCore({
     mutation: mutants(1, 2, 3, 4),
     'review:code:survivors': { rulings: [ruling('M-1', 'equivalent', 'r'), ruling('M-2', 'unreachable', 'r'), ruling('M-3', 'equivalent', 'r')] },
-    'review:r1:code': { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('minor', 'a:1', 't1'), finding('minor', 'a:2', 't2')] },
+    'review:r1:code': { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't1'), finding('minor', 'a:2', 't2')] },
     'fix:r1': { applied: [], rejected: [{ id: 'M-4', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' },
   })
   for (const id of ['M-1', 'M-2', 'M-3']) assert.equal(withIds(result.advisory, id).length, 1, id)
@@ -259,7 +258,7 @@ test('W27: a dead fix stops the run before the tool', async () => {
 
 test('W07: a lens major without a trigger becomes a minor and is not fixed', async () => {
   const { result, calls } = await runCore({
-    'review:r1:code': { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'x.js:1', '')] },
+    'review:r1:code': { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'x.js:1', '')] },
   })
   const hit = result.advisory.filter(f => f.where === 'x.js:1')
   assert.equal(hit.length, 1)
@@ -271,7 +270,7 @@ test('W07: a lens major without a trigger becomes a minor and is not fixed', asy
 
 test('W08: a lens with three minors keeps the first two', async () => {
   const { result } = await runCore({
-    'review:r1:code': { verdict: 'findings', rulings: [], checked: [row('x')], findings: ['m1', 'm2', 'm3'].map(w => finding('minor', w, 't')) },
+    'review:r1:code': { verdict: 'findings', checked: [row('x')], findings: ['m1', 'm2', 'm3'].map(w => finding('minor', w, 't')) },
   })
   assert.equal(result.advisory.filter(f => f.source === 'code').length, 2)
   assert.deepEqual(result.advisory.map(f => f.where).sort(), ['m1', 'm2'])
@@ -342,7 +341,7 @@ test('W22: a survivor the fix rejected without moving HEAD is not sent to fix ag
 })
 
 test('W23: a run reviews every round with both lenses', async () => {
-  const major = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
+  const major = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
   const keep = { applied: [], rejected: [{ id: 'x', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' }
   const { calls } = await runCore({
     'review:r1:code': major, 'fix:r1': keep,
@@ -366,7 +365,7 @@ test('W28: with extra_rounds, a major fixed in the last planned round gets one m
 })
 
 test('W29: with extra_rounds, a major still found in the extra round is fixed and its fix gets a fix-diff review', async () => {
-  const again = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'a:2', 't')] }
+  const again = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:2', 't')] }
   const { result, calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
@@ -382,7 +381,7 @@ test('W29: with extra_rounds, a major still found in the extra round is fixed an
 })
 
 test('W30: minors go to one cheap fixer; applied ones leave advisory, rejected and ruled-survivor ones stay', async () => {
-  const minors = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('minor', 'a:1', 't1'), finding('minor', 'a:2', 't2')] }
+  const minors = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't1'), finding('minor', 'a:2', 't2')] }
   const { result, calls } = await runCore({
     'review:r1:code': minors,
     mutation: mutants(1),
@@ -398,7 +397,7 @@ test('W30: minors go to one cheap fixer; applied ones leave advisory, rejected a
 
 test('W31: no minors calls no minor fixer; a dead one is a failure', async () => {
   assert.ok(!called((await runCore({})).calls, 'fix:minor'))
-  const minor = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('minor', 'a:1', 't1')] }
+  const minor = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't1')] }
   assert.equal((await runCore({ 'review:r1:code': minor, 'fix:minor': null })).result.status, 'done_with_failures')
 })
 
@@ -410,7 +409,7 @@ test('W32: with default rounds a run plans, reviews two full rounds with both le
 })
 
 test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and reviewed once more, then left over', async () => {
-  const late = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('major', 'b:1', 't')] }
+  const late = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'b:1', 't')] }
   const { result, calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
@@ -502,14 +501,101 @@ test('W39: the research asks for typed facts as JSON, and no prompt mentions res
   for (const c of calls) assert.ok(!c.prompt.includes('research.md'), c.label)
 })
 
-test('W34: a minor fix that moves HEAD gets a fix-diff review', async () => {
-  const minorOnly = { verdict: 'findings', rulings: [], checked: [row('x')], findings: [finding('minor', 'c:1', '')] }
-  const { calls } = await runCore({
+test('W34: a minor fix that moves HEAD calls no fix-diff review', async () => {
+  const minorOnly = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'c:1', '')] }
+  const { result, calls } = await runCore({
     'review:r1:code': minorOnly,
     'fix:minor': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'eeee444', gate_output: '' },
   })
-  assert.ok(called(calls, 'review:fix:minor'))
-  assert.match(prompt(calls, 'review:fix:minor'), /git diff bbbb111\.\.HEAD/)
+  assert.ok(called(calls, 'fix:minor'))
+  assert.ok(!calls.some(c => c.label.startsWith('review:fix')))
+  assert.match(prompt(calls, 'fix:minor'), /Re-run the gates; if any gate is worse than before your edit, revert/)
+  assert.equal(result.status, 'done')
+})
+
+test('W57: severity is major|minor, and no review prompt or round counter mentions blocker', async () => {
+  const { result, calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    mutation: mutants(1),
+  })
+  const reviews = calls.filter(c => c.label.startsWith('review:'))
+  assert.deepEqual(reviews.map(c => c.label).sort(), ['review:code:survivors', 'review:fix:r1', 'review:r1:checklist', 'review:r1:code'])
+  for (const c of reviews) assert.ok(!/blocker/i.test(c.prompt), c.label)
+  for (const l of ['review:r1:code', 'review:fix:r1']) assert.deepEqual(calls.find(c => c.label === l).opts.schema.properties.findings.items.properties.severity.enum, ['major', 'minor'])
+  assert.ok(!('blocker' in result.rounds[0]))
+})
+
+test('W58: no rulings: a rejected finding reaches the next lens prompt in EARLIER FINDINGS with its argument', async () => {
+  const { result, calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'ARGUMENT-TEXT' }], committed: false, head: 'bbbb111', gate_output: '' },
+  }, 2)
+  for (const l of ['review:r1:checklist', 'review:r1:code']) assert.ok(!('rulings' in calls.find(c => c.label === l).opts.schema.properties), l)
+  const second = prompt(calls, 'review:r2:code')
+  const past = JSON.parse(second.split('EARLIER FINDINGS')[1].split('\n')[1])
+  assert.deepEqual(past, [{ id: 'R1-code-1', round: 1, where: 'a:1', problem: 'p', outcome: 'rejected', argument: 'ARGUMENT-TEXT' }])
+  assert.match(second, /re-raise a rejected one only as a finding whose `problem` answers its `argument`/)
+  assert.ok(!/REJECTED|insist/.test(second))
+  assert.ok(!('accepted_rejections' in result))
+})
+
+test('W59: lenses, fix-diff reviews and the mutant ruling get the no-code preamble; the code lens may write proofs', async () => {
+  const { calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    mutation: mutants(1),
+  })
+  const pre = prompt(calls, 'research').split('\n\nSTAGE:')[0]
+  for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1', 'review:code:survivors']) {
+    const p = prompt(calls, l)
+    assert.ok(p.startsWith(`${pre}\n\nSTAGE:`), l)
+    for (const s of ['COMMITS', 'Gates:', 'before committing']) assert.ok(!p.includes(s), `${l}: ${s}`)
+    assert.match(p, /Read it at start and before returning\./, l)
+  }
+  assert.match(prompt(calls, 'review:r1:code'), /only as a new, uncommitted file in the repository's test directory/)
+  assert.ok(!/uncommitted file/.test(prompt(calls, 'review:r1:checklist')))
+})
+
+test('W60: the checklist lens starts from no code-review skill, and review_command has no effect', async () => {
+  const plain = prompt((await runCore({})).calls, 'review:r1:checklist')
+  assert.ok(!/code-review|Skill tool|starting pass/.test(plain))
+  assert.equal(prompt((await runCore({}, 1, { review_command: 'REVIEW-CMD' })).calls, 'review:r1:checklist'), plain)
+})
+
+const proof = { path: 'tests/proof_a.test.js', command: 'npm test -- proof_a', red: 'FAIL proof_a: expected 1, got 2' }
+const proven = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', 't'), { proof })] }
+
+test('W61: a code-lens proof reaches the fix with its rules; a proof on a checklist finding is dropped', async () => {
+  const { result, calls } = await runCore({
+    'review:r1:code': proven,
+    'review:r1:checklist': { verdict: 'findings', checked: [row('R1', { status: 'met' })], findings: [Object.assign(finding('major', 'b:1', 't'), { proof: Object.assign({}, proof, { path: 'tests/other.js' }) })] },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }, { id: 'R1-checklist-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'rewritten' }], committed: true, head: 'cccc222', gate_output: '' },
+  })
+  const call = calls.find(c => c.label === 'fix:r1')
+  const sent = JSON.parse(call.prompt.split('FINDINGS:\n')[1].split('\n\nRESEARCH:')[0])
+  assert.deepEqual(sent.find(f => f.id === 'R1-code-1').proof, proof)
+  assert.ok(!('proof' in sent.find(f => f.id === 'R1-checklist-1')))
+  assert.match(call.prompt, /run its `command` first/)
+  assert.match(call.prompt, /green on HEAD is a valid rejection/i)
+  assert.match(call.prompt, /rejected only with an argument against the test/)
+  assert.match(call.prompt, /rewrite it into the suite in its style and commit it, or delete it/)
+  assert.deepEqual(call.opts.schema.properties.proofs.items.properties.outcome.enum, ['rewritten', 'deleted'])
+  assert.deepEqual(result.stray_proofs, [])
+  assert.equal(result.status, 'done')
+})
+
+test('W62: a proof the fix does not account for, or whose fix died, is a stray and a failure', async () => {
+  const omitted = await runCore({
+    'review:r1:code': proven,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+  })
+  assert.deepEqual(omitted.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
+  assert.equal(omitted.result.failures.filter(f => f.includes(proof.path)).length, 1)
+  assert.equal(omitted.result.status, 'done_with_failures')
+  const dead = await runCore({ 'review:r1:code': proven, 'fix:r1': null })
+  assert.deepEqual(dead.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
+  assert.equal(dead.result.failures.filter(f => f.includes(proof.path)).length, 1)
 })
 
 // Five requirements, one per route: R1 test, R2 review, R3 none, R4 launch, R5 no test_harness entry.

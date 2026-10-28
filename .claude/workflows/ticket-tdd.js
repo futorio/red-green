@@ -19,12 +19,11 @@ const TOOLS = A.tools
 const RUN = A.run
 const BASE = A.base
 const TARGET = A.target
-// Full rounds added when the last planned round has blockers or majors to fix; by default the fix-diff review sees the fix instead.
+// Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
 let EXTRA = A.extra_rounds || 0
 const M = Object.assign({ research: 'opus', planner: null, implement: 'sonnet', gates: 'sonnet', review: 'opus', fix: null }, A.models || {})
 M.planner = M.planner || M.research
 M.fix = M.fix || M.implement
-const REVIEW_COMMAND = A.review_command || 'the `mattpocock-skills:code-review` skill'
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
 const P = A.profile || {}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
@@ -38,7 +37,7 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The first stage that reaches a green gate creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-// The gates discovery, research and plan stages write no code: they get the preamble without the commit, gate and long-command rules.
+// The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
 const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
 Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
 Run directory for state files and scratch: ${RUN}.
@@ -47,7 +46,7 @@ Run directory for state files and scratch: ${RUN}.
 - The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
 const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
-const NO_CODE = ['gates:discover', 'research', 'plan', 'replan']
+const noCode = label => ['gates:discover', 'research', 'plan', 'replan'].includes(label) || label.startsWith('review:')
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = '- A command that runs longer than a couple of minutes goes in the background (`run_in_background`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.'
 
@@ -57,7 +56,7 @@ const MAIL = { type: 'array', items: { type: 'object', properties: {
   required: ['id', 'status', 'why'] } }
 const mailNote = label => `
 
-MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${NO_CODE.includes(label) ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${noCode(label) ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
 const mailbox = []
 async function ask(prompt, opts) {
   const s = opts.schema
@@ -139,17 +138,17 @@ const IMPL_SCHEMA = { type: 'object', properties: {
 }, required: ['committed', 'head', 'commits', 'tests', 'gate_output', 'unverified'] }
 
 const FINDING = { type: 'object', properties: {
-  severity: { type: 'string', enum: ['blocker', 'major', 'minor'] },
+  severity: { type: 'string', enum: ['major', 'minor'] },
   where: { type: 'string' }, problem: { type: 'string' },
   trigger: { type: 'string' }, consequence: { type: 'string' }, fix: { type: 'string' },
+  proof: { type: 'object', properties: { path: { type: 'string' }, command: { type: 'string' }, red: { type: 'string' } }, required: ['path', 'command', 'red'] },
 }, required: ['severity', 'where', 'problem', 'trigger', 'consequence', 'fix'] }
 const reviewSchema = row => ({ type: 'object', properties: {
   verdict: { type: 'string', enum: ['clean', 'findings'] },
   findings: { type: 'array', items: FINDING },
-  rulings: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, ruling: { type: 'string', enum: ['accept', 'insist'] }, argument: { type: 'string' } }, required: ['id', 'ruling', 'argument'] } },
   checked: { type: 'array', items: { type: 'object', properties: Object.assign({ item: { type: 'string' }, evidence: { type: 'string' } }, row), required: ['item', 'evidence'].concat(Object.keys(row)) } },
   notes: { type: 'string' },
-}, required: ['verdict', 'findings', 'rulings', 'checked'] })
+}, required: ['verdict', 'findings', 'checked'] })
 const STATUS = { status: { type: 'string', enum: ['met', 'unmet', 'unverified'] } }
 const REVIEW_SCHEMA = reviewSchema({})
 const PRODUCTION = 'production source — not tests, docs, data or config'
@@ -172,7 +171,7 @@ const MUTATION_SCHEMA = { type: 'object', properties: {
   notes: { type: 'string' },
 }, required: ['head', 'tool'] }
 
-const SEVERITY = `SEVERITY. blocker only if ALL hold: (1) a named file, symbol or test makes it wrong now; (2) that thing is in this diff or a file it touches; (3) the fix must change this diff, not a follow-up; (4) if the fix adds or tightens a guard, you name a valid input that must still pass it. major: a concrete defect in this diff that misses one of those. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. Every blocker and major carries a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A missing test is major or worse only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. Never restate a finding a fix closed as a broader future risk. After your first finding, make one more pass on a different concern before you stop; never invent a finding to fill it.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. Never restate a finding a fix closed as a broader future risk. After your first finding, make one more pass on a different concern before you stop; never invent a finding to fill it.`
 const CHECKED = what => `In \`checked\`, one row per ${what}: \`item\`, and in \`evidence\` one sentence naming the file, test or command output that settled it. A bare "ok" is not evidence. verdict is \`clean\` exactly when findings is empty. A review with no checked rows is read as no review.`
 const idOf = s => s.split(':')[0].trim()
 function silence(res, ids) {
@@ -182,7 +181,7 @@ function silence(res, ids) {
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
 }
-// A blocker or major with no trigger is a minor; a lens keeps at most two minors.
+// A major with no trigger is a minor; a lens keeps at most two minors.
 function tidy(findings) {
   let minors = 0
   const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
@@ -195,10 +194,21 @@ function tidy(findings) {
 const FIX_SCHEMA = { type: 'object', properties: {
   applied: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, what: { type: 'string' } }, required: ['id', 'what'] } },
   rejected: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, argument: { type: 'string' } }, required: ['id', 'argument'] } },
+  proofs: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' }, outcome: { type: 'string', enum: ['rewritten', 'deleted'] } }, required: ['id', 'path', 'outcome'] } },
   committed: { type: 'boolean' },
   head: { type: 'string' },
   gate_output: { type: 'string' },
-}, required: ['applied', 'rejected', 'committed', 'head', 'gate_output'] }
+}, required: ['applied', 'rejected', 'proofs', 'committed', 'head', 'gate_output'] }
+// Only the code lens proves a finding. Each proof is a fix's to rewrite or delete; one no fix accounts for is a stray.
+const proofs = []
+const settled = new Set()
+const strayProofs = []
+const stray = f => { settled.add(f.id); strayProofs.push({ id: f.id, path: f.proof.path }); failures.push(`stray proof ${f.id}: ${f.proof.path}`) }
+function proven(f) {
+  if (f.proof && f.source !== 'code') { log(`proof on ${f.id} from ${f.source}: dropped`); delete f.proof }
+  if (f.proof) proofs.push(f)
+  return f
+}
 
 
 phase('Research')
@@ -360,7 +370,7 @@ const RULING_SCHEMA = { type: 'object', properties: {
 async function ruleSurvivors(survivors, label) {
   const open = survivors.filter(s => !ruled.has(keyOf(s)))
   if (!open.length) return
-  const res = await ask(`${PRE}
+  const res = await ask(`${NO_CODE_PRE}
 
 STAGE: mutant ruling, code lens, HEAD ${headNow}. The mutation tool changed one line at a time in the lines this ticket changed, and no test failed on these mutants. Read the code and the tests and rule on each one only when you are sure: \`equivalent\` (no test could tell the mutant from the original) or \`unreachable\` (the mutated code cannot run in the product's use, e.g. a hook that does nothing in single-player play), with a one-line reason. Leave out any you cannot rule: each becomes a major finding for the fix stage. Change nothing in ${REPO}.
 SURVIVORS:
@@ -417,15 +427,15 @@ GATES:
 ${gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n')}`
 
 const LENSES = [
-  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. A change the ticket does not call for is a finding. ${impl.unverified.length ? `Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches. ` : ''}Use ${REVIEW_COMMAND} (Skill tool) against the fixed point ${BASE} as your starting pass; if it cannot run, say so in notes and review by hand.` },
-  { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}.${CODE_RULES}
+  { key: 'checklist', schema: reviewSchema(STATUS), job: () => `Go through the ticket's checklist box by box, and the research requirements one by one — their ids: ${checkIds.join(', ')} — especially these, which have no test and are checked only by you: ${JSON.stringify(plan.verify_review)} — against the diff \`git diff ${BASE}..HEAD\` and the files on disk. One \`checked\` row per id: item = the id, status \`met\` (evidence names the artifact that shows it holds), \`unmet\` (name the clause that fails) or \`unverified\` (you could not check it). An id without a row counts as unverified. An \`unmet\` row becomes a finding by itself; \`findings\` are for defects outside the requirements. A change the ticket does not call for is a finding.${impl.unverified.length ? ` Implementation said it did not test: ${JSON.stringify(impl.unverified)}; weigh each against the requirement it touches.` : ''}` },
+  { key: 'code', schema: REVIEW_SCHEMA, job: () => `Read the code as code: would every new branch execute as intended${P.runtime ? ` in ${P.runtime}` : ''}, is every new assertion falsifiable, and do the ticket's "things most likely to be got wrong" hold. Also the hard code rules in ${IMPLEMENT_SKILL}. You may prove a major about behaviour with a test, only as a new, uncommitted file in the repository's test directory, changing nothing else: \`proof\` is its path, the exact command and the output line that showed it red on HEAD.${CODE_RULES}
 A test the diff weakened, deleted or left asserting nothing it promises is a finding. Mutation is a separate step's tool, run once after the review rounds, never done by hand, and its survivors are ruled in a separate call: restate none. If the diff holds no ${PRODUCTION}, check one row saying so and stop.` },
 ]
 async function runFix(round, toFix, label) {
   phase('Fix')
   return ask(`${PRE}
 
-STAGE: fix, round ${round}. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} For each finding: verify before you agree, verify before you disagree. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.${fixed.length ? ` A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".` : ''} Re-run the gates; ${A.one_commit ? 'fold the change into the one commit with --amend, rewriting its message (create the commit if it does not exist yet and the gate is at baseline or better)' : 'commit'}. Report head: \`git rev-parse HEAD\` after your last change.
+STAGE: fix, round ${round}. Read ${IMPLEMENT_SKILL} and follow it, code rules included.${CODE_RULES} For each finding: verify before you agree, verify before you disagree. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.${toFix.some(f => f.proof) ? ' For a finding with a `proof`, run its `command` first: green on HEAD is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test. Never leave a proof as written: rewrite it into the suite in its style and commit it, or delete it; report each in `proofs`.' : ''}${fixed.length ? ` A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".` : ''} Re-run the gates; ${A.one_commit ? 'fold the change into the one commit with --amend, rewriting its message (create the commit if it does not exist yet and the gate is at baseline or better)' : 'commit'}. Report head: \`git rev-parse HEAD\` after your last change.
 
 FINDINGS:
 ${JSON.stringify(toFix, null, 1)}
@@ -434,13 +444,13 @@ RESEARCH:
 ${RESEARCH}`, { model: M.fix, effort: 'high', schema: FIX_SCHEMA, phase: 'Fix', label })
 }
 
-// Every fix that no full round follows is reviewed on its own diff: did it fix what it was given, did it break
+// The last round's fix, which no full round follows, is reviewed on its own diff: did it fix what it was given, did it break
 // anything near it, did it weaken a test. Returns its findings, or null when the reviewer died.
 let fixReviews = 0
 async function fixReview(fromHead, given, label) {
   fixReviews += 1
   phase('Review')
-  const res = await ask(`${PRE}
+  const res = await ask(`${NO_CODE_PRE}
 
 STAGE: fix review, HEAD ${headNow}. A fix moved HEAD from ${fromHead}; no full review round follows it. Review its diff, \`git diff ${fromHead}..HEAD\`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state; (3) no test was weakened, deleted or left asserting nothing it promises. Run none of the gates; at most one targeted run of the changed path when reading cannot settle a question.
 ${SEVERITY}
@@ -454,11 +464,10 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: REVIEW_SCHEMA, phase: '
   const quiet = silence(res)
   if (quiet) failures.push(`fix review ${label} silent: ${quiet}`)
   verdicts.push({ round: label, lens: 'fix review', verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
-  return tidy(res.findings).map((f, k) => Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f))
+  return tidy(res.findings).map((f, k) => proven(Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f)))
 }
 
 let rejections = []
-const accepted = []
 const advisory = []
 const fixed = []
 const history = []
@@ -477,17 +486,16 @@ while (round < N) {
   phase('Review')
   let fromHead = headNow
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  const rej = rejections.length ? `\nREJECTED LAST ROUND — rule on each: "accept" the argument, or "insist" and restate it as a sharper finding:\n${JSON.stringify(rejections)}\n` : ''
-  const past = history.length ? `\nEARLIER FINDINGS (do not restate a fixed or accepted one):\n${JSON.stringify(history)}\n` : ''
+  const past = history.length ? `\nEARLIER FINDINGS (do not restate a fixed one; re-raise a rejected one only as a finding whose \`problem\` answers its \`argument\`):\n${JSON.stringify(history)}\n` : ''
   gated = await gatesStep()
-  const lensResults = await parallel(active.map(l => () => ask(`${PRE}
+  const lensResults = await parallel(active.map(l => () => ask(`${NO_CODE_PRE}
 
 STAGE: review, round ${round} of at most ${N} — what you do not catch ships. Lens: ${l.key}. ${l.job()}
 ${GATES_APART(gated)}
 Compare against the ticket, its spec, and the research plan below. Do not manufacture findings; an empty list is a valid answer.
-${SEVERITY}${round > 1 ? ' A blocker or major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}
+${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}
 ${CHECKED(l.key === 'checklist' ? 'research requirement, item = its id' : 'thing you verified')}
-${rej}${past}
+${past}
 RESEARCH:
 ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
 
@@ -499,11 +507,6 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     const quiet = silence(res)
     if (quiet) { failures.push(`review r${round} ${l.key} silent: ${quiet}`); reviewed = false }
     verdicts.push({ round, lens: l.key, verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
-    for (const r of res.rulings) if (r.ruling === 'accept') {
-      accepted.push(r)
-      const h = history.find(x => x.id === r.id)
-      if (h) h.outcome = 'accepted'
-    }
     if (l.key === 'checklist') {
       const rows = {}
       res.checked.forEach(c => { rows[idOf(c.item)] = c })
@@ -513,14 +516,14 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
         where: research.requirements.find(r => idOf(r) === id), problem: status[id].evidence, trigger: status[id].evidence,
         consequence: 'the ticket requirement is not met', fix: 'meet the requirement' }))
     }
-    found.push(...tidy(res.findings).map((f, k) => Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f)))
+    found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })
   let toFix = found.filter(f => f.severity !== 'minor')
   advisory.push(...found.filter(f => f.severity === 'minor'))
   if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
   const bySeverity = s => found.filter(f => f.severity === s).length
-  rounds.push({ round, blocker: bySeverity('blocker'), major: bySeverity('major'), minor: bySeverity('minor'), gates: gated.gates })
-  log(`round ${round}: ${toFix.length} to fix (${bySeverity('blocker')} blocker, ${bySeverity('major')} major)`)
+  rounds.push({ round, major: bySeverity('major'), minor: bySeverity('minor'), gates: gated.gates })
+  log(`round ${round}: ${toFix.length} to fix`)
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
   if (!toFix.length && reviewed && round >= MIN_ROUNDS) {
@@ -546,7 +549,11 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
     rounds[rounds.length - 1].applied = fix.applied.length
     rounds[rounds.length - 1].rejected = fix.rejected.length
     rejections = fix.rejected.map(r => Object.assign({}, toFix.find(f => f.id === r.id) || { id: r.id }, { argument: r.argument }))
-    toFix.forEach(f => history.push({ id: f.id, round, where: f.where, problem: f.problem, outcome: fix.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }))
+    toFix.forEach(f => {
+      const r = fix.rejected.find(x => x.id === f.id)
+      history.push(Object.assign({ id: f.id, round, where: f.where, problem: f.problem, outcome: fix.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument }))
+    })
+    toFix.filter(f => f.proof && !settled.has(f.id)).forEach(f => fix.proofs.some(p => p.path === f.proof.path) ? settled.add(f.id) : stray(f))
     headNow = fix.head || headNow
   }
   if (round === N) {
@@ -608,16 +615,9 @@ STAGE: minor fixes. Read ${IMPLEMENT_SKILL} and follow it, code rules included.$
 FINDINGS:
 ${JSON.stringify(cheap, null, 1)}`, { model: M.fix, effort: 'medium', schema: FIX_SCHEMA, phase: 'Fix', label: 'fix:minor' })
   if (!minorFix) failures.push('fix minor')
-  else {
-    const from = headNow
-    headNow = minorFix.head || headNow
-    // A minor fix is reviewed like any other; what it broke is left over for the main thread.
-    if (!same(headNow, from)) {
-      const late = await fixReview(from, cheap.filter(f => minorFix.applied.some(a => a.id === f.id)), 'review:fix:minor')
-      if (late) unfixed.push(...late.filter(f => f.severity !== 'minor').map(f => Object.assign({}, f, { status: 'unverified' })))
-    }
-  }
 }
+// A proof no fix was sent (its fix died, the run stopped, a minor) is a stray too.
+proofs.filter(f => !settled.has(f.id)).forEach(stray)
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
 // Freeing the run directory is the main thread's step after acceptance (README § Shape).
@@ -641,7 +641,7 @@ return {
   leftover_findings: uniq(unfixed.concat(unmet)),
   advisory: uniq(advisory).filter(f => !minorApplied(f)),
   minor_fixes: minorFix && { applied: minorFix.applied, rejected: minorFix.rejected },
-  accepted_rejections: accepted,
+  stray_proofs: strayProofs,
   unverified: impl.unverified,
   implement: { committed: impl.committed, commits: impl.commits, gate_output: impl.gate_output, notes: impl.notes },
   mailbox,
