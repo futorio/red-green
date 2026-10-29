@@ -73,7 +73,9 @@ let gatesQuestions = []
 // @include shared id
 function silence(res, ids) {
   if (!res.checked.length) return 'no checked rows'
-  if ((res.verdict === 'clean') !== !res.findings.length) return `verdict ${res.verdict} with ${res.findings.length} findings`
+  // An unmet checklist row is a finding by itself.
+  const unmet = res.checked.some(c => c.status === 'unmet')
+  if ((res.verdict === 'clean') !== !(res.findings.length || unmet)) return `verdict ${res.verdict} with ${res.findings.length} findings${unmet ? ' and an unmet row' : ''}`
   const seen = new Set(res.checked.map(c => idOf(c.item)))
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
@@ -97,6 +99,11 @@ function proven(f) {
   if (f.proof && f.source !== 'code') { stray(f); delete f.proof }
   if (f.proof) proofs.push(f)
   return f
+}
+// A finding a fix was sent, with what the fix did to it: fixed, or rejected with its argument (none given: rejected).
+const outcomeOf = (f, res) => {
+  const r = res.rejected.find(x => x.id === f.id)
+  return Object.assign({ id: f.id, where: f.where, problem: f.problem, outcome: res.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument })
 }
 const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
   .forEach(f => res.proofs.some(p => p.id === f.id || p.path === f.proof.path) ? settled.add(f.id) : stray(f))
@@ -185,18 +192,16 @@ while (round < N) {
     N += 1
     log(`round ${round}: ${toFix.length} to fix in the last round, one more round reviews the fix`)
   }
+  let fix = null
   if (toFix.length) {
     fromHead = headNow
-    const fix = await runFix(round, toFix, `fix:r${round}`)
+    fix = await runFix(round, toFix, `fix:r${round}`)
     if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
     fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
     rounds[rounds.length - 1].applied = fix.applied.length
     rounds[rounds.length - 1].rejected = fix.rejected.length
     rejections = fix.rejected.map(r => Object.assign({}, toFix.find(f => f.id === r.id) || { id: r.id }, { argument: r.argument }))
-    toFix.forEach(f => {
-      const r = fix.rejected.find(x => x.id === f.id)
-      history.push(Object.assign({ id: f.id, round, where: f.where, problem: f.problem, outcome: fix.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument }))
-    })
+    toFix.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
     reconcile(toFix, fix)
     headNow = fix.head || headNow
   }
@@ -206,8 +211,9 @@ while (round < N) {
     if (toFix.length && !same(headNow, fromHead)) {
       let from = fromHead
       let given = toFix
+      let by = fix
       for (let pass = 0; ; pass++) {
-        const late = await fixReview(from, given, `review:fix:r${round}${pass ? `:${pass}` : ''}`)
+        const late = await fixReview(from, given.map(f => outcomeOf(f, by)), `review:fix:r${round}${pass ? `:${pass}` : ''}`)
         if (!late) {
           unfixed.push(...given.map(f => Object.assign({}, f, { status: 'unverified', problem: `fixed in the last round, its review died: ${f.problem}` })))
           break
@@ -222,6 +228,7 @@ while (round < N) {
         fixed.push(...again.applied.map(a => Object.assign({ round }, a)))
         headNow = again.head || headNow
         given = majors
+        by = again
       }
     }
     if (!same(headNow, gated.head)) {

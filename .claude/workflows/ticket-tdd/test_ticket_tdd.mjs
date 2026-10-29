@@ -354,7 +354,7 @@ test('W08: a lens with three minors keeps the first two', async () => {
 test('W09: an unmet requirement goes to fix as a major, unmet and unrowed ones end in the leftover', async () => {
   const { result, calls } = await runCore({
     research: Object.assign({}, base().research, { requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: [harness('R1'), harness('R2', 'review'), harness('R3', 'review')] }),
-    'review:r1:checklist': clean([row('R1', { status: 'met' }), row('R2', { status: 'unmet', promise: 'p', counterexample: 'c', evidence: 'clause x fails' })]),
+    'review:r1:checklist': { verdict: 'findings', findings: [], checked: [row('R1', { status: 'met' }), row('R2', { status: 'unmet', promise: 'p', counterexample: 'c', evidence: 'clause x fails' })] },
     'fix:r1': { applied: [{ id: 'R1-R2', what: 'w' }], rejected: [], head: 'bbbb111' },
   })
   assert.match(prompt(calls, 'fix:r1'), /R1-R2/)
@@ -615,7 +615,8 @@ test('W59: lenses and fix-diff reviews get the no-code preamble; the code lens m
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     mutation: mutants(1),
   })
-  const pre = prompt(calls, 'research').split('\n\nSTAGE:')[0]
+  // gates:r1 has the no-code preamble and, like the reviews, a notes field.
+  const pre = prompt(calls, 'gates:r1').split('\n\nSTAGE:')[0]
   for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) {
     const p = prompt(calls, l)
     assert.ok(p.startsWith(`${pre}\n\nSTAGE:`), l)
@@ -856,7 +857,7 @@ test('W67: the checklist lens takes the statement as each id\'s promise and need
 
 test('W68: an unmet row reaches the fix with its promise as the problem and its counterexample as the trigger', async () => {
   const { calls } = await runCore({
-    'review:r1:checklist': clean([row('R1', { status: 'unmet', promise: 'PROMISE-SENT', counterexample: 'COUNTER-SENT', evidence: 'EVIDENCE-SENT' })]),
+    'review:r1:checklist': { verdict: 'findings', findings: [], checked: [row('R1', { status: 'unmet', promise: 'PROMISE-SENT', counterexample: 'COUNTER-SENT', evidence: 'EVIDENCE-SENT' })] },
     'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], head: 'bbbb111' },
   })
   const sent = sentTo(calls, 'fix:r1').find(f => f.id === 'R1-R1')
@@ -929,11 +930,15 @@ test('W75: the implement prompt asks for a question\'s requirement as its id', a
   assert.match(prompt(calls, 'implement'), /questions \(requirement: its id;/)
 })
 
-test('W76: implement commits its work as it stands, a red gate going to the fix; fix keeps the green bar; one commit is created by implement', async () => {
-  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')) })
+test('W76: implement commits its work as it stands, a red gate going to the fix; fix keeps the green bar or commits nothing; the minor fix keeps the gates as it found them; one commit is created by implement', async () => {
+  const minor = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'm:1', 't')] }
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')), 'review:r2:code': minor,
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'tests still red' }], proofs: [], head: 'bbbb111' } }, 2)
   assert.match(prompt(calls, 'implement'), /Commit your work as it stands, even with a gate worse than its baseline/)
-  assert.ok(!prompt(calls, 'implement').includes('Commit only with the gate at its baseline or better'))
-  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with the gate at its baseline or better'))
+  assert.ok(!/Commit only with/.test(prompt(calls, 'implement')))
+  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with every gate at its baseline or better. If a gate stays worse than its baseline, leave the change uncommitted, report `head` unchanged and reject every finding, naming each such gate in its `argument`.'))
+  assert.ok(prompt(calls, 'fix:minor').includes('Commit only with no gate worse than before your edit.'))
+  assert.ok(!/baseline or better/.test(prompt(calls, 'fix:minor')))
   const one = await runCore({}, 1, { one_commit: true })
   assert.match(prompt(one.calls, 'implement'), /The implementation stage creates it/)
   assert.ok(!/leave it uncommitted/.test(prompt(one.calls, 'implement')))
@@ -1249,4 +1254,50 @@ test('W99: a research:retry that fails the checks too is a dead research; the ru
   assert.equal(result.status, 'failed')
   assert.equal(result.stage, 'research')
   assert.deepEqual(result.failures, ['research:retry output: $.plan[0]: longer than 600'])
+})
+
+test('W100: the fix review gets each given finding with its outcome, a rejected one with the fixer\'s argument', async () => {
+  const two = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:1', 't'), finding('major', 'b:1', 't')] }
+  const { calls } = await runCore({
+    'review:r1:code': two,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [{ id: 'R1-code-2', argument: 'ARG-1' }], proofs: [], head: 'cccc222' },
+    'review:fix:r1': major,
+    'fix:r1:review': { applied: [], rejected: [{ id: 'F1-1', argument: 'ARG-2' }], proofs: [], head: 'dddd333' },
+  })
+  const given = label => JSON.parse(prompt(calls, label).split('GIVEN:\n')[1].split('\n\n')[0])
+  assert.deepEqual(given('review:fix:r1'), [{ id: 'R1-code-1', where: 'a:1', problem: 'p', outcome: 'fixed' },
+    { id: 'R1-code-2', where: 'b:1', problem: 'p', outcome: 'rejected', argument: 'ARG-1' }])
+  assert.deepEqual(given('review:fix:r1:1'), [{ id: 'F1-1', where: 'a:1', problem: 'p', outcome: 'rejected', argument: 'ARG-2' }])
+  assert.match(prompt(calls, 'review:fix:r1'), /each `fixed` finding is fixed by the diff; each `rejected` one: its `argument` holds against the code/)
+})
+
+test('W101: a relayed message is to be mentioned in notes only by a stage whose schema has notes', async () => {
+  const { calls } = await everyBlock()
+  for (const c of calls) assert.equal(/mention it in (your )?notes/.test(c.prompt), 'notes' in c.opts.schema.properties, c.label)
+  assert.ok(calls.some(c => 'notes' in c.opts.schema.properties) && calls.some(c => !('notes' in c.opts.schema.properties)))
+})
+
+test('W102: a checklist with an unmet row answers verdict findings, even with no other finding; clean with one is silent', async () => {
+  const unmet = row('R1', { status: 'unmet', promise: 'p', counterexample: 'c' })
+  const sent = await runCore({ 'review:r1:checklist': { verdict: 'findings', findings: [], checked: [unmet] },
+    'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], head: 'bbbb111' } })
+  assert.ok(!sent.result.failures.some(f => /silent/.test(f)), JSON.stringify(sent.result.failures))
+  assert.match(prompt(sent.calls, 'fix:r1'), /R1-R1/)
+  const quiet = await runCore({ 'review:r1:checklist': clean([unmet]), 'fix:r1': { applied: [], rejected: [], proofs: [], head: 'bbbb111' } })
+  assert.ok(quiet.result.failures.includes('review r1 checklist silent: verdict clean with 0 findings and an unmet row'), JSON.stringify(quiet.result.failures))
+  assert.match(prompt(sent.calls, 'review:r1:checklist'), /verdict `clean` exactly when findings is empty and no row is `unmet`/)
+})
+
+test('W103: a runner that did not run, a step that does not apply and a repository with no gate are answers, not deaths; code rules end their line', async () => {
+  const { calls } = await everyBlock()
+  const mutation = prompt(calls, 'mutation')
+  assert.match(mutation, /exit 2 means it did not run: ran false, not_run its stderr\./)
+  assert.match(mutation, /when it does not, ran is false and mutants \[\]\./)
+  assert.match(mutation, /\nAnswer, or the stage counts as died\./)
+  assert.ok(!/run every mutant/.test(mutation))
+  const discover = prompt(calls, 'gates:discover')
+  assert.match(discover, /A repository with no gate: gates \[\] and a question saying where you looked\.\nAnswer, or the stage counts as died\./)
+  assert.ok(!/disagree/.test(discover))
+  const ruled = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 1, withProfile({ code_rules: ['RULE-ONE'] }))
+  assert.match(prompt(ruled.calls, 'fix:r1'), /- RULE-ONE\nFor each finding/)
 })

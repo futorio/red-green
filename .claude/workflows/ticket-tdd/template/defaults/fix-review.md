@@ -1,6 +1,6 @@
 <!-- Block fix review: its default instructions and the test-case review duty's clause, which shares review's words. -->
 <!-- @part fix-review -->
-STAGE: fix review, HEAD {{HEAD}}. A fix moved HEAD from {{from_head}}; no full review round follows it. Review its diff, `git diff {{from_head}}..HEAD`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{duty.test_case_review_fix}}. The gates step checks this HEAD after you.
+STAGE: fix review, HEAD {{HEAD}}. A fix moved HEAD from {{from_head}}; no full review round follows it. Review its diff, `git diff {{from_head}}..HEAD`, and only that: (1) each `fixed` finding is fixed by the diff; each `rejected` one: its `argument` holds against the code; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{duty.test_case_review_fix}}. The gates step checks this HEAD after you.
 GIVEN:
 {{given}}
 

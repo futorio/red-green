@@ -6,7 +6,7 @@ whitespace: some notes start with a space or a blank line, the test-case review 
 {{> review frame}}
 <!-- @part code -->
 {{> review head}} code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}
-{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so and stop.
+{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.
 {{> review frame}}
 <!-- @part head -->
 STAGE: review, round {{round}} of at most {{rounds}} — what you do not catch ships. Lens:

@@ -13,8 +13,8 @@ if (CONFIG.gates.gates) {
   if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 } else {
   phase('Gates')
-  const found = await call('gates', NO_CODE_PRE, 'discover', {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with `source` the source of the gate it bears on; it stays out of gates.',
-    died('Answer with a gate')), { schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
+  const found = await call('gates', NO_CODE_PRE, 'discover', {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate), with `source` the source of the gate it bears on; it stays out of gates. A repository with no gate: gates [] and a question saying where you looked.',
+    died('Answer')), { schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
   if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', gates_questions: found ? found.questions : [], failures }
   GATES = found.gates
   BASELINE = Object.fromEntries(GATES.map(g => [g.name, g.line]))
@@ -35,7 +35,7 @@ const GATES_SCHEMA = { type: 'object', properties: {
 async function runGates(round, label, tag) {
   phase('Gates')
   const res = await call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_list: `- ${gateList('\n- ')}` }, contract(READ_ONLY,
-    'One row per gate: `line` its summary line verbatim; `status` `green` (at its baseline or better), `red` (worse) or `not_run` (`line` the reason).',
+    'head: `git rev-parse HEAD`. One row per gate: `line` its summary line verbatim; `status` `green` (at its baseline or better), `red` (worse) or `not_run` (`line` the reason).',
     died('Answer with a green or red row per gate')), { schema: GATES_SCHEMA, phase: 'Gates', label })
   if (!res) failures.push(`gates ${label}`)
   else headNow = res.head || headNow

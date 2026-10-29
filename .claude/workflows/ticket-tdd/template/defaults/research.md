@@ -7,4 +7,4 @@ STAGE: research.{{retry_note}} Read {{TARGET}}, its parent spec and the sections
 RESEARCH:
 {{research}}
 
-Start from the change-site facts above: read only the lines you change or verify, and search only for what they do not cover.
+Start from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.

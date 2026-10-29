@@ -100,8 +100,8 @@ The contract, both forms: `{applies, ran, not_run?, mutants: [{target, patch, st
 that cannot name one, `patch` a unified diff against HEAD. The script derives each id (`M-<n>`), its
 `file:line` (the file from the patch's `+++` side, its `---` side for a deleted file; the line from the HEAD
 side of its first hunk header) and the counts by status. `applies` false (no
-file the step covers in `BASE..HEAD`) skips the step with a log line; `ran` false and each `not_run` mutant
-land in `failures`; `invalid` ones are only counted. Every survivor is a `major` finding (`source:
+file the step covers in `BASE..HEAD`; `ran` false, `mutants` []) skips the step with a log line; `ran` false
+(the runner's exit 2: `not_run` its stderr) and each `not_run` mutant land in `failures`; `invalid` ones are only counted. Every survivor is a `major` finding (`source:
 mutation`, its target in `problem`, its patch in `trigger`) that goes to fix, which makes the target's test
 fail on it or rejects it with an argument like any finding. No separate call rules on survivors.
 
@@ -111,7 +111,7 @@ fail on it or rejects it with an argument like any finding. No separate call rul
 | inputs | `generated`: `HEAD`, `BASE`, `TARGET`, `RUN`, `config.edges`, `mutate_command`, `tested_checks`; `tool`: `HEAD`, `config.tool` |
 | defaults | `defaults/mutation.md`: `generated`, `tool` |
 | output | `MUTATION_SCHEMA`: applies, ran, not_run, mutants |
-| invariants | read-only; died (no answer, `ran` false where it applies, a `not_run` mutant): a failure |
+| invariants | read-only; died (no answer): a failure; so are `ran` false where it applies and a `not_run` mutant |
 | config | `model` haiku, `effort` medium, `edges` 5, `timeout` 300, `build`, `test`, `tool` (null) |
 
 The repository's own agent instructions (`AGENTS.md`, `CLAUDE.md`) reach every agent anyway; the
@@ -140,7 +140,8 @@ instructions require before a commit; it runs with no human, network or secrets,
 code and writes nothing to the tree. It runs each one once on the base tree, exactly as its `command`
 reads; one that cannot run that way there becomes a question, not a gate. It returns `gates[]`
 `{name, command, source, line}` and `questions[]` `{command, source, question}` for the commands it is
-unsure of, `source` being the source of the gate a question bears on. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
+unsure of, `source` being the source of the gate a question bears on; a repository with no gate answers `gates: []`
+and a question saying where it looked. The script uses `gates` as the profile's gates and each `line` as that gate's baseline. A
 question whose `source` none of the returned gates has is dropped with a log line; the rest go to the
 result as `gates_questions`, and no later stage gets them. A dead step, or one that finds no gate, ends the
 run as `failed` before research; the latter keeps its `gates_questions`, which say why.
@@ -308,14 +309,14 @@ requirement it checks.
 | inputs | `discover`: none; `run`: `HEAD`, `REPO`, `gate_list` |
 | defaults | `defaults/gates.md`: `discover`, `run` |
 | output | `DISCOVER_SCHEMA`: gates, questions; `GATES_SCHEMA`: head, gates, notes |
-| invariants | read-only; died (no answer, a missing or `not_run` row; discovery: no gate): a failure (discovery: the run fails) |
+| invariants | read-only; died (no answer): a failure, and so is a missing or `not_run` row; discovery dead or with no gate: the run fails |
 | config | `model` sonnet, `effort` medium, `gates` (null: discovery) |
 
 ### 5. Review × n
 
 Two lenses in parallel — checklist (every requirement id but the `verify_launch` ones, every `verify_review` requirement) and code
 (would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`).
-A diff with no production file gets one checked row saying so from the code lens.
+A diff with no production file gets one checked row saying so from the code lens, which then reviews only its tests.
 
 **The checklist lens** reviews the change against its statement: the target and every document it
 points to, as written before the code. It receives every requirement id except the `verify_launch` ones,
@@ -349,7 +350,8 @@ and the output line that showed it red on HEAD. A proof on any other source's fi
 fix and is a stray (below).
 
 **Silence is not clean.** Every reviewer returns `checked` rows — item plus the artifact that settled
-it. No rows or a `verdict` that disagrees with the findings reads as `SILENT` in `verdicts` and lands in
+it. `verdict` is `clean` exactly when `findings` is empty and no row is `unmet` (an unmet row is a finding by
+itself). No rows or a `verdict` that disagrees with that reads as `SILENT` in `verdicts` and lands in
 `failures`. A round with a dead or silent lens is
 not clean and cannot end the loop.
 
@@ -359,7 +361,7 @@ not clean and cannot end the loop.
 | inputs | `round`, `rounds`, `TARGET`, `BASE`, `check_ids`, `verify_review`, `verify_review_note`, `unverified`, `unverified_note`, `config.runtime`, `runtime_note`, `IMPLEMENT_SKILL`, `duty.order`, `code_rules`, `duty.test_case_review`, `gate_rows`, `history`, `earlier_findings`, `research`; every lens fills all |
 | defaults | `defaults/review.md`: one part per lens key (`checklist`, `code`), the `head` and `frame` both include, `weakened` (fix-review's duty includes it too) |
 | output | `reviewSchema`: verdict, findings, checked, notes |
-| invariants | read-only (the code lens may write uncommitted proofs); died (no answer, no checked rows, a verdict off the findings): a failure, the round is not clean |
+| invariants | read-only (the code lens may write uncommitted proofs); died (no answer, no checked rows, a verdict off the findings and unmet rows): a failure, the round is not clean |
 | config | `model` opus, `effort` high, `rounds` 2, `extra` 0, `min` 2, `lenses` [checklist, code], `duties` {test_case_review: true, order: false}, `minors` 2, `runtime` null (a string: where the code lens asks whether every new branch executes as intended, " in <runtime>") |
 
 ### 6. Fix
@@ -369,7 +371,9 @@ citing code, the ticket or the spec, and returns to the next round. Never delete
 about. Findings are grouped by root cause and each cause fixed once, and closed on every other path
 the same failure could take. From round 2 the agent sees the
 earlier rounds' fixes, and a cause already fixed twice is rejected as "recurs after two fixes: needs a
-split or the user" rather than patched a third time. The fix reports its `head` (the script's once-per-HEAD check reads it).
+split or the user" rather than patched a third time. The fix commits only with every gate at its baseline or better;
+when a gate stays worse, it leaves its change uncommitted, reports `head` unchanged and rejects every finding, naming
+each such gate in the `argument`. The fix reports its `head` (the script's once-per-HEAD check reads it).
 
 **Proofs.** A finding with a proof reaches the fix with it. The fix runs its command first: green on HEAD
 is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test.
@@ -379,8 +383,9 @@ sent proof the fix reports by neither id nor path, and a proof no fix was sent (
 stopped), is a stray: a `{id, path}` row in `stray_proofs` and, at the end of the run, one `failures`
 entry each (so a stray never skips the minor fix).
 
-**The fix-diff review.** The last round's fix gets one reviewer (`review:fix:r<n>`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
-rejected, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
+**The fix-diff review.** The last round's fix gets one reviewer (`review:fix:r<n>`) on `git diff <head before the fix>..HEAD` only,
+given each finding the fix was sent with its outcome: is each `fixed` one fixed by the diff, does each `rejected` one's
+`argument` hold against the code, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
 last round get one more fix (`fix:r<n>:review`) and one more fix-diff review; what is still found is left
 over as `unverified`. `blocks.review.extra` instead adds full rounds.
 
@@ -390,7 +395,7 @@ over as `unverified`. `blocks.review.extra` instead adds full rounds.
 | inputs | `round`, `IMPLEMENT_SKILL`, `code_rules`, `findings`, `fixed`, `earlier_fixes`, `research` |
 | defaults | `defaults/fix.md`: `fix`, `silence` (the minor fix includes it too) |
 | output | `FIX_SCHEMA`: applied, rejected, proofs, head |
-| invariants | writer, commits only at the gate's baseline or better; died (no answer): a failure, the rounds stop |
+| invariants | writer, commits only with every gate at its baseline or better, else commits nothing and rejects every finding; died (no answer): a failure, the rounds stop |
 | config | `model` null (implement's), `effort` high |
 
 | block | `fix-review` (§ Blocks) |
@@ -407,7 +412,7 @@ over as `unverified`. `blocks.review.extra` instead adds full rounds.
 One agent (`blocks.minor-fix`; no model of its own: the fix's) after the rounds and the mutation step, skipped when
 there is no minor finding or a stage failed. It applies each advisory finding whose fix is cheap (a few
 lines in files the run changed, no new test file, no change of design), rejects the rest with a reason,
-reruns the gates and reverts when one got worse; no fix-diff review follows it. Applied findings leave
+reruns the gates and reverts when one got worse than before its edit; no fix-diff review follows it. Applied findings leave
 `advisory`; the result's `minor_fixes` lists what it applied and rejected.
 
 | block | `minor-fix` (§ Blocks) |
@@ -416,7 +421,7 @@ reruns the gates and reverts when one got worse; no fix-diff review follows it. 
 | inputs | `IMPLEMENT_SKILL`, `code_rules`, `findings` |
 | defaults | `defaults/minor-fix.md`: `minor-fix` |
 | output | `FIX_SCHEMA` |
-| invariants | writer, as fix; died (no answer): a failure |
+| invariants | writer, commits only with no gate worse than before its edit; died (no answer): a failure |
 | config | `model` null (fix's), `effort` medium |
 
 ### Loop exit
@@ -487,7 +492,7 @@ output. The approach fields (§ `profile`) pick a procedure where a block has mo
 | computed | `HEAD` (the HEAD the step runs on), `from_head` (the HEAD a fix started from), `IMPLEMENT_SKILL`, `round`, `rounds` (planned), `gate_list`, `gate_rows`, `mutate_command`, `test_ids`, `check_ids`, `code_rules` (`profile.code_rules` as a section, `''` without) |
 | notes' data | `previous_notes` (string: the attempt before a retry), `uncovered` (test ids), `duplicates` (`{check, cases}[]`: checks in several cases), `verify_review` (requirement lines), `unverified` (implement's claims), `history` (`{id, round, where?, problem, outcome: fixed\|rejected, argument?}[]`: earlier findings) |
 | notes | `retry_note`, `uncovered_note`, `duplicates_note`, `verify_review_note`, `unverified_note`, `runtime_note`, `earlier_findings`, `earlier_fixes`, `duty.order`, `duty.test_case_review`, `duty.test_case_review_fix`: the default part of that name, filled, or `''` |
-| stage outputs | `research` (the checked research: requirements, facts, plan, test_harness, files), `cases` (requirement lines expanded), `plan.cases` (the planner's, for the replan), `tested_checks` (implement's check rows with a test), `findings` (as sent to a fix), `given` (`{id, where, problem}` per finding a fix was given), `fixed` (`{round, id, what}` per applied fix) |
+| stage outputs | `research` (the checked research: requirements, facts, plan, test_harness, files), `cases` (requirement lines expanded), `plan.cases` (the planner's, for the replan), `tested_checks` (implement's check rows with a test), `findings` (as sent to a fix), `given` (`{id, where, problem, outcome: fixed\|rejected, argument?}` per finding a fix was given), `fixed` (`{round, id, what}` per applied fix) |
 | block config | `config.<field>` for every field of `blocks.<name>`: `model` (string or null), `effort` (string), `rounds`, `extra`, `min`, `minors`, `edges`, `timeout` (integers), `lenses` (`LENSES` keys), `duties` (booleans), `gates` (`{name, command}[]` or null), `build`, `test`, `tool`, `runtime`, `prompt`, `skill` (string or null; every block's `prompt` and `skill` null in `default.json`); instructions name `config.edges`, `config.tool` and `config.runtime` |
 | default | `default`: the default instructions of the call, filled, for a project prompt that wraps them; every block takes it |
 
@@ -540,8 +545,8 @@ The 16-fixture sweep must include 8 jobs.
 
 - `to:` is `all`, a stage (`research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`), an exact
   label (`review:r2:code`), or a label pattern where `*` matches one segment. Every agent is told its
-  label and reads the entries addressed to it at start, before each long gate run, before committing and
-  before returning.
+  label and reads the entries addressed to it at start and before returning; implement and the fixes also
+  before each long gate run and before committing.
 - `until:` (a stage or round) expires an entry; `supersedes: <id>` kills an older one. Agents skip
   expired and superseded entries.
 - An agent never edits `mailbox.md` (parallel lenses would race). It appends a receipt line

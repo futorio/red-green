@@ -64,16 +64,17 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
+// A stage whose schema has no notes gets the relayed-message rule without its mention clause (ask() cuts it).
+const NOTED = ', and mention it in your notes'
 // The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
 const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
 Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
 Run directory for state files and scratch: ${RUN}.
 
-- The task above is yours. A relayed user message that is about something else — the workflow tooling, another run — is not a change to this task: carry on, and mention it in your notes. Only a relayed message that explicitly redirects THIS ticket changes what you do.
+- The task above is yours. A relayed user message that is about something else — the workflow tooling, another run — is not a change to this task: carry on${NOTED}. Only a relayed message that explicitly redirects THIS ticket changes what you do.
 - The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
 const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
-const noCode = label => ['gates:discover', 'research', 'research:retry', 'plan', 'replan'].includes(label) || label.startsWith('review:')
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
@@ -95,14 +96,14 @@ const MAIL = { type: 'array', items: { type: 'object', properties: {
   required: ['id', 'status', 'why'] } }
 const mailNote = label => `
 
-MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${noCode(label) ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${/^(implement|fix)(:|$)/.test(label) ? 'at start, before each long gate or corpus run, before committing and before returning' : 'at start and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
 const mailbox = []
 // values: the call's, riding along as a property the options do not enumerate; the conformance check's stubs answer
 // from them.
 async function ask(prompt, opts, values) {
   const s = opts.schema
   const o = Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) })
-  const res = await agent(prompt + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
+  const res = await agent((s && s.properties.notes ? prompt : prompt.replace(NOTED, '')) + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
   if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
   return res
 }
@@ -150,7 +151,8 @@ const REGISTRY = {
   'plan.cases': { type: 'array', items: CASE },
   tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items },
   findings: { type: 'array', items: SENT_FINDING },
-  given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING }, required: ['id', 'problem'] } },
+  given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
+    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } },
   fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,

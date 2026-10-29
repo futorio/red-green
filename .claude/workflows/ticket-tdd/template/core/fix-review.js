@@ -2,14 +2,15 @@
 // @part run
 
 // The last round's fix, which no full round follows, is reviewed on its own diff: did it fix what it was given, did it break
-// anything near it, did it weaken a test. Returns its findings, or null when the reviewer died.
+// anything near it, did it weaken a test. given: each finding the fix was sent, with its outcome (outcomeOf). Returns
+// its findings, or null when the reviewer died.
 let fixReviews = 0
 async function fixReview(fromHead, given, label) {
   fixReviews += 1
   phase('Review')
   const res = await call('fix-review', NO_CODE_PRE, 'fix-review', {
     HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': CONFIG.review.duties.test_case_review,
-    given: given.map(f => ({ id: f.id, where: f.where, problem: f.problem })),
+    given,
   }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified')),
   { schema: REVIEW_SCHEMA, phase: 'Review', label })
   if (!res) { failures.push(`fix review ${label}`); return null }

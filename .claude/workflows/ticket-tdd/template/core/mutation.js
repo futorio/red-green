@@ -32,8 +32,8 @@ async function runMutation() {
       mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(test)}${build ? ` --build ${sq(build)}` : ''} --timeout ${timeout}`,
     }]
   const res = await call('mutation', NO_CODE_PRE, part, Object.assign({ HEAD: headNow }, values),
-    contract(READ_ONLY, `applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
-      died('Where it applies, run every mutant')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
+    contract(READ_ONLY, `applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}; when it does not, ran is false and mutants []. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
+      died('Answer')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
   if (!res) { failures.push('mutation'); return [] }
   if (!res.applies) { log('mutation: no file it covers in the diff, step skipped'); return [] }
   if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)
