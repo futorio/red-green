@@ -21,17 +21,10 @@ const harnessOf = id => research.test_harness.find(h => idOf(h.requirement) === 
 const lineOf = id => research.requirements.find(r => idOf(r) === id)
 const testIds = reqIds.filter(id => harnessOf(id).by === 'test')
 const checkIds = reqIds.filter(id => harnessOf(id).by !== 'launch')
-const PLAN_RULES = `cases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness \`how\` names; every case is one test, and \`requirement\` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.
-AAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.
-The ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.`
 const PLAN_CONTRACT = contract(READ_ONLY, 'questions: every point the ticket and the research leave open that a case still depends on, one entry each: requirement (its id), question, reading (the one the cases take), cases (the ids of the cases that take it), settles (research: the repository holds the answer and the research does not give it; owner: the ticket and the spec leave it to their author). An empty list says nothing was left open.', died('Answer'))
 
 // With no test requirement there is nothing to plan: no planner call, no cases.
-let plan = !testIds.length ? { cases: [] } : await call('plan', NO_CODE_PRE, `STAGE: test-case planning. No code is written yet.
-
-${PLAN_RULES}
-
-${RESEARCH_PART}`, { test_ids: testIds.join(', '), research }, PLAN_CONTRACT,
+let plan = !testIds.length ? { cases: [] } : await call('plan', NO_CODE_PRE, 'plan', { test_ids: testIds.join(', '), research }, PLAN_CONTRACT,
   { schema: casesSchema(testIds), phase: 'Plan', label: 'plan' })
 if (!plan) return { status: 'failed', stage: 'plan', failures }
 // @part replan
@@ -48,16 +41,9 @@ function duplicates(p) {
 let cov = coverage(plan)
 let dup = duplicates(plan)
 if (cov.length || dup.length) {
-  plan = await call('plan', NO_CODE_PRE, `STAGE: test-case planning, the one replan.{{replan_note}} Keep every other case as it is, same id.
-
-${PLAN_RULES}
-
-YOUR PREVIOUS CASES:
-{{plan.cases}}
-
-${RESEARCH_PART}`, {
+  plan = await call('plan', NO_CODE_PRE, 'replan', {
     test_ids: testIds.join(', '), 'plan.cases': plan.cases, research,
-    replan_note: `${cov.length ? ` Your cases below leave ${cov.join(', ')} uncovered: add cases for each.` : ''}${dup.length ? ` These checks sit in several cases after the same Arrange and Act; keep each in one case: ${JSON.stringify(dup)}.` : ''}`,
+    uncovered: cov.join(', '), uncovered_note: note(cov.length), duplicates: JSON.stringify(dup), duplicates_note: note(dup.length),
   }, PLAN_CONTRACT, { schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
   cov = coverage(plan)
   dup = duplicates(plan)

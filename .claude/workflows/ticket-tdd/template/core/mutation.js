@@ -22,20 +22,16 @@ const placeOf = patch => {
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 async function runMutation() {
   mutated = true
-  if (!P.mutation) { log('mutation: no profile.mutation, step skipped'); return [] }
+  const X = CONFIG.mutation
+  if (!X.tool && !X.test) { log('mutation: blocks.mutation has no test or tool, step skipped'); return [] }
   phase('Gates')
-  const X = P.mutation
-  if (!X.tool && !X.test) { failures.push('mutation: profile.mutation has neither test nor tool'); return [] }
   // The approach: the project's tool, or mutants generated against the checks and run by the runner.
-  const [covers, how, values] = X.tool ? ['files the tool covers', 'The project\'s mutation tool: {{profile.mutation.tool}} Run it once on this HEAD and report every mutant it ran: `target` `operator`, or a check ref only when the tool names one; `patch` a unified diff against HEAD; `status`.', { 'profile.mutation.tool': X.tool }]
-    : ['production source', `Read \`git diff {{BASE}}..HEAD\` and {{TARGET}}. For each check below write one mutant that breaks the behaviour its test claims to pin (\`target\` its ref), then at most {{config.edges}} on edges the ticket does not state (\`target\` \`edge: <short phrase>\`). Each \`patch\` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to {{RUN}}/mutants.json, then run once \`{{mutate_command}}\` and report its output list as \`mutants\`; exit 2 means it did not run.
-${BG}
-CHECKS:
-{{tested_checks}}`, {
-      BASE, TARGET, RUN, 'config.edges': CONFIG.mutation.edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
-      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''} --timeout ${X.timeout || CONFIG.mutation.timeout}`,
+  const [covers, part, values] = X.tool ? ['files the tool covers', 'tool', { 'config.tool': X.tool }]
+    : ['production source', 'generated', {
+      BASE, TARGET, RUN, 'config.edges': X.edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
+      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''} --timeout ${X.timeout}`,
     }]
-  const res = await call('mutation', NO_CODE_PRE, `STAGE: mutation, HEAD {{HEAD}}. ${how}`, Object.assign({ HEAD: headNow }, values),
+  const res = await call('mutation', NO_CODE_PRE, part, Object.assign({ HEAD: headNow }, values),
     contract(READ_ONLY, `applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
       died('Where it applies, run every mutant')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
   if (!res) { failures.push('mutation'); return [] }

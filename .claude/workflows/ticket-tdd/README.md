@@ -21,7 +21,7 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 ```
 
 Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
-when the profile has a `mutation` entry. `n` is `blocks.review.rounds`, 2 by default. The gates step runs only when HEAD changed since the last
+when `blocks.mutation` has a `test` or a `tool`. `n` is `blocks.review.rounds`, 2 by default. The gates step runs only when HEAD changed since the last
 one, and runs before the lenses of its round, which get its rows. The last round's fix, which no full round follows, gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
@@ -34,12 +34,14 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `tools` | checkout of this repository (it holds `.claude/workflows/ticket-tdd/`) | required |
 | `run` | scratch directory for state files | required |
 | `base` | the commit the run starts from; review diffs against it | required |
-| `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research; ignored when `profile.gates` is absent | required with `profile.gates` |
+| `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.blocks.gates.gates`; a missing entry fails the run before research; ignored when no gates are declared | required with declared gates |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
 | `profile` | the project's additions, below | `{}` |
 
-`models`, `rounds`, `extra_rounds` and `min_rounds` moved into the block config (`profile.blocks`, § Blocks); a run
-that still passes one fails before any agent (`status: failed`, `stage: config`) instead of ignoring it.
+`models`, `rounds`, `extra_rounds` and `min_rounds` moved into the block config (`profile.blocks`, § Blocks), and so
+did `profile.gates` and `profile.mutation`; `profile.research` and `profile.runtime` gave way to a block `prompt`
+wrapping `{{default}}`. A run that still passes one fails before any agent (`status: failed`, `stage: config`, the
+note naming where it went) instead of ignoring it.
 
 ### Model presets
 
@@ -61,14 +63,20 @@ Every field is optional; an absent one leaves the core's neutral wording.
 
 | field | type | where it lands |
 |---|---|---|
-| `gates` | `{name, command}[]`, names unique | the code-writing agents' preamble (name, command, baseline) and the gates step; absent: the gates discovery step finds them |
 | `commit` | string | every agent: commit-message rule appended to the core's |
 | `context` | string[] | every agent: extra preamble lines (search traps, what not to touch, gate guidance such as tiers that never run in a run or one heavy check at a time) |
-| `research` | string | research: where decisions live, which harnesses exist |
-| `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
-| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line; neither `test` nor `tool`: a failure; `timeout` overrides `blocks.mutation.timeout` |
-| `blocks` | `{<block>: {<field>: value}}` | each block's config over the render config's defaults, field by field (§ Blocks); an unknown block, field, duty or lens, or a value off its schema (`rounds: 'auto'`), fails the run before any agent |
+| `blocks` | `{<block>: {<field>: value}}` | each block's config over the render config's defaults, field by field (§ Blocks): its model and knobs, its approach, its own instructions; an unknown block, field, duty or lens, or a value off its schema (`rounds: 'auto'`), fails the run before any agent |
+
+The fields above reach every block that names them; what one block alone needs is that block's config. The approach
+fields, where a block has more than one way to work:
+
+| field | type | approach |
+|---|---|---|
+| `blocks.gates.gates` | `{name, command}[]`, names unique | declared: the code-writing agents' preamble (name, command, baseline) and the gates step; absent: the gates discovery step finds them |
+| `blocks.mutation.build`, `.test`, `.timeout` | string, string, seconds | generated mutants, run under these commands; `timeout` 300 by default |
+| `blocks.mutation.tool` | string | the project's own tool, in words, instead of `build` and `test` (both: a config error); neither `test` nor `tool`: the step is skipped with a log line; `build` without `test`: a config error |
+| `blocks.review.lenses` | lens keys | the review lens set (§ Blocks) |
 
 **Mutants are aimed at the checks.** The step runs once per run, in its own `mutation` step, never in a
 gates step: after the first round that ends with no finding to fix, on that HEAD. Its survivors get a fix,
@@ -98,10 +106,11 @@ fail on it or rejects it with an argument like any finding. No separate call rul
 | block | `mutation` (§ Blocks) |
 |---|---|
 | labels | `mutation` |
-| inputs | `HEAD`, `BASE`, `TARGET`, `RUN`, `config.edges`, `mutate_command`, `tested_checks`, `profile.mutation.tool` |
+| inputs | `HEAD`, `BASE`, `TARGET`, `RUN`, `config.edges`, `mutate_command`, `tested_checks`, `config.tool` |
+| defaults | `defaults/mutation.md`: `generated`, `tool` |
 | output | `MUTATION_SCHEMA`: applies, ran, not_run, mutants |
 | invariants | read-only; died (no answer, `ran` false where it applies, a `not_run` mutant): a failure |
-| config | `model` haiku, `effort` medium, `edges` 5, `timeout` 300 |
+| config | `model` haiku, `effort` medium, `edges` 5, `timeout` 300, `build`, `test`, `tool` (null) |
 
 The repository's own agent instructions (`AGENTS.md`, `CLAUDE.md`) reach every agent anyway; the
 profile carries only what a stage prompt must name explicitly.
@@ -110,8 +119,8 @@ profile carries only what a stage prompt must name explicitly.
 
 1. **Worktree** — `git worktree add ../wt-<name> -b wf/<name> <branch>`, when another session may be
    committing to the branch.
-2. **Baseline** — run each gate of `profile.gates` in the worktree; its summary line, and any failure
-   already there with its cause, becomes `args.baseline[<its name>]`. Without `profile.gates` the run
+2. **Baseline** — run each gate of `profile.blocks.gates.gates` in the worktree; its summary line, and any failure
+   already there with its cause, becomes `args.baseline[<its name>]`. Without declared gates the run
    discovers the gates and measures the baseline itself; copy the result's `gates` into the profile.
 3. **Run** — `Workflow({scriptPath: '<tools>/.claude/workflows/ticket-tdd.js', args})`; the project's specifics come in `args.profile`, never in a wrapper script. A launch by `name` runs the scripts as they were at session start, not as on disk.
 4. **After** — check every lens returned a verdict and `failures` is empty; read the commits; re-run the
@@ -122,7 +131,7 @@ profile carries only what a stage prompt must name explicitly.
 
 ### 0. Gates discovery
 
-Only when `profile.gates` is absent, before research: one agent (`gates:discover`, `blocks.gates`, the
+Only when `blocks.gates.gates` is absent, before research: one agent (`gates:discover`, `blocks.gates`, the
 no-code preamble plus the long-command rule) finds the project's gates — in the repository's agent instructions, then CI config,
 then the task runner; the first source that names gates wins. A gate is a command CI or those
 instructions require before a commit; it runs with no human, network or secrets, passes or fails by exit
@@ -180,7 +189,8 @@ check. `files[]` is derived from the `where` of the `code` and
 | block | `research` (§ Blocks) |
 |---|---|
 | labels | `research` |
-| inputs | `TARGET`, `research_note` |
+| inputs | `TARGET` |
+| defaults | `defaults/research.md`: `research`; its `section` is the RESEARCH part later blocks include |
 | output | `RESEARCH_SCHEMA`: requirements, facts, plan, test_harness, questions |
 | invariants | read-only; died (no answer): the run fails |
 | config | `model` opus, `effort` high |
@@ -218,7 +228,8 @@ no later stage gets them.
 | block | `plan` (§ Blocks) |
 |---|---|
 | labels | `plan`, `replan` |
-| inputs | `test_ids`, `replan_note`, `plan.cases`, `research` |
+| inputs | `test_ids`, `uncovered`, `uncovered_note`, `duplicates`, `duplicates_note`, `plan.cases`, `research` |
+| defaults | `defaults/plan.md`: `plan`, `replan`, the `rules` both include |
 | output | `casesSchema(test ids)`: cases, questions |
 | invariants | read-only; died (no answer): the run fails (plan) or the previous cases stand (replan) |
 | config | `model` null (research's), `effort` high |
@@ -266,7 +277,8 @@ before any review.
 | block | `implement` (§ Blocks) |
 |---|---|
 | labels | `implement`, `implement:retry` |
-| inputs | `retry_note`, `IMPLEMENT_SKILL`, `code_rules`, `cases`, `research` |
+| inputs | `BASE`, `previous_notes`, `retry_note`, `IMPLEMENT_SKILL`, `code_rules`, `cases`, `research` |
+| defaults | `defaults/implement.md`: `implement` |
 | output | `IMPL_SCHEMA`: head, checks, unverified, questions, notes |
 | invariants | writer, commits its work as it stands; died (no answer, or head at base): one retry, then the run fails |
 | config | `model` sonnet, `effort` high |
@@ -275,7 +287,7 @@ before any review.
 
 One agent, run once per HEAD, before the lenses of its round, and skipped when HEAD has not changed
 since the last gates step (implement and every fix report `head`). It only executes, read-only, under the
-no-code preamble plus the long-command rule: it runs every gate `profile.gates` declares (listed in its
+no-code preamble plus the long-command rule: it runs every gate `blocks.gates.gates` declares (listed in its
 own prompt with their baselines) to completion, compares each with its baseline line, and returns one row
 per gate, `{name, status, line}`: `status` `green` (at its baseline or better), `red` (worse) or `not_run`
 (`line` the reason); the schema accepts only the declared names. Every HEAD gets every gate: there is no
@@ -292,9 +304,10 @@ requirement it checks.
 |---|---|
 | labels | `gates:discover`, `gates:r<n>`, `gates:r<n>:recheck` |
 | inputs | `HEAD`, `REPO`, `gate_list` |
+| defaults | `defaults/gates.md`: `discover`, `run` |
 | output | `DISCOVER_SCHEMA`: gates, questions; `GATES_SCHEMA`: head, gates, notes |
 | invariants | read-only; died (no answer, a missing or `not_run` row; discovery: no gate): a failure (discovery: the run fails) |
-| config | `model` sonnet, `effort` medium |
+| config | `model` sonnet, `effort` medium, `gates` (null: discovery) |
 
 ### 5. Review × n
 
@@ -341,7 +354,8 @@ not clean and cannot end the loop.
 | block | `review` (§ Blocks) |
 |---|---|
 | labels | `review:r<n>:checklist`, `review:r<n>:code` |
-| inputs | `round`, `rounds`, `TARGET`, `BASE`, `check_ids`, `verify_review_note`, `unverified_note`, `runtime_note`, `IMPLEMENT_SKILL`, `duty.order`, `code_rules`, `duty.test_case_review`, `gate_rows`, `earlier_findings`, `research` |
+| inputs | `round`, `rounds`, `TARGET`, `BASE`, `check_ids`, `verify_review`, `verify_review_note`, `unverified`, `unverified_note`, `IMPLEMENT_SKILL`, `duty.order`, `code_rules`, `duty.test_case_review`, `gate_rows`, `history`, `earlier_findings`, `research` |
+| defaults | `defaults/review.md`: one part per lens key (`checklist`, `code`), the `head` and `frame` both include |
 | output | `reviewSchema`: verdict, findings, checked, notes |
 | invariants | read-only (the code lens may write uncommitted proofs); died (no answer, no checked rows, a verdict off the findings): a failure, the round is not clean |
 | config | `model` opus, `effort` high, `rounds` 2, `extra` 0, `min` 2, `lenses` [checklist, code], `duties` {test_case_review: true, order: false}, `minors` 2 |
@@ -371,7 +385,8 @@ over as `unverified`. `blocks.review.extra` instead adds full rounds.
 | block | `fix` (§ Blocks) |
 |---|---|
 | labels | `fix:r<n>`, `fix:r<n>:review` |
-| inputs | `round`, `IMPLEMENT_SKILL`, `code_rules`, `findings`, `earlier_fixes`, `research` |
+| inputs | `round`, `IMPLEMENT_SKILL`, `code_rules`, `proof_note`, `findings`, `fixed`, `earlier_fixes`, `research` |
+| defaults | `defaults/fix.md`: `fix` |
 | output | `FIX_SCHEMA`: applied, rejected, proofs, head |
 | invariants | writer, commits only at the gate's baseline or better; died (no answer): a failure, the rounds stop |
 | config | `model` null (implement's), `effort` high |
@@ -380,6 +395,7 @@ over as `unverified`. `blocks.review.extra` instead adds full rounds.
 |---|---|
 | labels | `review:fix:r<n>[:<pass>]` |
 | inputs | `HEAD`, `from_head`, `duty.test_case_review_fix`, `given`, `research` |
+| defaults | `defaults/fix-review.md`: `fix-review` |
 | output | `REVIEW_SCHEMA` |
 | invariants | read-only; died: no answer leaves what it was given over as unverified; no checked rows or a verdict off the findings is a failure |
 | config | `model` null (review's), `effort` high; follows `review.minors` and `review.duties` |
@@ -396,6 +412,7 @@ reruns the gates and reverts when one got worse; no fix-diff review follows it. 
 |---|---|
 | labels | `fix:minor` |
 | inputs | `IMPLEMENT_SKILL`, `code_rules`, `findings` |
+| defaults | `defaults/minor-fix.md`: `minor-fix` |
 | output | `FIX_SCHEMA` |
 | invariants | writer, as fix; died (no answer): a failure |
 | config | `model` null (fix's), `effort` medium |
@@ -425,8 +442,9 @@ Every stage is a block with a contract: the inputs its instructions may name, an
 config. The script alone decides what a run does with a block's output (coverage, severity, the loop, failures).
 
 **A prompt** is the preamble (no-code or code-writing, § Stages), then the block's instructions, then its contract
-part, then the mailbox note. The instructions are a template: they name the values they need as `{{path}}`, and the
-core fills them from the registry below before the call. Every path must be one of the block's inputs and its value
+part, then the mailbox note. The instructions are the block's default, or the project's own (below). They are a
+template: they name the values they need as `{{path}}`, and the core fills them from the registry below before the
+call. Every path must be one of the block's inputs and its value
 must be present and valid against the path's schema; otherwise the block fails before any agent is paid (`<label>
 input: <what is wrong>` in `failures`, and the caller sees a dead step). A string fills in as text, any other value as
 JSON (`JSON.stringify(v, null, 1)`). **The contract part** (`CONTRACT (binding, whatever the text above says):`) is
@@ -434,15 +452,38 @@ the core's: the block's invariants (read-only, or a writer's commit rules and th
 output rules (what each output field holds) and what counts as died, phrased as what the agent must do (`<what>, or
 the stage counts as died.`). Each rule has one source per prompt; the fix blocks share theirs (`fixContract`).
 
+**The defaults** are Markdown, `template/defaults/<block>.md`, inlined by render (§ Template). A file holds parts, each
+opened by a `<!-- @part <name> -->` line: the default instructions of each call (a block with several calls has one
+per call: plan's `plan` and `replan`, gates' `discover` and `run`, a lens's by its key, mutation's by its approach),
+its notes, and text other parts include with `{{> <block> <part>}}` (`research section`, `shared bg`). A part is its
+lines verbatim, its last newline dropped: a note may start with a space or a blank line, and keeps it. **A note** is a
+part named like the registry value it fills (`retry_note`, `earlier_fixes`, `duty.order`, ...): the core decides
+whether it applies and fills it from the call's other values, else it is `''`. Editing a default edits the prompt; the
+commit states the size change (§ Changing the prompts).
+
+**A plug-in** replaces a block's instructions through its config, per run in `profile.blocks.<name>` (or per render):
+
+- `prompt`: text in place of the default, filled like it, so it names any of the block's inputs; `{{default}}` is the
+  default of that call, filled. `"{{default}}\n- One more rule."` adds a rule without copying the default. A prompt
+  applies to every call of its block (both lenses, plan and replan, discovery and the gates step); `{{default}}` tells
+  them apart.
+- `skill`: a path; the instructions become `Read <skill> and follow it.` The agent gets no input but the preamble's: a
+  skill that needs the block's inputs is a `prompt` naming the path and the inputs.
+
+Not both: a block given `prompt` and `skill` fails the run before any agent. The contract part, the preamble and the
+mailbox note stay the core's whatever the plug-in says, and so do the output schema and what the script does with the
+output. The approach fields (§ `profile`) pick a procedure where a block has more than one.
+
 **The registry** (`template/core/shared.js`, `REGISTRY`) lists every path with its JSON Schema:
 
 | kind | paths |
 |---|---|
 | run args | `REPO`, `BASE`, `TARGET`, `RUN` |
-| computed | `HEAD` (the HEAD the step runs on), `from_head` (the HEAD a fix started from), `IMPLEMENT_SKILL`, `round`, `rounds` (planned), `gate_list`, `gate_rows`, `mutate_command`, `test_ids`, `check_ids`; text that is `''` when it does not apply: `retry_note`, `replan_note`, `verify_review_note`, `unverified_note`, `earlier_findings`, `earlier_fixes`, `code_rules`, `research_note` (`profile.research` on a new line), `runtime_note` (` in <profile.runtime>`), `duty.order`, `duty.test_case_review`, `duty.test_case_review_fix`; `profile.mutation.tool` as given |
-| stage outputs | `research` (the checked research: requirements, facts, plan, test_harness, files), `cases` (requirement lines expanded), `plan.cases` (the planner's, for the replan), `tested_checks` (implement's check rows with a test), `findings` (as sent to a fix), `given` (`{id, where, problem}` per finding a fix was given) |
-| block config | `config.<field>` for every field of `blocks.<name>`: `model` (string or null), `effort` (string), `rounds`, `extra`, `min`, `minors`, `edges`, `timeout` (integers), `lenses` (`LENSES` keys), `duties` (booleans); instructions name `config.edges` |
-| default | `default`: the block's default instructions, for a project prompt that wraps them |
+| computed | `HEAD` (the HEAD the step runs on), `from_head` (the HEAD a fix started from), `IMPLEMENT_SKILL`, `round`, `rounds` (planned), `gate_list`, `gate_rows`, `mutate_command`, `test_ids`, `check_ids`, `code_rules` (`profile.code_rules` as a section, `''` without); as compact JSON: `previous_notes` (the attempt before a retry), `duplicates` (checks in several cases), `verify_review`, `unverified`, `history` (earlier findings with their outcome); `uncovered` (ids, comma-separated) |
+| notes | `retry_note`, `uncovered_note`, `duplicates_note`, `verify_review_note`, `unverified_note`, `earlier_findings`, `earlier_fixes`, `proof_note`, `duty.order`, `duty.test_case_review`, `duty.test_case_review_fix`: the default part of that name, filled, or `''` |
+| stage outputs | `research` (the checked research: requirements, facts, plan, test_harness, files), `cases` (requirement lines expanded), `plan.cases` (the planner's, for the replan), `tested_checks` (implement's check rows with a test), `findings` (as sent to a fix), `given` (`{id, where, problem}` per finding a fix was given), `fixed` (`{round, id, what}` per applied fix) |
+| block config | `config.<field>` for every field of `blocks.<name>`: `model` (string or null), `effort` (string), `rounds`, `extra`, `min`, `minors`, `edges`, `timeout` (integers), `lenses` (`LENSES` keys), `duties` (booleans), `gates` (`{name, command}[]` or null), `build`, `test`, `tool`, `prompt`, `skill` (string or null); instructions name `config.edges` and `config.tool` |
+| default | `default`: the default instructions of the call, filled, for a project prompt that wraps them; every block takes it |
 
 **The validator** (`shared.js` `validate`) is the core's own: `type`, `properties`, `required`, `items`, `enum`,
 `pattern`, `anyOf`, `minItems`, `maxLength`; any other keyword anywhere in a schema throws. `render.mjs` exports the
@@ -455,8 +496,23 @@ research's, fix on implement's, fix-review on review's, minor-fix on fix's. Each
 against the registry's `config.<field>` schemas: a value off its schema fails the run before any agent (`stage:
 config`, the note naming `blocks.<name>.<field>`), and fails a render the same way.
 
-Each block's table (labels, inputs, output schema, invariants, config defaults) sits at the end of its section in §
-Stages; mutation's under § `profile`.
+Each block's table (labels, inputs, default parts, output schema, invariants, config defaults) sits at the end of its
+section in § Stages; mutation's under § `profile`.
+
+**The conformance check** runs a plug-in's real output through the core offline, before a paid run:
+
+```
+node template/render.mjs [config.json] [--case case.json] --conform <label> <output.json>
+```
+
+`<output.json>` is what the agent labelled `<label>` returned (`review:r1:code`, `mutation`, `implement`, ...). The
+run is the `--prompt` one (§ Template): research, plan and implement answer from stubs or the case, and every other
+block answers clean (a met row per requirement id, a clean code lens, a mutation step that does not apply, a fix
+that rejects every finding it is sent). The report, as JSON: `schema_errors` (the output against the schema that
+agent gets), `findings` (every finding the script sent to a fix, `sent_to` its label), and the run's `status`,
+`failures`, `verdicts`, `leftover_findings`, `advisory`, `mutation`, `research_issues` and `unverified`; an output the
+script cannot read is a `crash` naming the script line. It exits 1 on a schema error, a failure or a crash, 0
+otherwise. `template/conformance/review-code.json` is a recorded real code-lens output it passes (T19).
 
 Every output field is read by the script or reaches the result, and the result's shape stayed under that rule;
 `notes`, where a schema has it, is the one free-text field. W90 checks it for fix's schema.
@@ -504,7 +560,7 @@ lens killed by an API error reads as `DIED` in `verdicts`, one that answered wit
 whose input did not fill as `DIED` with a `<label> input:` entry in `failures`.
 
 A run that stops early returns `{status: 'failed', stage, note?, failures}` with what it has: `stage` is `config`
-(a moved arg, or a block config that is unknown or off its schema, before any agent), `gates` or `gates:discover`, `research`, `plan` or
+(a moved arg or profile field, or a block config that is unknown, off its schema or conflicting, before any agent), `gates` or `gates:discover`, `research`, `plan` or
 `implement`.
 
 ## Testing the core
@@ -519,7 +575,8 @@ skills/test_mutate.mjs`) runs the mutant runner on a throwaway git repository.
 
 ## Template
 
-`template/` renders this core from `template/core/` and a config, for the ablation study. The core
+`template/` renders this core from `template/core/`, the Markdown defaults in `template/defaults/` (§ Blocks) and a
+config, for the ablation study. The core
 stays hand-written; the template follows it, and `test_render.mjs` fails when the default config does
 not render the core byte for byte, so a change to `ticket-tdd.js` is made in the template too.
 `fixtures.json` holds the sha256 of the render of every config variant; `test_render.mjs` checks each, and a
@@ -532,10 +589,10 @@ change that alters the render re-records them.
 | `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
 | `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, the mailbox and `ask()`, `REGISTRY`, `INPUTS`, `fill()` and `call()`, `idOf` |
 | `gates.js` | gates discovery (schema, call), the gates step (schema, `runGates`) |
-| `research.js` | its schema, the call, the checks that build the `research` value and `RESEARCH_PART` |
+| `research.js` | its schema, the call, the checks that build the `research` value |
 | `plan.js` | the case and cases schemas, the plan call, the coverage and duplicate checks, the replan |
 | `implement.js` | its schema, the call and its retry |
-| `review.js` | the review schemas and `LENSES`, `SEVERITY`, `CHECKED` and the duties, the lens call |
+| `review.js` | the review schemas and `LENSES`, `SEVERITY`, `CHECKED`, the lens call |
 | `mutation.js` | its schema, `runMutation` |
 | `fix.js` | its schema, `runFix` |
 | `fix-review.js` | `fixReview` |
@@ -543,8 +600,9 @@ change that alters the render re-records them.
 
 A file is a header comment, then parts, each opened by a `// @part <name>` line and running to the
 next. The orchestrator's `main` part is the script: render replaces each of its
-`// @include <file> <part>` lines by that part, then fills the one render-time slot, `{{blocks}}`, with
-the merged block defaults (every other `{{path}}` is a run-time template variable, § Blocks). A missing part, or one included
+`// @include <file> <part>` lines by that part, then fills the two render-time slots: `{{blocks}}` with the merged
+block defaults, `{{defaults}}` with every part of `template/defaults/` as `{<block>: {<part>: text}}`, its includes
+resolved (every other `{{path}}` is a run-time template variable, § Blocks). A missing part, or one included
 never or twice, is an error. The parts sit where the single script needs them, so a block's schema
 and its call can be far apart in the render.
 
@@ -553,7 +611,8 @@ Adding a block takes:
 1. a new `template/core/<block>.js`, and an `// @include <block> <part>` line in `orchestrator.js` for each of
    its parts (render reads every file in `template/core/` but the orchestrator as a block, so no list in
    `render.mjs` changes);
-2. its `INPUTS` entry in `shared.js`, every path in it a `REGISTRY` path (a new one with its schema);
+2. its `INPUTS` entry in `shared.js`, every path in it a `REGISTRY` path (a new one with its schema), and its
+   `template/defaults/<block>.md`, a part per call it makes;
 3. a `blocks.<name>` entry in `default.json` with at least `model` and `effort`; a `model` of `null` also needs
    the block it follows in `FOLLOWS` (`orchestrator.js`);
 4. its row in the file table above, and its block table in its § Stages section.
@@ -593,16 +652,18 @@ gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) ha
    is off by default.
 2. Give it a schema in the registry as `config.<field>` (a new duty: its boolean in `config.duties`), and read it
    in the core as `CONFIG.<block>.<field>`. A value an instruction names also goes in the block's `INPUTS`; a
-   duty's sentence goes in `review.js` beside the others.
+   duty's sentence is a note in `template/defaults/review.md` named `duty.<name>`, filled with `note()`.
 3. Add a stub test that the field moves the behaviour, and a render test beside T03-T06 (it changes only
    the block defaults line). Record a variant in `fixtures.json` when the ablation study varies it (T13).
 
-A new lens is its entry in `template/core/review.js`'s `LENSES`; its key is the name `blocks.review.lenses` takes.
+A new lens is its entry in `template/core/review.js`'s `LENSES` and its part in `template/defaults/review.md`; its
+key is the name `blocks.review.lenses` takes and the part's name.
 
 ## Changing the prompts
 
-**Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage. A
-commit that edits one states the size change in bytes. When an agent keeps making the wrong move, fix
+**Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage; a block's how-to
+is its part in `template/defaults/`, its contract part is in its `template/core/` file. A commit that edits one
+states the size change in bytes. When an agent keeps making the wrong move, fix
 the schema, the check or the input it is given — the thing that let it make that move — before adding
 one more sentence telling it not to.
 

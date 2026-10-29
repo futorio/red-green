@@ -7,12 +7,8 @@ let fixReviews = 0
 async function fixReview(fromHead, given, label) {
   fixReviews += 1
   phase('Review')
-  const res = await call('fix-review', NO_CODE_PRE, `STAGE: fix review, HEAD {{HEAD}}. A fix moved HEAD from {{from_head}}; no full review round follows it. Review its diff, \`git diff {{from_head}}..HEAD\`, and only that: (1) each finding it was given is fixed by the diff or rightly rejected; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{duty.test_case_review_fix}}. The gates step checks this HEAD after you.
-GIVEN:
-{{given}}
-
-${RESEARCH_PART}`, {
-    HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': duty('test_case_review', TEST_CASE_REVIEW_FIX),
+  const res = await call('fix-review', NO_CODE_PRE, 'fix-review', {
+    HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': note(CONFIG.review.duties.test_case_review),
     given: given.map(f => ({ id: f.id, where: f.where, problem: f.problem })),
   }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified')),
   { schema: REVIEW_SCHEMA, phase: 'Review', label })

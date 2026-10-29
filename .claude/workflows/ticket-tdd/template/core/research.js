@@ -18,8 +18,7 @@ const RESEARCH_SCHEMA = { type: 'object', properties: {
 }, required: ['requirements', 'facts', 'plan', 'test_harness', 'questions'] }
 // @part call
 phase('Research')
-const research = await call('research', NO_CODE_PRE, `STAGE: research. Read {{TARGET}}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.{{research_note}}`,
-  { TARGET, research_note: extra(P.research) }, contract(READ_ONLY, `Output: JSON only; the one file you write is a mailbox ack.
+const research = await call('research', NO_CODE_PRE, 'research', { TARGET }, contract(READ_ONLY, `Output: JSON only; the one file you write is a mailbox ack.
 - requirements: every checkable requirement, one line each, prefixed with its id R1, R2, … in order and naming the checklist box or phrase it comes from, e.g. "R7: grammar/effects.json holds 8 entries (Checklist › Whitelist)". Cover every checklist box.
 - facts: one list, complete: every place the diff will touch, and every caller or reader of a symbol it changes. Each fact is one sentence with a kind, where, and requirements: the ids (e.g. "R7") it serves, at least one; a fact that serves the whole ticket and no requirement in particular (a shared convention, helper or harness) takes "general" instead. The kind follows one rule: lines of code show the fact → change-site when the change touches those lines, code otherwise; no lines of code show it → note.
   - code and change-site: where = a list of locations, each \`file\` or \`file:a-b\` (repository-relative, one range per entry; a fact spanning several files or ranges lists each one). A change-site fact says what is there now; a new file is named in the fact and located by an existing place it relates to.
@@ -54,8 +53,3 @@ research.test_harness = reqIds.map(id => research.test_harness.find(h => idOf(h.
 const researchQuestions = (research.questions || []).filter(q => reqIds.includes(idOf(q.requirement)) || !researchIssues.push(`question for unknown requirement ${q.requirement}: dropped`))
 delete research.questions
 research.files = [...new Set(research.facts.filter(f => f.kind !== 'note').flatMap(f => [].concat(f.where).map(w => w.split(':')[0].trim())))]
-// The research section of every later stage's instructions; `research` is the checked JSON.
-const RESEARCH_PART = `RESEARCH:
-{{research}}
-
-Start from the change-site facts above: read only the lines you change or verify, and search only for what they do not cover.`

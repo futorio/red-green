@@ -3,10 +3,10 @@
     "research": { "model": "opus", "effort": "high" },
     "plan": { "model": null, "effort": "high" },
     "implement": { "model": "sonnet", "effort": "high" },
-    "gates": { "model": "sonnet", "effort": "medium" },
+    "gates": { "model": "sonnet", "effort": "medium", "gates": null },
     "review": { "model": "opus", "effort": "high", "rounds": 2, "extra": 0, "min": 2, "lenses": ["checklist", "code"], "duties": { "test_case_review": true, "order": false }, "minors": 2 },
     "fix-review": { "model": null, "effort": "high" },
-    "mutation": { "model": "haiku", "effort": "medium", "edges": 5, "timeout": 300 },
+    "mutation": { "model": "haiku", "effort": "medium", "edges": 5, "timeout": 300, "build": null, "test": null, "tool": null },
     "fix": { "model": null, "effort": "high" },
     "minor-fix": { "model": null, "effort": "medium" }
   }

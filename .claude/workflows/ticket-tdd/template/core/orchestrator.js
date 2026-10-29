@@ -25,10 +25,13 @@ const TARGET = A.target
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
 const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
+// Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (README § Blocks).
+const DEFAULTS = {{defaults}}
 // @include shared text
 // @include shared validate
-// profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
-let GATES = P.gates || []
+// blocks.gates.gates: [{name, command}], set once the block config is merged; args.baseline: {<gate name>: its summary
+// line at base}.
+let GATES = []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include shared preamble
 // @include shared ask
@@ -46,10 +49,16 @@ const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.block
 // A block with no model runs on the model of the block it follows.
 const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'minor-fix': 'fix' }
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
-// These args moved into the block config; one still given fails the run instead of being ignored.
-const MOVED = { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }
-Object.keys(MOVED).filter(k => k in A).forEach(k => configErrors.push(`args.${k} moved to ${MOVED[k]}`))
+// These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
+const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
+  [P, 'profile', { research: 'profile.blocks.research.prompt, wrapping {{default}}', runtime: 'profile.blocks.review.prompt, wrapping {{default}}', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
+MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
+Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => configErrors.push(`blocks.${b}: prompt or skill, not both`))
+const MU = CONFIG.mutation
+if (MU.build && !MU.test) configErrors.push('blocks.mutation: build without test')
+if (MU.tool && (MU.test || MU.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
 if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
+GATES = CONFIG.gates.gates || []
 // Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
 let EXTRA = CONFIG.review.extra
 const failures = []
@@ -110,7 +119,6 @@ let headNow = impl.head
 let gated = null
 // @include gates run
 // @include mutation run
-// @include review lenses
 // @include fix run
 // @include fix-review run
 
@@ -133,7 +141,6 @@ while (round < N) {
   phase('Review')
   let fromHead = headNow
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  const past = history.length ? `\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose \`problem\` answers its \`argument\`):\n${JSON.stringify(history)}\n` : ''
   gated = await gatesStep()
 // @include review call
 

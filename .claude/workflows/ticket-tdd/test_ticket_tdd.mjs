@@ -21,8 +21,12 @@ const PATCH = i => `diff --git a/src/a.cpp b/src/a.cpp\n--- a/src/a.cpp\n+++ b/s
 const mutant = (i, status) => ({ target: `C${i}`, patch: PATCH(i), status: status || 'survived' })
 const step = (...ms) => ({ applies: true, ran: true, mutants: ms })
 const MUT = { build: 'BUILD-CMD', test: 'TEST-CMD' }
-// Args whose profile, the default one otherwise, carries these block configs.
-const withBlocks = blocks => ({ profile: { mutation: MUT, gates: [{ name: 'tests', command: 'npm test' }], blocks } })
+const TESTS = [{ name: 'tests', command: 'npm test' }]
+// Args whose profile declares these gates (TESTS unless given; null: none) and mutation commands (MUT unless given),
+// with these block configs over them and the other profile fields as given.
+const withProfile = ({ gates = TESTS, mutation = MUT, blocks = {}, ...rest } = {}) => ({ profile: Object.assign(rest, { blocks: Object.assign({}, blocks, {
+  gates: Object.assign(gates ? { gates } : {}, blocks.gates), mutation: Object.assign({}, mutation, blocks.mutation) }) }) })
+const withBlocks = blocks => withProfile({ blocks })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
@@ -69,7 +73,7 @@ async function runCore(over, rounds, extra) {
     return r && clone(r)
   }
   const parallel = thunks => Promise.all(thunks.map(async t => { try { return await t() } catch (e) { return null } }))
-  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', baseline: { tests: '17 of 17' }, profile: { mutation: MUT, gates: [{ name: 'tests', command: 'npm test' }] } }
+  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', baseline: { tests: '17 of 17' }, profile: withProfile().profile }
   Object.assign(args, extra)
   const blocks = Object.assign({}, args.profile.blocks)
   blocks.review = Object.assign(rounds === 'default' ? {} : { rounds: rounds || 1 }, blocks.review)
@@ -121,7 +125,7 @@ test('W03: the lenses start after the gates step of their round returns', async 
 })
 
 // Two declared gates, A and B, with their baselines.
-const twoGates = { profile: { mutation: MUT, gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }, baseline: { A: 'A-BASE 3 of 3', B: 'B-BASE ok' } }
+const twoGates = { profile: withProfile({ gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }).profile, baseline: { A: 'A-BASE 3 of 3', B: 'B-BASE ok' } }
 
 test('W04: the lens prompts carry each gate as name, status and line; the checklist job carries the scope sentence', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'GATE-SENTINEL 3 of 3'), gate('B', 'green', 'B ok')) }, 1, twoGates)
@@ -230,7 +234,7 @@ test('W16: a run with survivors makes no ruling call; the fix alone may reject o
 
 test('W77: the generator gets the tested checks and the runner with the build, test and timeout; model models.mutation, haiku by default', async () => {
   const implement = Object.assign({}, base().implement, { checks: [check('C1', { test: { file: 'TESTED-FILE', name: 'TESTED-NAME' } }), check('"UNTESTED PHRASE"', { kind: 'phrase', test: undefined, unverified: 'no tool' }), check('C2', { test: { file: 'FLAKY-FILE', name: 'n' }, unverified: 'flaky' })] })
-  const { calls } = await runCore({ implement }, 1, { profile: { mutation: { build: "make 'b'", test: 'TEST-CMD', timeout: 7 }, gates: [{ name: 'tests', command: 'npm test' }] } })
+  const { calls } = await runCore({ implement }, 1, withProfile({ mutation: { build: "make 'b'", test: 'TEST-CMD', timeout: 7 } }))
   const call = calls.find(c => c.label === 'mutation')
   assert.equal(call.opts.model, 'haiku')
   assert.equal(call.opts.effort, 'medium')
@@ -244,7 +248,7 @@ test('W77: the generator gets the tested checks and the runner with the build, t
 })
 
 test('W78: the plug-in form puts the profile\'s tool text in the prompt and no runner or checks', async () => {
-  const { calls } = await runCore({}, 1, { profile: { mutation: { tool: 'PLUGIN-TOOL-TEXT' }, gates: [{ name: 'tests', command: 'npm test' }] } })
+  const { calls } = await runCore({}, 1, withProfile({ mutation: { tool: 'PLUGIN-TOOL-TEXT' } }))
   const p = prompt(calls, 'mutation')
   assert.match(p, /PLUGIN-TOOL-TEXT/)
   assert.match(p, /`operator`/)
@@ -262,7 +266,7 @@ test('W79: the result\'s mutation holds every mutant with id, place, patch and s
     counts: { killed: 2, survived: 1, invalid: 1, not_run: 0 },
   })
   assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.mutation, null)
-  const none = await runCore({}, 1, { profile: { gates: [{ name: 'tests', command: 'npm test' }] } })
+  const none = await runCore({}, 1, withProfile({ mutation: {} }))
   assert.ok(!called(none.calls, 'mutation'))
   assert.equal(none.result.mutation, null)
   assert.equal(none.result.status, 'done')
@@ -274,12 +278,12 @@ test('W80: a mutant\'s file is its patch\'s +++ side, the --- side when that is 
   assert.deepEqual(result.mutation.mutants.map(m => [m.file, m.line]), [['new.cpp', 5], ['gone.cpp', 1]])
 })
 
-test('W81: a profile.mutation with neither test nor tool is a failure and no mutation call', async () => {
-  for (const mutation of ['TOOL', {}]) {
-    const { result, calls } = await runCore({}, 1, { profile: { mutation, gates: [{ name: 'tests', command: 'npm test' }] } })
-    assert.ok(!called(calls, 'mutation'))
-    assert.equal(result.status, 'done_with_failures')
-    assert.ok(result.failures.some(f => /profile\.mutation/.test(f)), JSON.stringify(result.failures))
+test('W81: blocks.mutation with a build and no test, or a tool beside test or build, fails the run before any agent', async () => {
+  for (const mutation of [{ build: 'B' }, { tool: 'T', test: 'X' }, { tool: 'T', build: 'B' }]) {
+    const { result, calls } = await runCore({}, 1, withProfile({ mutation }))
+    assert.equal(calls.length, 0, JSON.stringify(mutation))
+    assert.equal(result.stage, 'config')
+    assert.match(result.note, /blocks\.mutation/)
   }
 })
 
@@ -770,7 +774,7 @@ test('W44: plan and replan get the no-code preamble and the short mailbox checkp
 })
 
 // A profile without gates, and what the discovery step finds.
-const noGates = { profile: { mutation: MUT }, baseline: 'ignored' }
+const noGates = Object.assign(withProfile({ gates: null }), { baseline: 'ignored' })
 const discovered = (over) => Object.assign({
   gates: [{ name: 'lint', command: 'npm run lint', source: 'AGENTS.md', line: 'LINT-BASE 0 errors' }, { name: 'test', command: 'npm test', source: 'AGENTS.md', line: 'TEST-BASE 9 of 9' }],
   questions: [],
@@ -821,7 +825,7 @@ test('W55: with profile.gates given no discovery step runs, and the result carri
 })
 
 test('W56: a gate named like an Object.prototype key still needs its own baseline entry', async () => {
-  const { result, calls } = await runCore({}, 1, { profile: { gates: [{ name: 'constructor', command: 'c' }] }, baseline: {} })
+  const { result, calls } = await runCore({}, 1, Object.assign(withProfile({ gates: [{ name: 'constructor', command: 'c' }] }), { baseline: {} }))
   assert.equal(calls.length, 0)
   assert.equal(result.status, 'failed')
 })
@@ -1117,7 +1121,7 @@ test('W88: a value an instruction names that is missing, or off its schema, fail
   assert.equal(missing.calls.length, 0)
   assert.equal(missing.result.stage, 'research')
   assert.deepEqual(missing.result.failures, ['research input: $: TARGET missing'])
-  const swapped = SOURCE.replace("'config.edges': CONFIG.mutation.edges", "'config.edges': 'five'")
+  const swapped = SOURCE.replace("'config.edges': X.edges", "'config.edges': 'five'")
   assert.notEqual(swapped, SOURCE)
   core = coreOf(swapped)
   try {
@@ -1132,10 +1136,69 @@ test('W89: a block config value off its registry schema fails the run before any
     [{ review: { minors: '2' } }, 'blocks.review.minors'], [{ mutation: { timeout: 'x' } }, 'blocks.mutation.timeout'],
     [{ mutation: { edges: 'five' } }, 'blocks.mutation.edges'], [{ review: { lenses: 'code' } }, 'blocks.review.lenses'],
     [{ review: { lenses: ['mechanics'] } }, 'blocks.review.lenses[0]'], [{ review: { duties: { order: 'yes' } } }, 'blocks.review.duties.order'],
-    [{ research: { model: 3 } }, 'blocks.research.model'], [{ gates: { effort: 2 } }, 'blocks.gates.effort']]) {
+    [{ research: { model: 3 } }, 'blocks.research.model'], [{ gates: { effort: 2 } }, 'blocks.gates.effort'],
+    [{ gates: { gates: [{ name: 'g' }] } }, 'blocks.gates.gates'], [{ mutation: { test: 7 } }, 'blocks.mutation.test'],
+    [{ plan: { prompt: ['x'] } }, 'blocks.plan.prompt'], [{ fix: { skill: 1 } }, 'blocks.fix.skill']]) {
     const { result, calls } = await runCore({}, 1, withBlocks(blocks))
     assert.equal(calls.length, 0, JSON.stringify(blocks))
     assert.equal(result.stage, 'config')
     assert.ok(result.note.startsWith(`${wrong}:`), result.note)
+  }
+})
+
+// The instructions of a call: what sits between the preamble and the contract part.
+const instructions = p => p.slice(p.indexOf('\n\n', p.indexOf('- Your final answer is data for the next stage')) + 2, p.indexOf('\n\nCONTRACT (binding'))
+
+test('W91: a project prompt replaces a block\'s instructions, filled from its inputs, and the contract part still follows', async () => {
+  const { calls } = await runCore({}, 1, withBlocks({ research: { prompt: 'PROJECT RESEARCH of {{TARGET}}.' } }))
+  const p = prompt(calls, 'research')
+  assert.equal(instructions(p), 'PROJECT RESEARCH of /t.md.')
+  assert.ok(p.startsWith('You are one agent in a workflow run implementing /t.md.'))
+  assert.match(p, /\n\nCONTRACT \(binding, whatever the text above says\):\nRead-only/)
+  const wrong = await runCore({}, 1, withBlocks({ research: { prompt: 'Read {{TARGET}} and {{nope}}.' } }))
+  assert.ok(!called(wrong.calls, 'research'))
+  assert.deepEqual(wrong.result.failures, ['research input: unknown {{nope}}'])
+})
+
+test('W92: {{default}} in a project prompt inlines the default instructions of each call of the block', async () => {
+  const plain = (await runCore({})).calls
+  const { calls } = await runCore({}, 1, withBlocks({ review: { prompt: 'BEFORE\n{{default}}\nAFTER {{BASE}}' } }))
+  for (const l of ['review:r1:checklist', 'review:r1:code']) {
+    assert.equal(instructions(prompt(calls, l)), `BEFORE\n${instructions(prompt(plain, l))}\nAFTER aaaa000`, l)
+    assert.match(instructions(prompt(calls, l)), new RegExp(`Lens: ${l.split(':')[2]}\\.`), l)
+  }
+})
+
+test('W93: a skill path replaces the instructions with reading it; a block given both prompt and skill fails the run before any agent', async () => {
+  const { calls } = await runCore({}, 1, withBlocks({ implement: { skill: '/p/impl.md' } }))
+  assert.equal(instructions(prompt(calls, 'implement')), 'Read /p/impl.md and follow it.')
+  assert.match(prompt(calls, 'implement'), /CONTRACT[^]*COMMITS: /)
+  const both = await runCore({}, 1, withBlocks({ implement: { skill: '/p/impl.md', prompt: 'x' } }))
+  assert.equal(both.calls.length, 0)
+  assert.equal(both.result.stage, 'config')
+  assert.match(both.result.note, /blocks\.implement: prompt or skill, not both/)
+})
+
+test('W94: the gates and mutation approaches are read from profile.blocks: declared gates or discovery, generated mutants or a tool', async () => {
+  const declared = await runCore({}, 1, Object.assign(withProfile({ gates: [{ name: 'G', command: 'make g' }], mutation: { test: 'T-CMD', timeout: 9 } }), { baseline: { G: 'G-BASE' } }))
+  assert.ok(!called(declared.calls, 'gates:discover'))
+  assert.ok(prompt(declared.calls, 'implement').includes('G: `make g` (baseline: G-BASE)'))
+  assert.ok(prompt(declared.calls, 'mutation').includes("--test 'T-CMD' --timeout 9`"))
+  const found = await runCore({ 'gates:discover': discovered(), 'gates:r1': gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't')) },
+    1, withProfile({ gates: null, mutation: { tool: 'TOOL-TEXT' } }))
+  assert.ok(called(found.calls, 'gates:discover'))
+  assert.match(prompt(found.calls, 'mutation'), /TOOL-TEXT/)
+})
+
+test('W95: the removed profile strings and the moved profile fields fail the run before any agent, naming where they went', async () => {
+  for (const [field, value, where] of [['research', 'text', /profile\.blocks\.research\.prompt/], ['runtime', 'text', /profile\.blocks\.review\.prompt/],
+    ['gates', TESTS, /profile\.blocks\.gates\.gates/], ['mutation', MUT, /profile\.blocks\.mutation\b/]]) {
+    const args = withProfile()
+    args.profile[field] = value
+    const { result, calls } = await runCore({}, 1, args)
+    assert.equal(calls.length, 0, field)
+    assert.equal(result.stage, 'config', field)
+    assert.match(result.note, new RegExp(`profile\\.${field}\\b`), field)
+    assert.match(result.note, where, field)
   }
 })

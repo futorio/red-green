@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { render, DEFAULT, template } from './render.mjs'
+import { render, DEFAULT, template, defaults } from './render.mjs'
 
 const CORE = readFileSync(new URL('../../ticket-tdd.js', import.meta.url), 'utf8')
 const CLI = new URL('./render.mjs', import.meta.url).pathname
@@ -139,4 +139,64 @@ test('T15: an @include of a part already included is an error naming it', () => 
 test('T16: a part never included is an error naming it', () => {
   const dir = coreDir({ orchestrator: '// @part main\n// @include a one\n', a: '// @part one\nx\n// @part two\ny\n' })
   assert.throws(() => template(dir), /parts never included: a two/)
+})
+
+// A defaults directory of the given Markdown files.
+const defaultsDir = files => {
+  const dir = mkdtempSync(join(tmp, 'defaults-'))
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, `${name}.md`), text)
+  return dir
+}
+
+test('T17: a default part is its lines verbatim, its last newline dropped, with each {{> block part}} replaced by that part', () => {
+  const dir = defaultsDir({
+    a: '<!-- header -->\n<!-- @part one -->\n lead {{> b two}} {{run}}\n<!-- @part blank -->\n\nX\n\n',
+    b: '<!-- @part two -->\nB {{> b three}}\n<!-- @part three -->\ntrail \n',
+  })
+  assert.deepEqual(defaults(dir), { a: { one: ' lead B trail  {{run}}', blank: '\nX\n' }, b: { two: 'B trail ', three: 'trail ' } })
+})
+
+test('T18: an include of a part no defaults file defines, or of a part that includes itself, is an error naming it', () => {
+  assert.throws(() => defaults(defaultsDir({ a: '<!-- @part one -->\n{{> a two}}\n' })), /no default part a two/)
+  assert.throws(() => defaults(defaultsDir({ a: '<!-- @part one -->\n{{> a two}}\n<!-- @part two -->\n{{> a one}}\n' })), /default part a one includes itself/)
+})
+
+// The conformance command on a recorded real output of the code lens (wf-ablation t31, th-x02-impl--full--002).
+const RECORDED = new URL('./conformance/review-code.json', import.meta.url).pathname
+const conform = (...a) => {
+  try { return { code: 0, report: JSON.parse(execFileSync('node', [CLI, ...a], { encoding: 'utf8', stdio: 'pipe' })) } }
+  catch (e) { return { code: e.status, report: JSON.parse(e.stdout) } }
+}
+
+test('T19: --conform passes a recorded real output and reports what the script made of it', () => {
+  const { code, report } = conform('--conform', 'review:r1:code', RECORDED)
+  assert.equal(code, 0)
+  assert.deepEqual(report.schema_errors, [])
+  assert.deepEqual(report.failures, [])
+  assert.equal(report.status, 'done')
+  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id, f.severity, f.where]), [['fix:r1', 'R1-code-1', 'major', 'docs/adr/0003-model-intel-rsqrtss.md (not in the diff); docs/coop/data-setup.md:40'],
+    ['fix:minor', 'R1-code-2', 'minor', 'scripts/coop/build-arch.sh:12']])
+  assert.deepEqual(report.advisory.map(f => f.id), ['R1-code-2'])
+  assert.deepEqual(report.verdicts.filter(v => v.lens === 'code').map(v => [v.round, v.verdict, v.count]), [[1, 'findings', 2], [2, 'clean', 0]])
+})
+
+test('T20: --conform fails a drifted output, naming its schema errors and what the script made of it', () => {
+  const recorded = () => JSON.parse(readFileSync(RECORDED, 'utf8'))
+  const silent = recorded()
+  silent.findings[0].severity = 'blocker'
+  silent.checked = []
+  const { code, report } = conform('--conform', 'review:r1:code', file('silent.json', silent))
+  assert.equal(code, 1)
+  assert.deepEqual(report.schema_errors, ['$.findings[0].severity: "blocker" not in ["major","minor"]'])
+  assert.equal(report.status, 'done_with_failures')
+  // The blocker reaches the fix's input check, which fails that fix before its call.
+  assert.deepEqual(report.failures, ['review r1 code silent: no checked rows', 'fix:r1 input: $.findings[0].severity: "blocker" not in ["major","minor"]', 'fix r1'])
+  // A renamed field the script reads: the run itself breaks, and the report says where.
+  const renamed = recorded()
+  renamed.rows = renamed.checked
+  delete renamed.checked
+  const broken = conform('--conform', 'review:r1:code', file('renamed.json', renamed))
+  assert.equal(broken.code, 1)
+  assert.deepEqual(broken.report.schema_errors, ['$: checked missing'])
+  assert.match(broken.report.crash, /checked/)
 })

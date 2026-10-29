@@ -38,12 +38,13 @@ function validate(schema, value) {
 }
 // @part config
 // Block configs over their defaults, field by field: a field replaces the default's, an object field (duties) key by
-// key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, a value off its
-// registry schema config.<field>.
+// key. Every block also takes the plug-in fields prompt and skill, null by default. Returns the merged configs and the
+// errors: a block, field or duty the defaults do not name, a value off its registry schema config.<field>.
 function mergeBlocks(defaults, over, registry) {
   const errors = Object.keys(over || {}).filter(b => !(b in defaults)).map(b => `unknown block: ${b}`)
   const merged = {}
-  for (const [b, def] of Object.entries(defaults)) {
+  for (const [b, given] of Object.entries(defaults)) {
+    const def = Object.assign({}, given, ...['prompt', 'skill'].filter(k => !(k in given)).map(k => ({ [k]: null })))
     const o = (over || {})[b] || {}
     Object.keys(o).filter(k => !(k in def)).forEach(k => errors.push(`unknown field: ${b}.${k}`))
     merged[b] = {}
@@ -75,7 +76,7 @@ const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
 const noCode = label => ['gates:discover', 'research', 'plan', 'replan'].includes(label) || label.startsWith('review:')
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
-const BG = '- A command that runs longer than a couple of minutes goes in the background (`run_in_background`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.'
+const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
 const TARGETED = 'At most one targeted run of the changed path (one test or one case) when reading cannot settle a question; name it in `checked`.'
 // The contract part: the core appends it after a block's instructions, whatever they say. It holds the block's
@@ -116,18 +117,20 @@ ${BG}
 // the paths its instructions may use, are a subset of it. README § Blocks.
 const STRING = { type: 'string' }
 const INTEGER = { type: 'integer' }
+const OPTIONAL = { anyOf: [STRING, { type: 'null' }] }
 const researchKept = Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions'))
 const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
 const REGISTRY = {
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
-  // planned rounds, and the text the core builds from the run (a list, a command, a sentence or section that is ''
-  // when it does not apply).
+  // planned rounds, and text the core builds from the run (a list, a command, data as compact JSON).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
-  gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING,
-  retry_note: STRING, replan_note: STRING, verify_review_note: STRING, unverified_note: STRING, earlier_findings: STRING, earlier_fixes: STRING,
-  code_rules: STRING, research_note: STRING, runtime_note: STRING, 'profile.mutation.tool': STRING,
+  gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
+  previous_notes: STRING, uncovered: STRING, duplicates: STRING, verify_review: STRING, unverified: STRING, history: STRING,
+  // Notes: a part of the block's defaults (README § Blocks), filled from the same values when it applies, else ''.
+  retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
+  earlier_findings: STRING, earlier_fixes: STRING, proof_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
@@ -136,31 +139,36 @@ const REGISTRY = {
   tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items },
   findings: { type: 'array', items: SENT_FINDING },
   given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING }, required: ['id', 'problem'] } },
+  fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
-  'config.model': { anyOf: [STRING, { type: 'null' }] }, 'config.effort': STRING,
+  'config.model': OPTIONAL, 'config.effort': STRING,
   'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
   'config.edges': INTEGER, 'config.timeout': INTEGER,
-  // The block's default instructions, for a project prompt that wraps them.
+  // The approach fields (gates declared or discovered; mutants generated and run under build and test, or a tool) and
+  // the plug-in fields every block takes.
+  'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING }, required: ['name', 'command'] } }, { type: 'null' }] },
+  'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
+  // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,
 }
 const INPUTS = {
-  research: ['TARGET', 'research_note'],
-  plan: ['test_ids', 'replan_note', 'plan.cases', 'research'],
-  implement: ['retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
+  research: ['TARGET'],
+  plan: ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research'],
+  implement: ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
   gates: ['HEAD', 'REPO', 'gate_list'],
-  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review_note', 'unverified_note', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'earlier_findings', 'research'],
+  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research'],
   'fix-review': ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research'],
-  mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'profile.mutation.tool'],
-  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'earlier_fixes', 'research'],
+  mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool'],
+  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'proof_note', 'findings', 'fixed', 'earlier_fixes', 'research'],
   'minor-fix': ['IMPLEMENT_SKILL', 'code_rules', 'findings'],
 }
-// Fills a block's instructions from values: every {{path}} is one of the block's inputs and has a value valid against
-// its registry schema. Strings render as text, other values as JSON. Throws with everything that is wrong.
+// Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
+// valid against its registry schema. Strings render as text, other values as JSON. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
 function fill(block, text, values) {
-  const inputs = INPUTS[block]
+  const inputs = INPUTS[block].concat('default')
   const used = [...new Set([...text.matchAll(PATH)].map(m => m[1]))]
   const wrong = inputs.filter(p => !(p in REGISTRY)).map(p => `${p} is not in the registry`)
     .concat(used.filter(p => !inputs.includes(p)).map(p => `unknown {{${p}}}`),
@@ -170,11 +178,25 @@ function fill(block, text, values) {
   if (errors.length) throw new Error(errors.join('; '))
   return text.replace(PATH, (_, p) => typeof values[p] === 'string' ? values[p] : JSON.stringify(values[p], null, 1))
 }
+// A note value: the part of the block's defaults named like the value, filled from the call's other values when it
+// applies, else ''.
+function Note(applies) { this.applies = !!applies }
+const note = applies => new Note(applies)
 // A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
-// effort. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures says why.
-async function call(block, pre, text, values, contractPart, opts) {
+// effort. The instructions are the block's default part (DEFAULTS[block][part]), or the project's: blocks.<block>.prompt,
+// whose {{default}} is that default filled, or reading blocks.<block>.skill. Instructions that do not fill fail the block
+// before the call: the caller gets a dead step, and failures says why.
+async function call(block, pre, part, values, contractPart, opts) {
+  const { prompt, skill } = CONFIG[block]
   let filled
-  try { filled = fill(block, text, values) } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
+  try {
+    const plain = Object.fromEntries(Object.entries(values).filter(([, v]) => !(v instanceof Note)))
+    const all = Object.assign({}, plain, ...Object.entries(values).filter(([, v]) => v instanceof Note)
+      .map(([k, v]) => ({ [k]: v.applies ? fill(block, DEFAULTS[block][k], plain) : '' })))
+    const own = skill ? `Read ${skill} and follow it.` : prompt
+    const text = DEFAULTS[block][part]
+    filled = !own ? fill(block, text, all) : fill(block, own, own.includes('{{default}}') ? Object.assign(all, { default: fill(block, text, all) }) : all)
+  } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
   return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts))
 }
 // @part id

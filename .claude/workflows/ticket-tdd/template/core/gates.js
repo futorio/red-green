@@ -8,15 +8,12 @@ const DISCOVER_SCHEMA = { type: 'object', properties: {
     command: { type: 'string' }, source: { type: 'string' }, question: { type: 'string' } }, required: ['command', 'source', 'question'] } },
 }, required: ['gates', 'questions'] }
 // @part discover
-if (P.gates) {
+if (CONFIG.gates.gates) {
   const unmeasured = GATES.filter(g => !Object.hasOwn(BASELINE, g.name)).map(g => g.name)
   if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 } else {
   phase('Gates')
-  const found = await call('gates', NO_CODE_PRE, `STAGE: gates discovery.
-Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.
-Run each gate exactly as its \`command\` reads, once, to completion; one that cannot run that way here is a question, not a gate.
-${BG}`, {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with `source` the source of the gate it bears on; it stays out of gates.',
+  const found = await call('gates', NO_CODE_PRE, 'discover', {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure). questions: each command you are unsure of (is it a gate, do two sources disagree), with `source` the source of the gate it bears on; it stays out of gates.',
     died('Answer with a gate')), { schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
   if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', gates_questions: found ? found.questions : [], failures }
   GATES = found.gates
@@ -37,11 +34,7 @@ const GATES_SCHEMA = { type: 'object', properties: {
 // The gates step only executes; the script turns its rows into findings and failures.
 async function runGates(round, label, tag) {
   phase('Gates')
-  const res = await call('gates', NO_CODE_PRE, `STAGE: gates, HEAD {{HEAD}}.
-Run each gate below from {{REPO}} to completion and compare it with its baseline.
-GATES:
-{{gate_list}}
-${BG}`, { HEAD: headNow, REPO, gate_list: `- ${gateList('\n- ')}` }, contract(READ_ONLY,
+  const res = await call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_list: `- ${gateList('\n- ')}` }, contract(READ_ONLY,
     'One row per gate: `line` its summary line verbatim; `status` `green` (at its baseline or better), `red` (worse) or `not_run` (`line` the reason).',
     died('Answer with a green or red row per gate')), { schema: GATES_SCHEMA, phase: 'Gates', label })
   if (!res) failures.push(`gates ${label}`)
