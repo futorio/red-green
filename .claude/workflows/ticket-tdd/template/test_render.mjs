@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { render, DEFAULT } from './render.mjs'
 
 const CORE = readFileSync(new URL('../../ticket-tdd.js', import.meta.url), 'utf8')
@@ -96,7 +97,14 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.ok('mailbox' in out.schema.properties)
 })
 
-test('T12: a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
+// fixtures.json: the sha256 of the render of every slot variant, recorded before the template was split per block.
+test('T13: every recorded slot variant renders byte for byte as recorded', () => {
+  const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'))
+  for (const [name, { config, sha256 }] of Object.entries(fixtures))
+    assert.equal(createHash('sha256').update(render(config)).digest('hex'), sha256, name)
+})
+
+test('T12:a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
   const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
   assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
 })
