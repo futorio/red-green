@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url'
 
 const here = name => new URL(name, import.meta.url)
 
-// A core directory holds one <block>.js per block: a header, then parts, each opened by a `// @part <name>` line.
-// orchestrator.js's `main` part is the script; each of its `// @include <block> <part>` lines is replaced by that
-// part. Every part of every other block is included exactly once.
+// A core directory holds one <block>.js per block and the files they share: each a header, then parts, each opened
+// by a `// @part <name>` line. orchestrator.js's `main` part is the script; each of its `// @include <block> <part>`
+// lines is replaced by that part. Every part of every other file is included exactly once.
 const partsOf = (dir, block) => {
   const [, ...namesAndTexts] = readFileSync(join(dir, `${block}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
   const parts = {}

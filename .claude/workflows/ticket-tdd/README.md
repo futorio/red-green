@@ -642,7 +642,7 @@ and its call can be far apart in the render.
 Adding a block takes:
 
 1. a new `template/core/<block>.js`, and an `// @include <block> <part>` line in `orchestrator.js` for each of
-   its parts (render reads every file in `template/core/` but the orchestrator as a block, so no list in
+   its parts (render reads every file in `template/core/` but the orchestrator as a set of parts, so no list in
    `render.mjs` changes);
 2. its `inputs` part: `INPUTS.<block>`, every path in it a `REGISTRY` path, and a new path only it reads added to
    `BLOCK_PATHS` with its schema (a path several blocks read goes in `registry.js`); and its
