@@ -3,8 +3,8 @@
 A Workflow run that implements **one ticket or one spec** in any git repository. The script is
 `.claude/workflows/ticket-tdd.js`; this directory holds what its agents read (`skills/`) and
 `workflow-doctor.sh`. This repository is the one shared copy: projects run it in place, never copy it.
-The core knows nothing about any one project: what a project adds — its gates, its rules, a mutation
-tool if it has one — arrives in `args.profile`, from a small profile workflow in the project that calls
+The core knows nothing about any one project: what a project adds — its gates, its rules, the commands
+its mutants run under — arrives in `args.profile`, from a small profile workflow in the project that calls
 `workflow({ scriptPath: <core>/.claude/workflows/ticket-tdd.js }, {...args, tools: <core>, profile})`,
 with `<core>` this repository's absolute path, given to the profile as an arg.
 
@@ -20,7 +20,7 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 ```
 
 Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
-when the profile names a tool. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
+when the profile has a `mutation` entry. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
 one, and runs before the lenses of its round, which get its rows. The last round's fix, which no full round follows, gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
@@ -38,7 +38,7 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
 | `extra_rounds` | full rounds added when the last planned round has majors to fix | `0` (the fix-diff review sees the fix) |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
-| `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement |
+| `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix`, `mutation` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement, `haiku` |
 | `profile` | the project's additions, below | `{}` |
 
 ### `models` presets
@@ -66,21 +66,31 @@ Every field is optional; an absent one leaves the core's neutral wording.
 | `research` | string | research: where decisions live, which harnesses exist |
 | `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
-| `mutation` | string | mutation step: when and how to run the project's own mutation tool, if it has one |
+| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line |
 
-**Mutation testing is the project's tool, never done by hand.** The core names no tool; `profile.mutation`
-names it in words: when it applies, its command and what it covers. It runs once per run, in its own
-`mutation` step, never in a gates step: after the first round that ends with no finding to fix, on that
-HEAD. Its survivors that need a fix get one, then one more review round without the tool, even past the
-planned rounds. A run that uses up its rounds without such a round runs the tool once at the end, and its
-unruled survivors are left over. The step reports its counts (`generated`, `invalid`, `judged`, `killed`, `timeouts`) and every survivor (file,
-line, op, before, after) through its schema; `tool.applies` with `tool.ran` false lands in `failures`. The
-profile's command passes the tool the project's test command for the test files the diff adds or changes, so
-a mutant that only a test kills is killed. Each survivor is then ruled on by the code lens in a short call of
-its own (`review:code:survivors`): `equivalent` (no test could tell it from the original) or
-`unreachable` (the mutated code cannot run in the product's use), each with a one-line reason. A ruled
-survivor is an `advisory` finding (`M-<n>`; minor, outside the two-minor cap); one with no ruling, or
-a ruling without a reason, is a `major` finding (with a trigger and a consequence) that goes to fix.
+**Mutants are aimed at the checks.** The step runs once per run, in its own `mutation` step, never in a
+gates step: after the first round that ends with no finding to fix, on that HEAD. Its survivors get a fix,
+then one more review round without the step, even past the planned rounds. A run that uses up its rounds
+without such a round runs the step once at the end, and its survivors are left over.
+
+By default (`{build?, test, timeout?}`) one agent (`models.mutation`, effort medium) reads the diff, the
+ticket and implement's `checks` rows that carry a test (not the unverified ones) and writes, for each such
+row, one patch that breaks the behaviour its test claims to pin, plus at most five on edges the ticket does
+not state; each changes production source only, in one place, never a test, and applies to HEAD. It runs
+them through `skills/mutate.mjs` (node and git only): each mutant, one at a time, in a detached worktree at
+HEAD under the run directory, removed after; `build` must exit 0 or the mutant is `invalid`, a non-zero
+`test` or the per-mutant `timeout` (seconds, 300 when absent) kills it, a patch that does not apply is
+`not_run`, the rest `survived`. The plug-in form (`{tool}`) names the project's own tool in words: when it
+applies, its command, what it covers; it returns the same records.
+
+The contract, both forms: `{applies, ran, not_run?, mutants: [{target, patch, status}]}`, `status`
+`killed|survived|invalid|not_run`, `target` a check's `ref`, `edge: <short phrase>`, or `operator` for a tool
+that cannot name one, `patch` a unified diff against HEAD. The script derives each id (`M-<n>`), its
+`file:line` (the HEAD side of the patch's first hunk header) and the counts by status. `applies` false (no
+file the step covers in `BASE..HEAD`) skips the step with a log line; `ran` false and each `not_run` mutant
+land in `failures`; `invalid` ones are only counted. Every survivor is a `major` finding (`source:
+mutation`, its target in `problem`, its patch in `trigger`) that goes to fix, which makes the target's test
+fail on it or rejects it with an argument like any finding. No separate call rules on survivors.
 
 The repository's own agent instructions (`AGENTS.md`, `CLAUDE.md`) reach every agent anyway; the
 profile carries only what a stage prompt must name explicitly.
@@ -246,7 +256,7 @@ requirement it checks.
 ### 5. Review × n
 
 Two lenses in parallel — checklist (every requirement id but the `verify_launch` ones, every `verify_review` requirement) and code
-(would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`; it also rules on the mutation survivors, above).
+(would it execute, is each assert falsifiable, is any test weakened or vacuous, `profile.code_rules`).
 A diff with no production file gets one checked row saying so from the code lens.
 
 **The checklist lens** reviews the change against its statement: the target and every document it
@@ -260,10 +270,10 @@ the counterexample as its `trigger` — and goes to the fix like any other; an
 `unverified` one goes to `leftover_findings` and starts no round. Its `findings` are for defects outside
 the requirements, and a change the statement does not call for is one.
 
-**Mutation cannot be skipped silently.** The mutation step reports whether the tool applied and ran; one
-that applied and did not run, or a dead step, lands in `failures`.
+**Mutation cannot be skipped silently.** The mutation step reports whether it applied and ran; one
+that applied and did not run, a `not_run` mutant, or a dead step lands in `failures`.
 
-Every review stage (the lenses, the fix-diff review, the mutant ruling) gets the preamble of the stages
+Every review stage (the lenses, the fix-diff review) gets the preamble of the stages
 that write no code: no commit rules, no gate list. Each round the lenses also receive every finding of
 the earlier rounds with its outcome — `fixed`, or `rejected` with the fixer's `argument`; a rejected
 finding is raised again only as a finding whose `problem` answers that argument.
@@ -312,7 +322,7 @@ over as `unverified`. `extra_rounds` instead adds full rounds.
 One agent (`models.fix`) after the rounds and the mutation step, skipped when
 there is no minor finding or a stage failed. It applies each advisory finding whose fix is cheap (a few
 lines in files the run changed, no new test file, no change of design), rejects the rest with a reason,
-reruns the gates and reverts when one got worse; no fix-diff review follows it. Ruled survivors are not sent. Applied findings leave
+reruns the gates and reverts when one got worse; no fix-diff review follows it. Applied findings leave
 `advisory`; the result's `minor_fixes` lists what it applied and rejected.
 
 ### Loop exit
@@ -323,14 +333,14 @@ loop:
   gates (every gate), if HEAD changed since the last gates step; then in parallel the lenses, given its rows
   findings = gates findings + review(round, earlier findings), minors set aside
   if no findings and every lens answered and round >= min_rounds:
-    if the tool ran: break
-    mutation step, rule the survivors (ruled ones set aside); none to fix: break
-    findings = unruled survivors; if round == n: n += 1
+    if the mutation step ran: break
+    mutation step; no survivor: break
+    findings = survivors; if round == n: n += 1
   if findings and round == n and extra rounds left: n += 1
   if findings: fix; a sent proof it does not report is a stray
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
     gates once more if the fix moved HEAD (its red gates are leftover); break
-after the loop: the tool once if it has not run (unless a fix died); unruled survivors are leftover;
+after the loop: the mutation step once if it has not run (unless a fix died); survivors are leftover;
 minor fix (deletes the proofs on minors); every proof no fix was sent is a stray; strays become failures
 ```
 
@@ -367,19 +377,19 @@ The 16-fixture sweep must include 8 jobs.
 ## Result
 
 `{status, rounds_planned, rounds_run, rounds[] (major/minor, applied, rejected, `gates`: the rows of the gates step that gated the round's HEAD, `recheck`: those of the step after the last fix),
-verdicts, mutation (the tool's result, at most one),
+verdicts, mutation (`{mutants: [{id, target, file, line, patch, status}], counts}` by status, or null when the step did not apply or is absent),
 gates (the gates used: declared, or discovered with their source and baseline line), gates_questions (the discovery step's questions; empty when the profile declared the gates),
 uncovered_requirements (test ids no case covers), dropped_facts, unresearched_requirements, research_issues, research_questions, plan_questions, implement_questions, verify_launch (`{requirement, how}` each, a notice that does not change `status`), verify_review, unverified, leftover_findings, advisory, minor_fixes, stray_proofs (`{id, path}` of each proof no fix accounted for),
 implement (`{checks, notes}`), mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when `unverified` (implement's list with its check rows folded in) is not empty,
-else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by file, line text and mutated text, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
+else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by its patch, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
 lens killed by an API error reads as `DIED` in `verdicts`, one that answered without evidence as `SILENT`.
 
 ## Testing the core
 
 `test_ticket_tdd.mjs` (beside this file; run by hand with `node --test`, no dependency) evaluates
 `ticket-tdd.js` as an async function with a stub `agent()` that returns recorded results keyed by label,
-and checks what the script does with them: `tidy`, survivor rulings, checklist statuses, the
+and checks what the script does with them: `tidy`, mutation survivors, checklist statuses, the
 deduplicated leftover, the run status, and that the lenses start after the gates step and get its
 rows. A change to the core's control flow gets a case there.
 
@@ -392,7 +402,7 @@ not render the core byte for byte, so a change to `ticket-tdd.js` is made in the
 A config is JSON whose keys are the variant dimensions; it names only what it changes, each key merging
 over `default.json`:
 
-- `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`).
+- `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`, `mutation`).
 - `lenses`: the review lenses, a list from `checklist` and `code`; a config's list replaces the default's.
 - `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review) and
   `order` (off; on adds a draft sentence to the code lens, marked "experiment draft" for the experiments

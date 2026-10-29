@@ -25,6 +25,7 @@ const M = Object.assign({{models}}, A.models || {})
 M.planner = M.planner || M.research
 M.fix = M.fix || M.implement
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
+const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
@@ -162,7 +163,6 @@ const STATUS = { status: { type: 'string', enum: ['met', 'unmet', 'unverified'] 
 const REVIEW_SCHEMA = reviewSchema({})
 const PRODUCTION = 'production source (only tests, docs, data or config)'
 
-const SURVIVOR = { type: 'object', properties: { file: { type: 'string' }, line: { type: 'integer' }, op: { type: 'string' }, before: { type: 'string' }, after: { type: 'string' } }, required: ['file', 'line', 'op', 'before', 'after'] }
 const GATES_SCHEMA = { type: 'object', properties: {
   head: { type: 'string' },
   gates: { type: 'array', items: { type: 'object', properties: {
@@ -170,15 +170,13 @@ const GATES_SCHEMA = { type: 'object', properties: {
   }, required: ['name', 'status', 'line'] } },
   notes: { type: 'string' },
 }, required: ['head', 'gates'] }
+// One record per mutant, from the runner or a project's own tool; the script derives ids, places and counts.
+const MUTANT_STATUS = ['killed', 'survived', 'invalid', 'not_run']
 const MUTATION_SCHEMA = { type: 'object', properties: {
-  head: { type: 'string' },
-  tool: { type: 'object', properties: {
-    applies: { type: 'boolean' }, ran: { type: 'boolean' }, not_run: { type: 'string' },
-    generated: { type: 'integer' }, judged: { type: 'integer' }, killed: { type: 'integer' }, invalid: { type: 'integer' }, timeouts: { type: 'integer' },
-    survivors: { type: 'array', items: SURVIVOR },
-  }, required: ['applies', 'ran'] },
-  notes: { type: 'string' },
-}, required: ['head', 'tool'] }
+  applies: { type: 'boolean' }, ran: { type: 'boolean' }, not_run: { type: 'string' },
+  mutants: { type: 'array', items: { type: 'object', properties: {
+    target: { type: 'string' }, patch: { type: 'string' }, status: { type: 'string', enum: MUTANT_STATUS } }, required: ['target', 'patch', 'status'] } },
+}, required: ['applies', 'ran', 'mutants'] }
 
 const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most two minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop. An empty list is a valid answer.`
 // what: the rows' subject; none when the job already says what a row is.
@@ -364,43 +362,11 @@ log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without on
 // Implement questions go to the result alone, like research's.
 const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
 
-const mutation = []
+let mutation = null
 
 // The gates step runs once per HEAD, before the lenses, which get its lines. HEAD moves only when implement or a fix commits.
 let headNow = impl.head
 let gated = null
-const ruled = new Map()
-const keyOf = s => `${s.file}|${s.before}|${s.after}`
-// A survivor the code lens ruled is a minor finding (advisory, outside tidy's cap); every other one is a major, made by the script, not a lens.
-const survivorFindings = survivors => survivors.map(s => {
-  const r = ruled.get(keyOf(s))
-  return {
-    id: s.id, key: keyOf(s), source: 'mutation', severity: r ? 'minor' : 'major', where: `${s.file}:${s.line}`,
-    problem: `a mutant survives: ${s.op} (${s.before} -> ${s.after})${r ? `; ruled ${r.ruling}: ${r.reason}` : ''}`,
-    trigger: `run the tests with ${s.file}:${s.line} changed to: ${s.after}`,
-    consequence: 'no test fails, so a defect of that shape on this line ships unnoticed',
-    fix: 'add or strengthen a test that fails on this mutant, or show that no test could tell it from the original'
-  }
-})
-
-const RULING_SCHEMA = { type: 'object', properties: {
-  rulings: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, ruling: { type: 'string', enum: ['equivalent', 'unreachable'] }, reason: { type: 'string' } }, required: ['id', 'ruling', 'reason'] } },
-}, required: ['rulings'] }
-// The code lens rules on the survivors the gates step found; a ruling without a reason does not count.
-async function ruleSurvivors(survivors, label) {
-  const open = survivors.filter(s => !ruled.has(keyOf(s)))
-  if (!open.length) return
-  const res = await ask(`${NO_CODE_PRE}
-
-STAGE: mutant ruling, code lens, HEAD ${headNow}. The mutation tool changed one line at a time in the lines this ticket changed, and no test failed on these mutants. Read the code and the tests and rule on each one only when you are sure: \`equivalent\` (no test could tell the mutant from the original) or \`unreachable\` (the mutated code cannot run in the product's use), with a one-line reason. Leave out any you cannot rule: each becomes a major finding for the fix stage. ${READ_ONLY}
-SURVIVORS:
-${JSON.stringify(open)}`, { model: M.review, effort: 'high', schema: RULING_SCHEMA, phase: 'Review', label })
-  if (!res) { failures.push(`mutant ruling ${label}`); return }
-  for (const r of res.rulings) {
-    const s = open.find(x => x.id === r.id)
-    if (s && (r.reason || '').trim()) ruled.set(keyOf(s), r)
-  }
-}
 
 // The gates step only executes; the script turns its rows into findings and failures.
 async function runGates(round, label, tag) {
@@ -422,24 +388,37 @@ ${BG}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates'
     consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' })) }
 }
 
-// The mutation tool runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
-// Returns the survivors as findings: ruled ones minor, the rest major.
+// The mutation step runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
+// Returns every survivor as a major for fix, which may reject it with an argument like any finding.
 let mutated = false
+// A mutant's place: the HEAD side of its patch's first hunk header.
+const placeOf = patch => ({ file: (/^--- (?:a\/)?(.+)$/m.exec(patch) || [, ''])[1].trim(), line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] })
+const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 async function runMutation() {
   mutated = true
-  if (!P.mutation) return []
+  if (!P.mutation) { log('mutation: no profile.mutation, step skipped'); return [] }
   phase('Gates')
-  const res = await ask(`${PRE}
+  const X = P.mutation
+  const how = X.tool ? `The project's mutation tool: ${X.tool} Run it once on this HEAD and report every mutant it ran: \`target\` the check ref or \`edge: <short phrase>\` it aims at, \`operator\` when it names none; \`patch\` a unified diff against HEAD; \`status\`.`
+    : `Read \`git diff ${BASE}..HEAD\` and ${TARGET}. For each check below write one mutant that breaks the behaviour its test claims to pin (\`target\` its ref), then at most five on edges the ticket does not state (\`target\` \`edge: <short phrase>\`). Each \`patch\` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to ${RUN}/mutants.json, then run once \`node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''}${X.timeout ? ` --timeout ${X.timeout}` : ''}\` and report its output list as \`mutants\`; exit 2 means it did not run.
+${BG}
+CHECKS:
+${JSON.stringify(impl.checks.filter(r => r.test))}`
+  const res = await ask(`${NO_CODE_PRE}
 
-STAGE: mutation, HEAD ${headNow}. The gates already ran: run none of them. Change nothing in ${REPO} and commit nothing.
-The project's mutation tool: ${P.mutation} This run's label for file names: mutation. tool.applies: whether \`git diff --name-only ${BASE}..HEAD\` lists files it covers. If it applies, run it once on this HEAD and report its counts and every survivor; if it applies and did not run, tool.ran is false and tool.not_run the reason — never a pass.`, { model: M.gates, effort: 'medium', schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
+STAGE: mutation, HEAD ${headNow}. Change and commit nothing in ${REPO}. applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${X.tool ? 'files the tool covers' : 'production source'}. If it applies and did not run, ran is false and not_run the reason — never a pass. ${how}`, { model: M.mutation, effort: 'medium', schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
   if (!res) { failures.push('mutation'); return [] }
-  if (res.tool.applies && !res.tool.ran) failures.push(`mutation tool not run: ${res.tool.not_run || 'no reason given'}`)
-  if (res.tool.applies) mutation.push(res.tool)
-  if (!res.tool.ran) return []
-  const survivors = (res.tool.survivors || []).map((s, i) => Object.assign({ id: `M-${i + 1}` }, s))
-  await ruleSurvivors(survivors, 'review:code:survivors')
-  return survivorFindings(survivors)
+  if (!res.applies) { log('mutation: no file it covers in the diff, step skipped'); return [] }
+  if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)
+  const mutants = res.mutants.map((m, i) => Object.assign({ id: `M-${i + 1}`, target: m.target }, placeOf(m.patch), { patch: m.patch, status: m.status }))
+  mutants.filter(m => m.status === 'not_run').forEach(m => failures.push(`mutation ${m.id} not run: ${m.target}`))
+  mutation = { mutants, counts: Object.fromEntries(MUTANT_STATUS.map(s => [s, mutants.filter(m => m.status === s).length])) }
+  log(`mutation: ${JSON.stringify(mutation.counts)}`)
+  return mutants.filter(m => m.status === 'survived').map(m => ({
+    id: m.id, key: m.patch, source: 'mutation', severity: 'major', where: `${m.file}:${m.line}`,
+    problem: `a mutant aimed at ${m.target} survives: no test fails on it`, trigger: m.patch,
+    consequence: 'no test fails, so a defect of that shape ships unnoticed',
+    fix: `make the test of ${m.target} fail on this mutant, or reject it with an argument that no test could tell it apart or that the code cannot run` }))
 }
 
 const GATES_APART = gated => `The gates step already ran every gate and long check at this HEAD; review the diff and its rows below.
@@ -548,11 +527,9 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
   if (!toFix.length && reviewed && round >= MIN_ROUNDS) {
     if (mutated) break
-    const late = await runMutation()
-    toFix = late.filter(f => f.severity !== 'minor')
-    advisory.push(...late.filter(f => f.severity === 'minor'))
+    toFix = await runMutation()
     if (!toFix.length) break
-    // Survivors get a fix and one more review round, without the tool.
+    // Survivors get a fix and one more review round, without the step.
     log(`mutation: ${toFix.length} survivors to fix`)
     if (round === N) N += 1
   }
@@ -609,12 +586,8 @@ ${RESEARCH}`, { model: M.review, effort: 'high', schema: l.schema, phase: 'Revie
   }
 }
 // A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
-if (!mutated && !failures.some(f => f.startsWith('fix '))) {
-  const late = await runMutation()
-  unfixed.push(...late.filter(f => f.severity !== 'minor'))
-  advisory.push(...late.filter(f => f.severity === 'minor'))
-}
-// A finding is the same finding by what it says, not by its positional id: a survivor by file, line text and mutated text,
+if (!mutated && !failures.some(f => f.startsWith('fix '))) unfixed.push(...await runMutation())
+// A finding is the same finding by what it says, not by its positional id: a survivor by its patch,
 // any other by source, place and problem (a rejection without a place by its id).
 const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
 const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
@@ -623,8 +596,7 @@ const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
 
 // Cheap minor findings get one pass of a cheaper fixer after the rounds; the ones it does not apply stay advisory.
-// Ruled survivors are left out: their ruling says no test can tell them apart.
-const cheap = uniq(advisory).filter(f => f.source !== 'mutation')
+const cheap = uniq(advisory)
 let minorFix = null
 if (cheap.length && !failures.length) {
   phase('Fix')
