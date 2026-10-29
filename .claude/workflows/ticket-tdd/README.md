@@ -598,8 +598,8 @@ A run that stops early returns `{status: 'failed', stage, note?, failures}` with
 
 `trace.mjs` turns a finished run into spans, one per agent call, in a shape no runtime owns: `{label, model,
 harness, project?, start, end, tokens: {in, out, cache_read, cache_write}, attrs}`. `attrs` holds the stage metrics,
-string or number values with no schema: the call's `status` (`ok`, `died` with no answer, `unfinished` with no
-result) and the length of every list in its output, with a count per `severity` or `status` value in it
+string or number values with no schema: the call's `status` (`ok`; `died`, an answer that is no object;
+`unfinished`, no answer at all) and the length of every list in its output, with a count per `severity` or `status` value in it
 (`findings.major`, `mutants.survived`). The core and its prompts know nothing of it. No money: tokens and the model
 only.
 
@@ -607,6 +607,8 @@ only.
 node trace.mjs <wf dir> [--project NAME]            # spans as JSONL
 node trace.mjs <wf dir> [--project NAME] --table    # calls, tokens and seconds per block and round, and the run's total
 ```
+
+A block's seconds add its calls' durations, so parallel lenses can sum past the run; the total's are its wall time.
 
 The one adapter so far reads a Claude Code Workflow run (`harness` `claude-code-workflow`):
 `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`, its `journal.jsonl` (each agent's label and
