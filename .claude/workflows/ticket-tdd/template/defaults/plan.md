@@ -1,6 +1,6 @@
 <!-- Block plan: the plan and replan defaults, the case rules both include, and the replan's notes. -->
 <!-- @part plan -->
-STAGE: test-case planning. No code is written yet.
+STAGE: test-case planning.
 
 {{> plan rules}}
 

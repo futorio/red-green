@@ -80,7 +80,7 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
   assert.ok(out.includes('Lens: code. Read the code as code'))
   assert.ok(out.includes('CONTRACT (binding, whatever the text above says):\nRead-only: change and commit nothing in'))
   assert.ok(out.includes('gates: green — CASE-GATE 3 of 3'))
-  assert.ok(out.includes('MAILBOX. Your address is `review:r1:code`'))
+  assert.ok(out.includes('MAILBOX: you are `review:r1:code`.'))
   assert.ok(!out.includes('Lens: checklist'))
 })
 
@@ -222,25 +222,25 @@ const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected:
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { test: 'TEST-CMD' } } } }, results: cleanRounds },
-    { research: 'e3635998c25773ad', plan: '4f889819c6873b73', implement: '0457c6291f1558e8', 'gates:r1': 'e1c3f145ff3e97d6', 'review:r1:checklist': '589c35bafd0be961',
-      'review:r1:code': 'bb60fb0372d6ad89', 'review:r2:checklist': '610aa20d4032ee9d', 'review:r2:code': '2608fb97727b82f0', mutation: '506efffd52af4710' }],
+    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: '88df35966d59d806', 'gates:r1': '0cc4614b3825b623', 'review:r1:checklist': 'e684b9a6afefd3d4',
+      'review:r1:code': '3030a3c16944a404', 'review:r2:checklist': '371d3731e8c2638c', 'review:r2:code': '61a9ccc87c363b5d', mutation: 'cc7bcf5d93e7e172' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, mutation: { build: 'B-CMD', test: 'TEST-CMD', timeout: 9 }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
   results: { 'review:r1:checklist': met('R1'), 'review:r1:code': findings(said('major', 'a.js:1', true), said('minor', 'b.js:2')),
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
     'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
-  { research: 'a611c9378256190c', implement: '832448e309902173', 'review:r1:code': '6654b74ea9089452', 'fix:r1': '493345f0a3fb25c0', 'gates:r2': 'c587f17e1c14ecae',
-    'review:r2:checklist': '4a0ce27dddee3049', 'review:r2:code': '2affbea12c77c0f2', 'fix:r2': '7ec6a79d1f68d4e0', 'review:fix:r2': '291a35b63cce8825',
-    'fix:r2:review': '1345796a811ee172', 'review:fix:r2:1': 'c5da06678d555191', 'gates:r2:recheck': '9d0521ed54d0d687', mutation: 'fd4ca475db1d14a9', 'fix:minor': '4c26596950e5ca70' }],
+  { research: 'dfecb403802054b6', implement: 'ab79b46629fc8bdc', 'review:r1:code': '4d6992e8c4bbc426', 'fix:r1': '4a52d24435c5988f', 'gates:r2': '85f06a733be7ed6c',
+    'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '66c5ed56c70934e7', 'fix:r2': '6a7d799c271f57a2', 'review:fix:r2': '04e8815ac3e1fc76',
+    'fix:r2:review': 'e52e3d52712c385a', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: 'bcb5efae64a79923', 'fix:minor': 'eb3003f8624f888d' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: '643ffe4a524ea91b', 'implement:retry': '56d9243de9f487f8', 'review:r1:checklist': '7e888039971893b6', 'review:r1:code': '000de7ef57576d41' }],
+  { replan: '2e5cb623c17f1c06', 'implement:retry': '69317e27ce19df42', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': '6d031971cfbaa6f4' }],
   discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
-    { 'gates:discover': 'bbb5dd7dffc3c03b', 'gates:r1': 'e1c3f145ff3e97d6', 'review:r1:code': '401bd8ec205a816d', mutation: '7b112e5c4e55772f' }],
+    { 'gates:discover': '444f52c2e1401992', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'efd58533adc558f4', mutation: '7eb79d9049fe8c09' }],
 }
 
 test('T22: the default render\'s prompts are these', async () => {

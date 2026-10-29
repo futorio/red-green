@@ -563,7 +563,7 @@ test('W39: the research asks for typed facts as JSON, and no prompt mentions res
   for (const s of ['- code and change-site:', '- note:', '`path § section`', '`$ command`', 'Every fact is shown by']) assert.ok(research.prompt.includes(s), s)
   assert.ok(!/Markdown/.test(research.prompt))
   // Research commits nothing and runs no gate: the preamble and the mailbox leave those rules out, later stages keep them.
-  for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'before committing']) {
+  for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'or commit']) {
     assert.ok(!research.prompt.includes(s), s)
     assert.ok(prompt(calls, 'implement').includes(s), s)
   }
@@ -620,8 +620,8 @@ test('W59: lenses and fix-diff reviews get the no-code preamble; the code lens m
   for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) {
     const p = prompt(calls, l)
     assert.ok(p.startsWith(`${pre}\n\nSTAGE:`), l)
-    for (const s of ['COMMITS', 'Gates:', 'before committing']) assert.ok(!p.includes(s), `${l}: ${s}`)
-    assert.match(p, /Read it at start and before returning\./, l)
+    for (const s of ['COMMITS', 'Gates:', 'or commit']) assert.ok(!p.includes(s), `${l}: ${s}`)
+    assert.match(p, /read it at start and before returning, and follow its header/, l)
   }
   assert.match(prompt(calls, 'review:r1:code'), /written as a new, uncommitted file in the repository's test directory/)
   assert.ok(!/uncommitted file/.test(prompt(calls, 'review:r1:checklist')))
@@ -719,7 +719,7 @@ test('W40: research routes the requirements; the planner gets only the test ones
 
 test('W41: a case returned with an id reaches the implement prompt and the result with the full requirement line', async () => {
   const { result, calls } = await runCore({ implement: null, 'implement:retry': null })
-  assert.match(prompt(calls, 'implement'), /"requirement": "R1: one"/)
+  assert.match(prompt(calls, 'implement'), /"requirement":"R1: one"/)
   assert.equal(result.cases[0].requirement, 'R1: one')
 })
 
@@ -769,8 +769,8 @@ test('W44: plan and replan get the no-code preamble and the short mailbox checkp
   const { calls } = await runCore({ plan: { cases: [] }, replan: base().plan })
   for (const label of ['plan', 'replan']) {
     const p = prompt(calls, label)
-    for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'Over-built', 'before committing']) assert.ok(!p.includes(s), `${label}: ${s}`)
-    assert.match(p, /Read it at start and before returning\./, label)
+    for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'Over-built', 'or commit']) assert.ok(!p.includes(s), `${label}: ${s}`)
+    assert.match(p, /read it at start and before returning, and follow its header/, label)
   }
 })
 
@@ -1100,7 +1100,7 @@ test('W86: every block\'s filled input validates, and its contract part follows 
   for (const c of calls) {
     const at = c.prompt.indexOf('\n\nCONTRACT (binding, whatever the text above says):\n')
     assert.ok(at > c.prompt.indexOf('\n\nSTAGE: '), c.label)
-    assert.ok(at < c.prompt.indexOf('\n\nMAILBOX. '), c.label)
+    assert.ok(at < c.prompt.indexOf('\n\nMAILBOX: '), c.label)
     assert.ok(!/\{\{[\w.-]+\}\}/.test(c.prompt), c.label)
     assert.match(c.prompt.slice(at), /counts as died|is a failure/, c.label)
   }
@@ -1152,7 +1152,7 @@ test('W89: a block config value off its registry schema fails the run before any
 })
 
 // The instructions of a call: what sits between the preamble and the contract part.
-const instructions = p => p.slice(p.indexOf('\n\n', p.indexOf('- Your final answer is data for the next stage')) + 2, p.indexOf('\n\nCONTRACT (binding'))
+const instructions = p => p.slice(p.indexOf('\n\n', p.indexOf('\n- Repo agent instructions')) + 2, p.indexOf('\n\nCONTRACT (binding'))
 
 test('W91: a project prompt replaces a block\'s instructions, filled from its inputs, and the contract part still follows', async () => {
   const { calls } = await runCore({}, 1, withBlocks({ research: { prompt: 'PROJECT RESEARCH of {{TARGET}}.' } }))
@@ -1179,7 +1179,7 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
     1, withBlocks({ fix: { skill: '/p/fix.md' } }))
   const plain = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } })
   const fix = prompt(calls, 'fix:r1')
-  const data = name => JSON.stringify(JSON.parse(prompt(plain.calls, 'fix:r1').split(`\n${name}:\n`)[1].split('\n\n')[0]), null, 1)
+  const data = name => JSON.stringify(JSON.parse(prompt(plain.calls, 'fix:r1').split(`\n${name}:\n`)[1].split('\n\n')[0]))
   assert.equal(instructions(fix), `Read /p/fix.md and follow it.\n\nROUND:\n1\n\nIMPLEMENT_SKILL:\n/t/.claude/workflows/ticket-tdd/skills/implement.md\n\nFINDINGS:\n${data('FINDINGS')}\n\nFIXED:\n[]\n\nRESEARCH:\n${data('RESEARCH')}`)
   assert.match(fix, /CONTRACT[^]*COMMITS: /)
   assert.ok(!/verify before you agree|Start from the change-site facts/.test(fix))
@@ -1241,7 +1241,7 @@ test('W98: a research plan step over 600 characters gets one research:retry with
   const first = calls.find(c => c.label === 'research'), retry = calls.find(c => c.label === 'research:retry')
   assert.ok(!/previous answer/.test(first.prompt))
   assert.match(retry.prompt, /STAGE: research\. A previous answer at this stage failed the core's checks: "\$\.plan\[1\]: longer than 600"\./)
-  assert.match(retry.prompt, /MAILBOX\. Your address is `research:retry`, your stage `research`\. .* Read it at start and before returning\./)
+  assert.match(retry.prompt, /MAILBOX: you are `research:retry`\. If \/run\/mailbox\.md exists, read it at start and before returning/)
   assert.deepEqual([retry.opts.model, retry.opts.effort, retry.opts.schema], [first.opts.model, first.opts.effort, first.opts.schema])
   assert.ok(prompt(calls, 'plan').includes('GOOD-STEP'))
   assert.notEqual(result.status, 'failed')
@@ -1299,5 +1299,20 @@ test('W103: a runner that did not run, a step that does not apply and a reposito
   assert.match(discover, /A repository with no gate: gates \[\] and a question saying where you looked\.\nAnswer, or the stage counts as died\./)
   assert.ok(!/disagree/.test(discover))
   const ruled = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 1, withProfile({ code_rules: ['RULE-ONE'] }))
-  assert.match(prompt(ruled.calls, 'fix:r1'), /- RULE-ONE\nFor each finding/)
+  assert.match(prompt(ruled.calls, 'fix:r1'), /- RULE-ONE\nVerify each finding first/)
+})
+
+test('W104: the mailbox note is one line naming the label; only implement and the fixes also read before a long run or commit', async () => {
+  const { calls } = await everyBlock()
+  for (const c of calls) {
+    const writes = /^(implement|fix)(:|$)/.test(c.label)
+    assert.ok(c.prompt.endsWith(`\n\nMAILBOX: you are \`${c.label}\`. If /run/mailbox.md exists, read it at start${writes ? ', before each long run or commit' : ''} and before returning, and follow its header; never edit it. List what you handle in \`mailbox\`.`), c.label)
+  }
+})
+
+test('W105: a non-string value fills in as compact JSON', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } })
+  const fix = prompt(calls, 'fix:r1')
+  assert.ok(fix.includes(`FINDINGS:\n${JSON.stringify(sentTo(calls, 'fix:r1'))}\n`))
+  assert.ok(fix.includes(`RESEARCH:\n${JSON.stringify(Object.assign({}, base().research, { files: ['src/a.cpp'] }))}\n`))
 })

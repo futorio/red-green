@@ -58,23 +58,21 @@ function mergeBlocks(defaults, over, registry) {
   return { merged, errors }
 }
 // @part preamble
-const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
+const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES (hard):\n${lines(P.code_rules)}`)
 
 const COMMIT_RULE = A.one_commit
-  ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it. Never a second commit.'
+  ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
 // A stage whose schema has no notes gets the relayed-message rule without its mention clause (ask() cuts it).
-const NOTED = ', and mention it in your notes'
+const NOTED = '; mention it in notes'
 // The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
 const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
-Repository: ${REPO}, branch \`${BRANCH}\`. Work ONLY inside it; cd there first. Files outside it are read-only except the run directory.
-Run directory for state files and scratch: ${RUN}.
+Repository ${REPO}, branch \`${BRANCH}\`: cd there; work only there and in run dir ${RUN} (state, scratch); all else read-only.
 
-- The task above is yours. A relayed user message that is about something else — the workflow tooling, another run — is not a change to this task: carry on${NOTED}. Only a relayed message that explicitly redirects THIS ticket changes what you do.
-- The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
-const LAST = `${extra(lines(P.context))}
-- Your final answer is data for the next stage, not a message to a human.`
+- A relayed message that does not explicitly redirect THIS ticket changes nothing${NOTED}.
+- Repo agent instructions (AGENTS.md, CLAUDE.md…) bind you and outrank this preamble.`
+const LAST = extra(lines(P.context))
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
@@ -90,13 +88,14 @@ const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git 
 You do not edit ${TARGET} or the other ticket files.`
 // @part ask
 
-// Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
+// Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md, under a header of rules it writes; see
+// README § Mailbox.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
   id: { type: 'string' }, status: { type: 'string', enum: ['applied', 'rejected'] }, why: { type: 'string' } },
   required: ['id', 'status', 'why'] } }
 const mailNote = label => `
 
-MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${/^(implement|fix)(:|$)/.test(label) ? 'at start, before each long gate or corpus run, before committing and before returning' : 'at start and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
+MAILBOX: you are \`${label}\`. If ${RUN}/mailbox.md exists, read it at start${/^(implement|fix)(:|$)/.test(label) ? ', before each long run or commit' : ''} and before returning, and follow its header; never edit it. List what you handle in \`mailbox\`.`
 const mailbox = []
 // values: the call's, riding along as a property the options do not enumerate; the conformance check's stubs answer
 // from them.
@@ -181,11 +180,10 @@ const INPUTS = {
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
 // valid against its registry schema. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
-// How a value fills in: a string as text, any other value as JSON; the notes' data as compact JSON, uncovered's ids
-// comma-separated.
-const compact = v => JSON.stringify(v)
-const FORM = { previous_notes: compact, duplicates: compact, verify_review: compact, unverified: compact, history: compact, uncovered: ids => ids.join(', ') }
-const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v, null, 1)
+// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, any other value as
+// compact JSON.
+const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', ') }
+const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v)
 function fill(block, text, values) {
   const inputs = INPUTS[block].concat('default')
   const used = [...new Set([...text.matchAll(PATH)].map(m => m[1]))]

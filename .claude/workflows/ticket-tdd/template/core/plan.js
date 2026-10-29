@@ -21,7 +21,7 @@ const harnessOf = id => research.test_harness.find(h => idOf(h.requirement) === 
 const lineOf = id => research.requirements.find(r => idOf(r) === id)
 const testIds = reqIds.filter(id => harnessOf(id).by === 'test')
 const checkIds = reqIds.filter(id => harnessOf(id).by !== 'launch')
-const PLAN_CONTRACT = contract(READ_ONLY, 'questions: every point the ticket and the research leave open that a case still depends on, one entry each: requirement (its id), question, reading (the one the cases take), cases (the ids of the cases that take it), settles (research: the repository holds the answer and the research does not give it; owner: the ticket and the spec leave it to their author). An empty list says nothing was left open.', died('Answer'))
+const PLAN_CONTRACT = contract(READ_ONLY, 'questions: every point the ticket and the research leave open that a case still depends on, one entry each; reading: the one the cases take; settles: research (the repository holds the answer and the research does not give it) or owner (the ticket and the spec leave it to their author). An empty list says nothing was left open.', died('Answer'))
 
 // With no test requirement there is nothing to plan: no planner call, no cases.
 let plan = !testIds.length ? { cases: [] } : await call('plan', NO_CODE_PRE, 'plan', { test_ids: testIds.join(', '), research }, PLAN_CONTRACT,

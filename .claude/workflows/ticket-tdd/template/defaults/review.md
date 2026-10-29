@@ -9,7 +9,7 @@ whitespace: some notes start with a space or a blank line, the test-case review 
 {{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.
 {{> review frame}}
 <!-- @part head -->
-STAGE: review, round {{round}} of at most {{rounds}} — what you do not catch ships. Lens:
+STAGE: review, round {{round}} of at most {{rounds}}. Lens:
 <!-- @part frame -->
 The gates step already ran every gate and long check at this HEAD; review the diff and its rows below.
 GATES:
