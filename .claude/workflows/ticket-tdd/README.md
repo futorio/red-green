@@ -398,9 +398,32 @@ skills/test_mutate.mjs`) runs the mutant runner on a throwaway git repository.
 
 ## Template
 
-`template/` renders this core from `ticket-tdd.js.tmpl` and a config, for the ablation study. The core
+`template/` renders this core from `template/core/` and a config, for the ablation study. The core
 stays hand-written; the template follows it, and `test_render.mjs` fails when the default config does
 not render the core byte for byte, so a change to `ticket-tdd.js` is made in the template too.
+`fixtures.json` holds the sha256 of the render of every slot variant; `test_render.mjs` checks each.
+
+`template/core/` holds one file per block and an orchestrator:
+
+| File | Holds |
+| --- | --- |
+| `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
+| `shared.js` | text helpers, the preambles, the mailbox and `ask()`, `idOf` |
+| `gates.js` | gates discovery (schema, call), the gates step (schema, `runGates`) |
+| `research.js` | its schema, the call, the checks that build `RESEARCH` |
+| `plan.js` | the cases schema, the plan call, the coverage and duplicate checks, the replan |
+| `implement.js` | its schema, the prompt builder, the call and its retry |
+| `review.js` | the review schemas, `SEVERITY` and `CHECKED`, `LENSES`, the lens call |
+| `mutation.js` | its schema, `runMutation` |
+| `fix.js` | its schema, `runFix` |
+| `fix-review.js` | `fixReview` |
+| `minor-fix.js` | the minor fix pass |
+
+A file is a header comment, then parts, each opened by a `// @part <name>` line and running to the
+next. The orchestrator's `main` part is the script: render replaces each of its
+`// @include <file> <part>` lines by that part, then fills the slots. A missing part, or one included
+never or twice, is an error. The parts sit where the single script needs them, so a block's schema
+and its call can be far apart in the render.
 
 A config is JSON whose keys are the variant dimensions; it names only what it changes, each key merging
 over `default.json`:
@@ -429,15 +452,15 @@ gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) ha
 
 ### Adding a variant dimension
 
-1. Put a `{{name}}` slot in `ticket-tdd.js.tmpl` where the text varies, inside one line when it can,
+1. Put a `{{name}}` slot in the `template/core/` file that holds the text, where the text varies, inside one line when it can,
    so a key changes only the lines it controls.
 2. Add the key to `default.json` with the value that renders today's core; a new duty is off by default.
 3. Fill the slot in `render()`. Text that goes inside a prompt's template literal passes through
    `literal()`.
 4. Add a test beside T03-T06: the key changed alone changes exactly the lines it controls.
-   T01 must still pass.
+   T01 must still pass. Record the variant in `fixtures.json` (T13).
 
-A new lens also needs its entry in the template's `LENSES` and its name in `render.mjs`'s `LENSES`.
+A new lens also needs its entry in `template/core/review.js`'s `LENSES` and its name in `render.mjs`'s `LENSES`.
 
 ## Changing the prompts
 

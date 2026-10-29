@@ -1,4 +1,4 @@
-// Renders the ticket-tdd core from ticket-tdd.js.tmpl and a config, or one stage prompt of that render for a case.
+// Renders the ticket-tdd core from core/*.js and a config, or one stage prompt of that render for a case.
 // README § Template.
 //
 //     node render.mjs [config.json]                                     the workflow script, on stdout
@@ -8,7 +8,21 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const here = name => new URL(name, import.meta.url)
-const TEMPLATE = readFileSync(here('ticket-tdd.js.tmpl'), 'utf8')
+// core/<file>.js: a header, then parts, each opened by a `// @part <name>` line. The orchestrator's `main` part is the
+// script; each of its `// @include <file> <part>` lines is replaced by that part. Every part is included exactly once.
+const BLOCKS = ['shared', 'gates', 'research', 'plan', 'implement', 'review', 'mutation', 'fix', 'fix-review', 'minor-fix']
+const partsOf = file => {
+  const [, ...xs] = readFileSync(here(`core/${file}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
+  return Object.fromEntries(xs.flatMap((x, i) => i % 2 ? [] : [[`${file} ${x}`, xs[i + 1]]]))
+}
+const PARTS = Object.assign({}, ...BLOCKS.map(partsOf))
+const TEMPLATE = partsOf('orchestrator')['orchestrator main'].replace(/^\/\/ @include (\S+ \S+)\n/gm, (_, k) => {
+  if (!(k in PARTS)) throw new Error(`no part ${k}, or included twice`)
+  const text = PARTS[k]
+  delete PARTS[k]
+  return text
+})
+if (Object.keys(PARTS).length) throw new Error(`parts never included: ${Object.keys(PARTS).join(', ')}`)
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 const LENSES = ['checklist', 'code']
 
