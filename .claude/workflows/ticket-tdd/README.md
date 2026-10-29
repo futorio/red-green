@@ -129,6 +129,9 @@ profile carries only what a stage prompt must name explicitly.
    gates; fast-forward the branch; free the run directory (`git worktree prune`, then delete every
    directory under `run`, keeping its top-level files); remove the worktree.
 
+**A clarification mid-run** — create `<run>/mailbox.md` starting with the header in § Mailbox, verbatim, then
+append entries; agents follow only the rules that header carries.
+
 ## Stages
 
 ### 0. Gates discovery
