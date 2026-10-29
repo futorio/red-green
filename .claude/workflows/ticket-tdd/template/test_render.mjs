@@ -230,9 +230,9 @@ const ACAE = {
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
     'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
-  { research: 'dfecb403802054b6', implement: 'ab79b46629fc8bdc', 'review:r1:code': '4d6992e8c4bbc426', 'fix:r1': '4a52d24435c5988f', 'gates:r2': '85f06a733be7ed6c',
-    'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '66c5ed56c70934e7', 'fix:r2': '6a7d799c271f57a2', 'review:fix:r2': '04e8815ac3e1fc76',
-    'fix:r2:review': 'e52e3d52712c385a', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: 'bcb5efae64a79923', 'fix:minor': 'eb3003f8624f888d' }],
+  { research: 'dfecb403802054b6', implement: 'ab79b46629fc8bdc', 'review:r1:code': '4d6992e8c4bbc426', 'fix:r1': '213fd3c8ef7850d5', 'gates:r2': '85f06a733be7ed6c',
+    'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '66c5ed56c70934e7', 'fix:r2': 'af810dcd0e47594b', 'review:fix:r2': '04e8815ac3e1fc76',
+    'fix:r2:review': '3eb8625cb4a762ea', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: 'bcb5efae64a79923', 'fix:minor': 'eb3003f8624f888d' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },

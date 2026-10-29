@@ -372,7 +372,7 @@ about. Findings are grouped by root cause and each cause fixed once, and closed 
 the same failure could take. From round 2 the agent sees the
 earlier rounds' fixes, and a cause already fixed twice is rejected as "recurs after two fixes: needs a
 split or the user" rather than patched a third time. The fix commits only with every gate at its baseline or better;
-when a gate stays worse, it leaves its change uncommitted, reports `head` unchanged and rejects every finding, naming
+when a gate stays worse, it reverts its edits, reports `head` unchanged and rejects every finding, naming
 each such gate in the `argument`. The fix reports its `head` (the script's once-per-HEAD check reads it).
 
 **Proofs.** A finding with a proof reaches the fix with it. The fix runs its command first: green on HEAD

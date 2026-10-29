@@ -936,7 +936,7 @@ test('W76: implement commits its work as it stands, a red gate going to the fix;
     'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'tests still red' }], proofs: [], head: 'bbbb111' } }, 2)
   assert.match(prompt(calls, 'implement'), /Commit your work as it stands, even with a gate worse than its baseline/)
   assert.ok(!/Commit only with/.test(prompt(calls, 'implement')))
-  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with every gate at its baseline or better. If a gate stays worse than its baseline, leave the change uncommitted, report `head` unchanged and reject every finding, naming each such gate in its `argument`.'))
+  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with every gate at its baseline or better. If a gate stays worse than its baseline, revert your edits, report `head` unchanged and reject every finding, naming each such gate in its `argument`.'))
   assert.ok(prompt(calls, 'fix:minor').includes('Commit only with no gate worse than before your edit.'))
   assert.ok(!/baseline or better/.test(prompt(calls, 'fix:minor')))
   const one = await runCore({}, 1, { one_commit: true })
