@@ -614,14 +614,17 @@ The core and its prompts know nothing of it. No money: tokens and the model only
 ```
 node trace.mjs <wf dir> [--project NAME]             # spans as JSONL
 node trace.mjs <wf dir> [--project NAME] --table     # calls, tokens and seconds per block and round, core time, the total
-node trace.mjs <wf dir> [--project NAME] --chrome    # a Chrome trace: open it in ui.perfetto.dev or speedscope.app
+node trace.mjs <wf dir> [--project NAME] --chrome      # a timeline: open it in ui.perfetto.dev
+node trace.mjs <wf dir> [--project NAME] --speedscope  # a flame chart and graph: open it in speedscope.app
 ```
 
 A block's seconds add its calls' durations, so parallel lenses can sum past the run; the total's are its wall time.
 The Chrome trace has one track per agent call with its tool and model spans nested in it, a `core` track, and one
-counter per token kind that steps at each model span: Perfetto shows it as a timeline (click a span for its tokens,
-`f` zooms to it), speedscope as a flame chart (Time Order) or a flame graph (Left Heavy), click to zoom. Both read
-the file in the browser; nothing is uploaded.
+counter per token kind that steps at each model span; in Perfetto, click a span for its tokens, `f` zooms to it,
+`w`/`s` and `a`/`d` zoom and pan. The speedscope file holds the whole run as three profiles, weighted by seconds,
+input tokens (`in` + `cache_read` + `cache_write`) and output tokens, each a stack block > call > `model`, a tool or
+`core`: Time Order is the flame chart, Left Heavy the flame graph, a click zooms. Both read the file in the browser;
+nothing is uploaded.
 
 The one adapter so far reads a Claude Code Workflow run (`harness` `claude-code-workflow`):
 `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`, its `journal.jsonl` (each agent's label and

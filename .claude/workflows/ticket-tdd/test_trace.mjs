@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { claudeCodeSpans, blockOf, table, chrome } from './trace.mjs'
+import { claudeCodeSpans, blockOf, table, chrome, speedscope } from './trace.mjs'
 
 const WF = new URL('trace-fixture/-home-u-projects-touhou8-multiplayer/f02af573-bd5c-4b78-96b3-a80bae6d3248/subagents/workflows/wf_bb03de2d-705', import.meta.url).pathname
 const all = claudeCodeSpans(WF)
@@ -86,4 +86,17 @@ test('TR07: the table sums calls and tokens per block and round, core time apart
   assert.match(rows.find(r => r.startsWith('review r2 ')), /^review r2 +2 /)
   assert.ok(rows.some(r => r.startsWith('core ')))
   assert.match(rows.at(-1), /^total +21 /)
+})
+
+test('TR11: the speedscope file stacks block, call and work kind, weighted by seconds and by tokens', () => {
+  const { shared: { frames }, profiles } = speedscope(all)
+  assert.deepEqual(profiles.map(p => p.name), ['seconds', 'input tokens', 'output tokens'])
+  assert.ok(frames.every(f => !f.name.includes('{')))
+  const sum = name => profiles.find(p => p.name === name).weights.reduce((n, w) => n + w, 0)
+  assert.equal(sum('output tokens'), spans.reduce((n, s) => n + s.tokens.out, 0))
+  assert.equal(sum('input tokens'), spans.reduce((n, s) => n + s.tokens.in + s.tokens.cache_read + s.tokens.cache_write, 0))
+  const seconds = profiles[0]
+  const stack = i => seconds.samples[i].map(f => frames[f].name)
+  assert.ok(seconds.samples.some((_, i) => stack(i).join(' > ') === 'implement > implement > Bash'))
+  assert.ok(seconds.samples.some((_, i) => stack(i).join(' > ') === 'review r2 > review:r2:code > model'))
 })

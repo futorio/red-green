@@ -1,8 +1,10 @@
 // Spans of a workflow run in a shape no runtime owns: agent calls, the tool calls and model time inside each, and the
 // core's time between calls. README § Tracing.
 //
-//     node trace.mjs <wf dir> [--project NAME] [--table | --chrome]    spans as JSONL, the table per block and round,
-//                                                                      or a Chrome trace for Perfetto and speedscope
+//     node trace.mjs <wf dir> [--project NAME]                  spans as JSONL
+//     node trace.mjs <wf dir> [--project NAME] --table          the table per block and round
+//     node trace.mjs <wf dir> [--project NAME] --chrome         a Chrome trace for Perfetto's timeline
+//     node trace.mjs <wf dir> [--project NAME] --speedscope     a speedscope file: flame chart and flame graph
 import { readFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -114,15 +116,17 @@ export function table(spans) {
   return [line('block', cols), ...rows.map(([k, r]) => line(k, cols.map(c => Math.round(r[c]))))].join('\n')
 }
 
-// A Chrome trace (Perfetto, speedscope): one track per agent call, its tool calls and model time nested in it, the
-// core's time on a track of its own, and each token kind as a counter that steps at each stretch of model time.
+const nameOf = s => s.attrs.kind === 'agent' ? s.label : s.attrs.kind === 'tool' ? s.attrs.tool : s.attrs.kind
+
+// A Chrome trace for Perfetto's timeline: one track per agent call, its tool calls and model time nested in it, the
+// core's time on a track of its own, and each token kind as a counter that steps at each stretch of model time. Track
+// ids start at 2: Perfetto marks the track whose id equals the process's as its main thread.
 export function chrome(spans) {
   const t0 = Math.min(...spans.map(s => t(s.start)))
   const us = at => Math.round((t(at) - t0) * 1000)
   const tracks = [...new Set(spans.map(s => s.parent || s.label))]
-  const name = s => s.attrs.kind === 'agent' ? s.label : s.attrs.kind === 'tool' ? s.attrs.tool : s.attrs.kind
-  const events = tracks.map((n, i) => ({ ph: 'M', name: 'thread_name', pid: 1, tid: i + 1, args: { name: n } }))
-  for (const s of spans) events.push({ ph: 'X', name: name(s), cat: s.attrs.kind, pid: 1, tid: tracks.indexOf(s.parent || s.label) + 1,
+  const events = tracks.map((n, i) => ({ ph: 'M', name: 'thread_name', pid: 1, tid: i + 2, args: { name: n } }))
+  for (const s of spans) events.push({ ph: 'X', name: nameOf(s), cat: s.attrs.kind, pid: 1, tid: tracks.indexOf(s.parent || s.label) + 2,
     ts: us(s.start), dur: Math.max(us(s.end) - us(s.start), 1), args: Object.assign({ model: s.model, parent: s.parent }, s.tokens, s.attrs) })
   const total = tokensOf([])
   for (const s of spans.filter(s => s.attrs.kind === 'model').sort((a, b) => t(a.end) - t(b.end)))
@@ -130,11 +134,31 @@ export function chrome(spans) {
   return { traceEvents: events }
 }
 
+// A speedscope file for its flame chart and flame graph: the whole run as one profile per weight (seconds, input
+// tokens, output tokens), each tool, model and core span a sample whose stack is block > call > work, in start order.
+export function speedscope(spans) {
+  const frames = []
+  const frame = name => (frames.findIndex(f => f.name === name) + 1 || frames.push({ name })) - 1
+  const leaves = spans.filter(s => s.attrs.kind !== 'agent').sort((a, b) => t(a.start) - t(b.start))
+  const samples = leaves.map(s => (s.parent ? [blockOf(s.parent), s.parent, nameOf(s)] : [nameOf(s)]).map(frame))
+  const profile = (name, unit, weigh) => {
+    const weights = leaves.map(weigh)
+    return { type: 'sampled', name, unit, startValue: 0, endValue: weights.reduce((n, w) => n + w, 0), samples, weights }
+  }
+  return {
+    $schema: 'https://www.speedscope.app/file-format-schema.json', exporter: 'ticket-tdd trace.mjs', shared: { frames },
+    profiles: [profile('seconds', 'seconds', s => (t(s.end) - t(s.start)) / 1000),
+      profile('input tokens', 'none', s => s.tokens.in + s.tokens.cache_read + s.tokens.cache_write),
+      profile('output tokens', 'none', s => s.tokens.out)],
+  }
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
   const take = (name, n) => args.includes(name) ? args.splice(args.indexOf(name), n) : []
-  const [tabled, chromed] = [take('--table', 1).length, take('--chrome', 1).length]
+  const [tabled, chromed, scoped] = ['--table', '--chrome', '--speedscope'].map(f => take(f, 1).length)
   const [, project] = take('--project', 2)
   const spans = claudeCodeSpans(args[0], project)
-  console.log(tabled ? table(spans) : chromed ? JSON.stringify(chrome(spans)) : spans.map(s => JSON.stringify(s)).join('\n'))
+  console.log(tabled ? table(spans) : chromed ? JSON.stringify(chrome(spans)) : scoped ? JSON.stringify(speedscope(spans))
+    : spans.map(s => JSON.stringify(s)).join('\n'))
 }
