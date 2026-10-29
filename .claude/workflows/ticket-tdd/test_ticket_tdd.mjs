@@ -734,7 +734,7 @@ test('W46: two cases with the same check after the same Arrange and Act get one 
   const c = base().plan.cases[0]
   const { calls } = await runCore({ plan: { cases: [c, Object.assign({}, c, { id: 'C2', asserts: ['X ', 'y'] })] }, replan: base().plan })
   assert.equal(count(calls, 'replan'), 1)
-  assert.match(prompt(calls, 'replan'), /keep each in one case: \[\{"check":"a \| a \| x","cases":\["C1","C2"\]\}\]\. Keep every other case/)
+  assert.match(prompt(calls, 'replan'), /keep each in one case\. Each `check` reads `arrange \| act \| assert`: \[\{"check":"a \| a \| x","cases":\["C1","C2"\]\}\]\. Keep every other case/)
   assert.ok(!/uncovered/.test(prompt(calls, 'replan')))
 })
 

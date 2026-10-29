@@ -395,7 +395,7 @@ over as `unverified`. `blocks.review.extra` instead adds full rounds.
 | inputs | `round`, `IMPLEMENT_SKILL`, `code_rules`, `findings`, `fixed`, `earlier_fixes`, `research` |
 | defaults | `defaults/fix.md`: `fix`, `silence` (the minor fix includes it too) |
 | output | `FIX_SCHEMA`: applied, rejected, proofs, head |
-| invariants | writer, commits only with every gate at its baseline or better, else commits nothing and rejects every finding; died (no answer): a failure, the rounds stop |
+| invariants | writer, commits only with every gate at its baseline or better, else reverts its edits, commits nothing and rejects every finding; died (no answer): a failure, the rounds stop |
 | config | `model` null (implement's), `effort` high |
 
 | block | `fix-review` (§ Blocks) |

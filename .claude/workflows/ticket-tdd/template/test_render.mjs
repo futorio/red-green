@@ -238,7 +238,7 @@ const ACAE = {
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: '2e5cb623c17f1c06', 'implement:retry': 'c958b7421b42a292', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': '6d031971cfbaa6f4' }],
+  { replan: 'f8b90f56cad9a872', 'implement:retry': 'c958b7421b42a292', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': '6d031971cfbaa6f4' }],
   discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
     { 'gates:discover': '444f52c2e1401992', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'efd58533adc558f4', mutation: '7eb79d9049fe8c09' }],
 }
