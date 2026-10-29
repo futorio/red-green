@@ -41,3 +41,12 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
     'duty.order': CONFIG.review.duties.order, 'duty.test_case_review': CONFIG.review.duties.test_case_review,
   }, contract(...l.rules(), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
   { schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
+// @part inputs
+// The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
+// earlier findings and their outcomes.
+INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research']
+Object.assign(BLOCK_PATHS, {
+  verify_review: LIST, unverified: LIST,
+  history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,
+    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'round', 'problem', 'outcome'] } },
+})

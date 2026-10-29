@@ -42,6 +42,16 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include review schema
 // @include mutation schema
 // @include fix schema
+// @include registry types
+// @include research inputs
+// @include plan inputs
+// @include implement inputs
+// @include gates inputs
+// @include review inputs
+// @include fix-review inputs
+// @include mutation inputs
+// @include fix inputs
+// @include minor-fix inputs
 // @include registry registry
 // @include registry call
 // @include shared config

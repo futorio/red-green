@@ -62,3 +62,6 @@ research.test_harness = reqIds.map(id => research.test_harness.find(h => idOf(h.
 const researchQuestions = (research.questions || []).filter(q => reqIds.includes(idOf(q.requirement)) || !researchIssues.push(`question for unknown requirement ${q.requirement}: dropped`))
 delete research.questions
 research.files = [...new Set(research.facts.filter(f => f.kind !== 'note').flatMap(f => [].concat(f.where).map(w => w.split(':')[0].trim())))]
+// @part inputs
+// Research's inputs.
+INPUTS.research = ['TARGET', 'previous_notes', 'retry_note']

@@ -61,7 +61,8 @@ const PARTS = Object.assign({}, ...readdirSync(CORE_DIR).map(f => partsOf(CORE_D
 const fromCore = (parts, name) => new Function(`${parts.map(p => PARTS[p]).join('\n')}\nreturn ${name}`)()
 export const validate = fromCore(['shared validate'], 'validate')
 const mergeBlocks = fromCore(['shared validate', 'shared config'], 'mergeBlocks')
-export const REGISTRY = fromCore(['shared validate', 'research schema', 'plan schema', 'implement schema', 'review schema', 'registry registry'], 'REGISTRY')
+export const REGISTRY = fromCore(['shared validate', 'research schema', 'plan schema', 'implement schema', 'review schema', 'registry types',
+  ...Object.keys(PARTS).filter(p => p.endsWith(' inputs')), 'registry registry'], 'REGISTRY')
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.

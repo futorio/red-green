@@ -47,3 +47,7 @@ async function runMutation() {
     consequence: 'no test fails, so a defect of that shape ships unnoticed',
     fix: `make the test of ${m.target} fail on this mutant, or reject it with an argument that no test could tell it apart or that the code cannot run` }))
 }
+// @part inputs
+// Mutation's inputs, and the path only it reads: implement's check rows with a test.
+INPUTS.mutation = ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool']
+Object.assign(BLOCK_PATHS, { tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items } })

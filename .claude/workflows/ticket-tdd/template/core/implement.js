@@ -40,3 +40,7 @@ impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unve
 log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without one`)
 // Implement questions go to the result alone, like research's.
 const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
+// @part inputs
+// Implement's inputs, and the path only it reads: the cases, requirement lines expanded.
+INPUTS.implement = ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research']
+Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE } })

@@ -10,3 +10,6 @@ if (cheap.length && !failures.length) {
   if (!minorFix) failures.push('fix minor')
   else reconcile(cheap, minorFix)
 }
+// @part inputs
+// Minor fix's inputs.
+INPUTS['minor-fix'] = ['IMPLEMENT_SKILL', 'code_rules', 'findings']

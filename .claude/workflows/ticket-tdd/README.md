@@ -484,7 +484,8 @@ Not both: a block given `prompt` and `skill` fails the run before any agent. The
 mailbox note stay the core's whatever the plug-in says, and so do the output schema and what the script does with the
 output. The approach fields (§ `profile`) pick a procedure where a block has more than one.
 
-**The registry** (`template/core/registry.js`, `REGISTRY`) lists every path with its JSON Schema:
+**The registry** (`REGISTRY`) lists every path with its JSON Schema: `template/core/registry.js` holds the paths
+several blocks share, and each block's `inputs` part in `template/core/<block>.js` the ones only it reads:
 
 | kind | paths |
 |---|---|
@@ -615,7 +616,7 @@ change that alters the render re-records them.
 | `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
 | `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, `idOf` |
 | `mailbox.js` | the mailbox and `ask()` |
-| `registry.js` | `REGISTRY`, `INPUTS`, `fill()` and `call()` |
+| `registry.js` | the schema shorthands, `REGISTRY` and `INPUTS` assembled from the blocks' `inputs` parts with the paths several blocks share, `fill()` and `call()` |
 | `gates.js` | gates discovery (schema, call), the gates step (schema, `runGates`) |
 | `research.js` | its schema, the call, the checks that build the `research` value |
 | `plan.js` | the case and cases schemas, the plan call, the coverage and duplicate checks, the replan |
@@ -625,6 +626,9 @@ change that alters the render re-records them.
 | `fix.js` | its schema, `runFix` |
 | `fix-review.js` | `fixReview` |
 | `minor-fix.js` | the minor fix pass |
+
+Each block file also has an `inputs` part: its `INPUTS` entry (the paths its instructions may name) and the registry
+paths only it reads, with their schemas.
 
 A file is a header comment, then parts, each opened by a `// @part <name>` line and running to the
 next. The orchestrator's `main` part is the script: render replaces each of its
@@ -639,7 +643,8 @@ Adding a block takes:
 1. a new `template/core/<block>.js`, and an `// @include <block> <part>` line in `orchestrator.js` for each of
    its parts (render reads every file in `template/core/` but the orchestrator as a block, so no list in
    `render.mjs` changes);
-2. its `INPUTS` entry in `shared.js`, every path in it a `REGISTRY` path (a new one with its schema), and its
+2. its `inputs` part: `INPUTS.<block>`, every path in it a `REGISTRY` path, and a new path only it reads added to
+   `BLOCK_PATHS` with its schema (a path several blocks read goes in `registry.js`); and its
    `template/defaults/<block>.md`, a part per call it makes;
 3. a `blocks.<name>` entry in `default.json` with at least `model` and `effort`; a `model` of `null` also needs
    the block it follows in `FOLLOWS` (`orchestrator.js`);
@@ -679,7 +684,7 @@ gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) ha
 1. Add the field to its block in `default.json` with the value that renders today's behaviour; a new duty
    is off by default.
 2. Give it a schema in the registry as `config.<field>` (a new duty: its boolean in `config.duties`), and read it
-   in the core as `CONFIG.<block>.<field>`. A value an instruction names also goes in the block's `INPUTS`; a
+   in the core as `CONFIG.<block>.<field>`. A value an instruction names also goes in the block's `INPUTS` entry (its `inputs` part); a
    duty's sentence is a note in `template/defaults/review.md` named `duty.<name>`, its value the boolean.
 3. Add a stub test that the field moves the behaviour, and a render test beside T03-T06 (it changes only
    the block defaults line). Record a variant in `fixtures.json` when the ablation study varies it (T13).

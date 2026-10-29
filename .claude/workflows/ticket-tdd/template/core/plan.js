@@ -54,3 +54,12 @@ plan.verify_launch = reqIds.filter(id => !checkIds.includes(id)).map(id => ({ re
 const questions = (plan.questions || []).filter(q => q.cases.some(id => plan.cases.some(c => c.id === id)))
 const cases = plan.cases.map(c => Object.assign({}, c, { requirement: lineOf(idOf(c.requirement)) }))
 log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${dup.length} duplicate checks, ${questions.length} questions (${(plan.questions || []).length - questions.length} tied to no case), ${plan.verify_review.length} verify-by-review, ${plan.verify_launch.length} verify-by-launch`)
+// @part inputs
+// Plan's and replan's inputs, and the paths only they read: the uncovered test ids, checks in several cases, the
+// planner's own cases.
+INPUTS.plan = ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research']
+Object.assign(BLOCK_PATHS, {
+  uncovered: LIST,
+  duplicates: { type: 'array', items: { type: 'object', properties: { check: STRING, cases: LIST }, required: ['check', 'cases'] } },
+  'plan.cases': { type: 'array', items: CASE },
+})

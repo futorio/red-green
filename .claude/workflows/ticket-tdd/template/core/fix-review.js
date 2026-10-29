@@ -19,3 +19,8 @@ async function fixReview(fromHead, given, label) {
   verdicts.push({ round: label, lens: 'fix review', verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
   return tidy(res.findings).map((f, k) => proven(Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f)))
 }
+// @part inputs
+// Fix review's inputs, and the path only it reads: each finding the fix was given, with its outcome.
+INPUTS['fix-review'] = ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research']
+Object.assign(BLOCK_PATHS, { given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
+  outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } } })

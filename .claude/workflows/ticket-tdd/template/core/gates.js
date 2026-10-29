@@ -46,3 +46,6 @@ async function runGates(round, label, tag) {
     id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: vs(r), trigger: vs(r),
     consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' })) }
 }
+// @part inputs
+// The inputs of discovery and the gates step.
+INPUTS.gates = ['HEAD', 'REPO', 'gate_list']

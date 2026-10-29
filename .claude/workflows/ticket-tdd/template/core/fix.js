@@ -20,3 +20,7 @@ async function runFix(round, toFix, label) {
 // block's rules, the head and proofs it reports.
 const fixContract = (bar, ...rules) => contract(writer(bar), ...rules,
   'Report head: `git rev-parse HEAD` after your last change; proofs: [] when no finding has a proof.', died('Answer'))
+// @part inputs
+// Fix's inputs, and the path only it reads: each applied fix so far.
+INPUTS.fix = ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research']
+Object.assign(BLOCK_PATHS, { fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } } })

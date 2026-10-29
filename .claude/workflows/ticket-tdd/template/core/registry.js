@@ -1,45 +1,38 @@
-// The registry (every path a block's instructions may name, with its schema), each block's inputs, fill() and call().
+// The registry (every path a block's instructions may name, with its schema), assembled with each block's inputs
+// from the blocks' inputs parts, fill() and call().
 // README § Blocks.
-// @part registry
+// @part types
 
 // The registry: every variable a block's instructions may name as {{path}}, with its JSON Schema. Each block's inputs,
-// the paths its instructions may use, are a subset of it. README § Blocks.
+// the paths its instructions may use, are a subset of it. README § Blocks. A block's inputs part sets INPUTS.<block>
+// and adds to BLOCK_PATHS the paths only that block reads; the registry part adds the paths several blocks share.
 const STRING = { type: 'string' }
 const INTEGER = { type: 'integer' }
 const OPTIONAL = { anyOf: [STRING, { type: 'null' }] }
 const LIST = { type: 'array', items: STRING }
+const INPUTS = {}
+const BLOCK_PATHS = {}
+// @part registry
 // The research input requires nothing extra: the limits research's own checks hold (the `R<n>: ` prefix, a plan step's
 // 600 characters) are left out, so a result recorded before a limit still fills a later block.
 const researchKept = Object.assign(Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions')), { requirements: LIST, plan: LIST })
 const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
-const REGISTRY = {
+const REGISTRY = Object.assign({
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
   // planned rounds, and text the core builds from the run (a list, a command).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
   gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
-  // The notes' data (FORM says how each fills in): the attempt before a retry, the uncovered test ids, checks in
-  // several cases, the verify-by-review requirements, implement's unverified claims, earlier findings and their
-  // outcomes.
-  previous_notes: STRING, uncovered: LIST,
-  duplicates: { type: 'array', items: { type: 'object', properties: { check: STRING, cases: LIST }, required: ['check', 'cases'] } },
-  verify_review: LIST, unverified: LIST,
-  history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,
-    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'round', 'problem', 'outcome'] } },
+  // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
+  previous_notes: STRING,
   // Notes: a part of the block's defaults (README § Blocks), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
   earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
-  // Earlier stages' typed outputs, as the core passes them on.
+  // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
-  cases: { type: 'array', items: CASE },
-  'plan.cases': { type: 'array', items: CASE },
-  tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items },
   findings: { type: 'array', items: SENT_FINDING },
-  given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
-    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } },
-  fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,
   'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
@@ -52,18 +45,7 @@ const REGISTRY = {
   'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
   // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,
-}
-const INPUTS = {
-  research: ['TARGET', 'previous_notes', 'retry_note'],
-  plan: ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research'],
-  implement: ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
-  gates: ['HEAD', 'REPO', 'gate_list'],
-  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research'],
-  'fix-review': ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research'],
-  mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool'],
-  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research'],
-  'minor-fix': ['IMPLEMENT_SKILL', 'code_rules', 'findings'],
-}
+}, BLOCK_PATHS)
 // @part call
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
 // valid against its registry schema. Throws with everything that is wrong.
