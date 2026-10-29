@@ -1,4 +1,5 @@
-// Shared helpers: text helpers, the preambles every stage prompt starts with, the mailbox and ask(), requirement ids.
+// Shared helpers: text helpers, the validator, the block config merge, the preambles every stage prompt starts with and
+// the contract part, the mailbox and ask(), the registry with fill() and call(), requirement ids.
 // @part text
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
@@ -35,6 +36,26 @@ function validate(schema, value) {
   check(schema, '$')
   return errors(schema, value, '$')
 }
+// @part config
+// Block configs over their defaults, field by field: a field replaces the default's, an object field (duties) key by
+// key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, an unknown lens.
+const LENS_NAMES = ['checklist', 'code']
+function mergeBlocks(defaults, over) {
+  const errors = Object.keys(over || {}).filter(b => !(b in defaults)).map(b => `unknown block: ${b}`)
+  const merged = {}
+  for (const [b, def] of Object.entries(defaults)) {
+    const o = (over || {})[b] || {}
+    Object.keys(o).filter(k => !(k in def)).forEach(k => errors.push(`unknown field: ${b}.${k}`))
+    merged[b] = {}
+    for (const [k, v] of Object.entries(def)) {
+      const keyed = v !== null && typeof v === 'object' && !Array.isArray(v)
+      if (keyed) Object.keys(o[k] || {}).filter(j => !(j in v)).forEach(j => errors.push(`unknown field: ${b}.${k}.${j}`))
+      merged[b][k] = !(k in o) ? v : keyed ? Object.assign({}, v, o[k]) : o[k]
+    }
+  }
+  if (merged.review) merged.review.lenses.filter(l => !LENS_NAMES.includes(l)).forEach(l => errors.push(`unknown lens: ${l}`))
+  return { merged, errors }
+}
 // @part preamble
 const CODE_RULES = extra(lines(P.code_rules) && `PROJECT CODE RULES — hard, alongside those in ${IMPLEMENT_SKILL}:\n${lines(P.code_rules)}`)
 
@@ -56,6 +77,13 @@ const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = '- A command that runs longer than a couple of minutes goes in the background (`run_in_background`) and is waited on by its completion notice: never a sleep or polling loop, never a second start of a check that is still running.'
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
 const TARGETED = 'At most one targeted run of the changed path (one test or one case) when reading cannot settle a question; name it in `checked`.'
+// The contract part: the core appends it after a block's instructions, whatever they say. It holds the block's
+// invariants (read-only or writer, its commits), its output rules and what counts as died; falsy rules are skipped.
+const contract = (...rules) => `\n\nCONTRACT (binding, whatever the text above says):\n${rules.filter(Boolean).join('\n')}`
+// A writer's invariants. Implement commits its work as it stands; a gate it left worse reaches the fix as a gates
+// finding. Fixes keep the bar.
+const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. ${bar}
+You do not edit ${TARGET} or the other ticket files.`
 // @part ask
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md; see README § Mailbox.
@@ -75,13 +103,72 @@ async function ask(prompt, opts) {
 // @part code-preamble
 
 const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
-// Implement commits its work as it stands; a gate it left worse reaches the fix as a gates finding. Fixes keep the bar.
-const preWith = bar => `${CORE_PRE}
-- ${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. ${bar}
+const PRE = `${CORE_PRE}
 - Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
-- You do not edit ${TARGET} or the other ticket files.
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`
-const PRE = preWith('Commit only with the gate at its baseline or better.')
+// @part registry
+
+// The registry: every variable a block's instructions may name as {{path}}, with its JSON Schema. Each block's inputs,
+// the paths its instructions may use, are a subset of it. README § Blocks.
+const S = { type: 'string' }
+const INT = { type: 'integer' }
+const researchKept = Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions'))
+const FOUND = Object.assign({}, FINDING, { properties: Object.assign({ id: S, source: S }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
+const REGISTRY = {
+  // Run args.
+  REPO: S, BASE: S, TARGET: S, RUN: S,
+  // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
+  // planned rounds, and the text the core builds from the run (a list, a command, a sentence or section that is ''
+  // when it does not apply, the profile's text for a block).
+  HEAD: S, from_head: S, IMPLEMENT_SKILL: S, round: INT, rounds: INT,
+  gate_list: S, gate_rows: S, mutate_command: S, test_ids: S, check_ids: S,
+  retry_note: S, replan_note: S, verify_review_note: S, unverified_note: S, earlier_findings: S, earlier_fixes: S,
+  code_rules: S, 'profile.research': S, 'profile.runtime': S, 'profile.mutation.tool': S,
+  'duty.order': S, 'duty.test_case_review': S, 'duty.test_case_review_fix': S,
+  // Earlier stages' typed outputs, as the core passes them on.
+  research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: S } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
+  cases: { type: 'array', items: CASE },
+  'plan.cases': { type: 'array', items: CASE },
+  tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items },
+  findings: { type: 'array', items: FOUND },
+  given: { type: 'array', items: { type: 'object', properties: { id: S, where: S, problem: S }, required: ['id', 'problem'] } },
+  // The block's config.
+  'config.edges': INT,
+  // The block's default instructions, for a project prompt that wraps them.
+  default: S,
+}
+const INPUTS = {
+  research: ['TARGET', 'profile.research'],
+  plan: ['test_ids', 'replan_note', 'plan.cases', 'research'],
+  implement: ['retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
+  gates: ['HEAD', 'REPO', 'gate_list'],
+  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review_note', 'unverified_note', 'profile.runtime', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'earlier_findings', 'research'],
+  'fix-review': ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research'],
+  mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'profile.mutation.tool'],
+  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'earlier_fixes', 'research'],
+  'minor-fix': ['IMPLEMENT_SKILL', 'code_rules', 'findings'],
+}
+// Fills a block's instructions from values: every {{path}} is one of the block's inputs and has a value valid against
+// its registry schema. Strings render as text, other values as JSON. Throws with everything that is wrong.
+const PATH = /\{\{([\w.-]+)\}\}/g
+function fill(block, text, values) {
+  const inputs = INPUTS[block]
+  const used = [...new Set([...text.matchAll(PATH)].map(m => m[1]))]
+  const wrong = inputs.filter(p => !(p in REGISTRY)).map(p => `${p} is not in the registry`)
+    .concat(used.filter(p => !inputs.includes(p)).map(p => `unknown {{${p}}}`),
+      Object.keys(values).filter(p => !inputs.includes(p)).map(p => `${p} is not an input of ${block}`))
+  if (wrong.length) throw new Error(wrong.join('; '))
+  const errors = validate({ type: 'object', properties: Object.fromEntries(inputs.map(p => [p, REGISTRY[p]])), required: used }, values)
+  if (errors.length) throw new Error(errors.join('; '))
+  return text.replace(PATH, (_, p) => typeof values[p] === 'string' ? values[p] : JSON.stringify(values[p], null, 1))
+}
+// A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
+// effort. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures says why.
+async function call(block, pre, text, values, terms, opts) {
+  let filled
+  try { filled = fill(block, text, values) } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
+  return ask(`${pre}\n\n${filled}${terms}`, Object.assign({ model: C[block].model, effort: C[block].effort }, opts))
+}
 // @part id
 const idOf = s => s.split(':')[0].trim()

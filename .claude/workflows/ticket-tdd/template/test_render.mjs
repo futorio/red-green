@@ -31,44 +31,53 @@ test('T02: the CLI with no config prints the core', () => {
   assert.equal(cli(), CORE)
 })
 
-test('T03: the lens list changes only the lens keys line', () => {
-  const out = render(variant({ lenses: ['code'] }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'const LENS_KEYS = ')])
-  assert.match(out, /const LENS_KEYS = \['code'\]/)
+// A config names only the block fields it changes; each changes only the one line that holds the block defaults.
+const blocks = b => ({ blocks: b })
+const BLOCKS_LINE = lineOf(CORE, 'mergeBlocks({"research"')
+const onlyBlocksLine = out => assert.deepEqual(changedLines(render(DEFAULT), out), [BLOCKS_LINE])
+
+test('T03: the lens list changes only the block defaults line', () => {
+  const out = render(blocks({ review: { lenses: ['code'] } }))
+  onlyBlocksLine(out)
+  assert.match(out, /"lenses":\["code"\]/)
 })
 
-test('T04: a stage model changes only the models line', () => {
-  const out = render(variant({ models: Object.assign({}, DEFAULT.models, { review: 'sonnet' }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'const M = Object.assign(')])
-  assert.match(out, /review: 'sonnet'/)
+test('T04: a block model changes only the block defaults line', () => {
+  const out = render(blocks({ review: { model: 'sonnet' } }))
+  onlyBlocksLine(out)
+  assert.match(out, /"review":\{"model":"sonnet","effort":"high"/)
 })
 
-test('T05: a config naming the removed probe or same_frame duty is an unknown-key error', () => {
-  for (const k of ['probe', 'same_frame']) assert.throws(() => render(variant({ duties: { [k]: true } })), new RegExp(`unknown config key: duties.${k}`))
+test('T05: a config naming the removed probe or same_frame duty, an unknown block or field is an error naming it', () => {
+  for (const k of ['probe', 'same_frame']) assert.throws(() => render(blocks({ review: { duties: { [k]: true } } })), new RegExp(`unknown field: review.duties.${k}`))
+  assert.throws(() => render(blocks({ planner: {} })), /unknown block: planner/)
+  assert.throws(() => render(blocks({ mutation: { edge: 3 } })), /unknown field: mutation.edge/)
 })
 
-test('T05b: the order duty changes only the code lens line', () => {
-  const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { order: true }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, "key: 'code'")])
-  assert.match(out, /ORDER RULE/)
+test('T05b: the order duty changes only the block defaults line, and merges key by key', () => {
+  const out = render(blocks({ review: { duties: { order: true } } }))
+  onlyBlocksLine(out)
+  assert.match(out, /"duties":\{"test_case_review":true,"order":true\}/)
 })
 
-test('T06: test-case review off drops its sentence from the code lens and the fix review only', () => {
-  const out = render(variant({ duties: Object.assign({}, DEFAULT.duties, { test_case_review: false }) }))
-  assert.deepEqual(changedLines(render(DEFAULT), out), [lineOf(CORE, 'A test the diff weakened'), lineOf(CORE, 'STAGE: fix review')])
-  assert.ok(!out.includes('weakened'))
+test('T06: test-case review off changes only the block defaults line', () => {
+  const out = render(blocks({ review: { duties: { test_case_review: false } } }))
+  onlyBlocksLine(out)
+  assert.match(out, /"duties":\{"test_case_review":false,"order":false\}/)
 })
 
 test('T07: an unknown config key or lens is an error, not a silent default', () => {
   assert.throws(() => render(variant({ lens: {} })), /unknown config key: lens/)
-  assert.throws(() => render(variant({ lenses: ['mechanics'] })), /unknown lens: mechanics/)
+  assert.throws(() => render(blocks({ review: { lenses: ['mechanics'] } })), /unknown lens: mechanics/)
+  for (const k of ['models', 'lenses', 'duties']) assert.throws(() => render({ [k]: {} }), new RegExp(`unknown config key: ${k}`))
 })
 
 test('T08: --prompt prints the code lens prompt of a case, with its gate lines and mailbox note', () => {
   const caseFile = file('case.json', { args: { base: 'c0ffee1', target: '/case/ticket.md' }, gate_lines: ['CASE-GATE 3 of 3'] })
   const out = cli('--case', caseFile, '--prompt', 'review:r1:code')
   assert.ok(out.startsWith('You are one agent in a workflow run implementing /case/ticket.md.'))
-  assert.ok(out.includes('Lens: code. Read-only: change and commit nothing in'))
+  assert.ok(out.includes('Lens: code. Read the code as code'))
+  assert.ok(out.includes('CONTRACT (binding, whatever the text above says):\nRead-only: change and commit nothing in'))
   assert.ok(out.includes('gates: green — CASE-GATE 3 of 3'))
   assert.ok(out.includes('MAILBOX. Your address is `review:r1:code`'))
   assert.ok(!out.includes('Lens: checklist'))
@@ -76,7 +85,7 @@ test('T08: --prompt prints the code lens prompt of a case, with its gate lines a
 
 test('T09: --prompt renders the config it is given', () => {
   const caseFile = file('case2.json', {})
-  const cfg = file('order.json', variant({ duties: Object.assign({}, DEFAULT.duties, { order: true }) }))
+  const cfg = file('order.json', blocks({ review: { duties: { order: true } } }))
   assert.ok(cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code').includes('ORDER RULE'))
   assert.ok(!cli('--case', caseFile, '--prompt', 'review:r1:code').includes('ORDER RULE'))
 })
@@ -88,7 +97,7 @@ test('T10: a stage the case does not reach is an error naming it', () => {
 
 test('T11: --json prints the stage prompt with the schema, model and effort its agent gets', () => {
   const caseFile = file('case4.json', {})
-  const cfg = file('sonnet.json', variant({ models: Object.assign({}, DEFAULT.models, { review: 'sonnet' }) }))
+  const cfg = file('sonnet.json', blocks({ review: { model: 'sonnet' } }))
   const out = JSON.parse(cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code', '--json'))
   assert.equal(out.prompt, cli(cfg, '--case', caseFile, '--prompt', 'review:r1:code'))
   assert.equal(out.model, 'sonnet')

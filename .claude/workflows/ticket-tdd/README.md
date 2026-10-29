@@ -21,7 +21,7 @@ Moved out of touhou8-multiplayer at its commit `fac5910` (its ADR 0007); history
 ```
 
 Every run plans test cases, reviews with both lenses for two full rounds, and runs the mutation step
-when the profile has a `mutation` entry. `n` is 2 unless `args.rounds` is given. The gates step runs only when HEAD changed since the last
+when the profile has a `mutation` entry. `n` is `blocks.review.rounds`, 2 by default. The gates step runs only when HEAD changed since the last
 one, and runs before the lenses of its round, which get its rows. The last round's fix, which no full round follows, gets a
 review of its own diff. Freeing the run directory is the main thread's step after acceptance.
 
@@ -35,25 +35,25 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `run` | scratch directory for state files | required |
 | `base` | the commit the run starts from; review diffs against it | required |
 | `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.gates`; a missing entry fails the run before research; ignored when `profile.gates` is absent | required with `profile.gates` |
-| `rounds` | max review rounds `n`, or `auto` | `2` |
-| `min_rounds` | rounds that run even when a round comes back clean | `min(n, 2)` |
-| `extra_rounds` | full rounds added when the last planned round has majors to fix | `0` (the fix-diff review sees the fix) |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
-| `models` | per stage: `research`, `planner`, `implement`, `gates`, `review`, `fix`, `mutation` | `opus`, research, `sonnet`, `sonnet`, `opus`, implement, `haiku` |
 | `profile` | the project's additions, below | `{}` |
 
-### `models` presets
+`models`, `rounds`, `extra_rounds` and `min_rounds` moved into the block config (`profile.blocks`, § Blocks); a run
+that still passes one fails before any agent (`status: failed`, `stage: config`) instead of ignoring it.
 
-Three `args.models` sets from the stage tournament (`.scratch/wf-ablation/tournament-report.md` in the wf-ablation repo). Effort stays
-`high` for research, plan and implement (the core fixes it). Measured: plan opus beats sonnet, haiku and no plan;
-implement models tie on the hidden verifiers; review opus leads lighter reviewers by 0.2-0.3 F2. Not measured: a
-lighter research model (its stage was stopped) and the fix model (it defaults to the implement model).
+### Model presets
 
-| preset | for | `models` | why |
+Three `profile.blocks` model sets from the stage tournament (`.scratch/wf-ablation/tournament-report.md` in the
+wf-ablation repo). Effort stays `high` for research, plan and implement (their defaults). Measured: plan opus beats
+sonnet, haiku and no plan; implement models tie on the hidden verifiers; review opus leads lighter reviewers by
+0.2-0.3 F2. Not measured: a lighter research model (its stage was stopped) and the fix model (it defaults to the
+implement model).
+
+| preset | for | `profile.blocks` | why |
 |---|---|---|---|
-| standard | most tickets | `{"implement": "haiku", "fix": "sonnet"}` | plan and review keep opus; implement tied, haiku is the cheapest; fix stays on sonnet, unmeasured on haiku |
+| standard | most tickets | `{"implement": {"model": "haiku"}, "fix": {"model": "sonnet"}}` | plan and review keep opus; implement tied, haiku is the cheapest; fix stays on sonnet, unmeasured on haiku |
 | hard | concurrency, determinism, cross-cutting changes | `{}` (the default: sonnet implement and fix) | same measured stages; sonnet costs a little more as insurance on cases the tournament had too few of to split |
-| cheap | docs, config, small local edits | `{"research": "sonnet", "planner": "opus", "implement": "haiku", "fix": "haiku"}` | research is the costliest stage (opus ~$4.3, sonnet ~$1.2 a case); its quality on sonnet is unmeasured, so only where a miss is cheap |
+| cheap | docs, config, small local edits | `{"research": {"model": "sonnet"}, "plan": {"model": "opus"}, "implement": {"model": "haiku"}, "fix": {"model": "haiku"}}` | research is the costliest stage (opus ~$4.3, sonnet ~$1.2 a case); its quality on sonnet is unmeasured, so only where a miss is cheap |
 
 ### `profile`
 
@@ -67,20 +67,21 @@ Every field is optional; an absent one leaves the core's neutral wording.
 | `research` | string | research: where decisions live, which harnesses exist |
 | `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
-| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line; neither `test` nor `tool`: a failure |
+| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line; neither `test` nor `tool`: a failure; `timeout` overrides `blocks.mutation.timeout` |
+| `blocks` | `{<block>: {<field>: value}}` | each block's config over the render config's defaults, field by field (§ Blocks); an unknown block, field, duty or lens fails the run before any agent |
 
 **Mutants are aimed at the checks.** The step runs once per run, in its own `mutation` step, never in a
 gates step: after the first round that ends with no finding to fix, on that HEAD. Its survivors get a fix,
 then one more review round without the step, even past the planned rounds. A run that uses up its rounds
 without such a round runs the step once at the end, and its survivors are left over.
 
-By default (`{build?, test, timeout?}`) one agent (`models.mutation`, effort medium) reads the diff, the
+By default (`{build?, test, timeout?}`) one agent (`blocks.mutation`: haiku, effort medium) reads the diff, the
 ticket and implement's `checks` rows that carry a test (not the unverified ones) and writes, for each such
-row, one patch that breaks the behaviour its test claims to pin, plus at most five on edges the ticket does
-not state; each changes production source only, in one place, never a test, and applies to HEAD. It runs
+row, one patch that breaks the behaviour its test claims to pin, plus at most `blocks.mutation.edges` (5) on
+edges the ticket does not state; each changes production source only, in one place, never a test, and applies to HEAD. It runs
 them through `skills/mutate.mjs` (node and git only): each mutant, one at a time, in a detached worktree at
-HEAD under the run directory, removed after. `build` and `test` each get the full `timeout` (seconds, 300
-when absent); a `build` that exits non-zero or runs past it makes the mutant `invalid`, a `test` that does
+HEAD under the run directory, removed after. `build` and `test` each get the full `timeout` (seconds; `blocks.mutation.timeout`, 300,
+when the profile gives none); a `build` that exits non-zero or runs past it makes the mutant `invalid`, a `test` that does
 kills it, a patch that does not apply is `not_run`, the rest `survived`. The plug-in form (`{tool}`) names the project's own tool in words: when it
 applies, its command, what it covers; it returns the same records.
 
@@ -113,7 +114,7 @@ profile carries only what a stage prompt must name explicitly.
 
 ### 0. Gates discovery
 
-Only when `profile.gates` is absent, before research: one agent (`gates:discover`, `models.gates`, the
+Only when `profile.gates` is absent, before research: one agent (`gates:discover`, `blocks.gates`, the
 no-code preamble plus the long-command rule) finds the project's gates — in the repository's agent instructions, then CI config,
 then the task runner; the first source that names gates wins. A gate is a command CI or those
 instructions require before a commit; it runs with no human, network or secrets, passes or fails by exit
@@ -282,7 +283,7 @@ finding is raised again only as a finding whose `problem` answers that argument.
 
 **Severity is `major` or `minor`.** `major` is a concrete defect in this diff with a `trigger` (a
 reachable input or path) and a `consequence` (what breaks); everything else is `minor`. The script turns a
-major with an empty `trigger` into a minor and keeps at most two minors per lens. Minors go to `advisory`: never sent to the round's
+major with an empty `trigger` into a minor and keeps at most `blocks.review.minors` (2) minors per lens and per fix-diff review. Minors go to `advisory`: never sent to the round's
 fix, never holding a round open; the minor fix after the rounds applies the cheap ones. One root cause is one finding; a closed finding is not restated
 as a broader risk; from round 2 a new finding on code the last fix did not change says why it was
 missed.
@@ -317,11 +318,11 @@ entry each (so a stray never skips the minor fix).
 **The fix-diff review.** The last round's fix gets one reviewer (`review:fix:r<n>`) on `git diff <head before the fix>..HEAD` only: is each given finding fixed or rightly
 rejected, does the diff break a sibling path, is a test weakened, deleted or vacuous. Its majors after the
 last round get one more fix (`fix:r<n>:review`) and one more fix-diff review; what is still found is left
-over as `unverified`. `extra_rounds` instead adds full rounds.
+over as `unverified`. `blocks.review.extra` instead adds full rounds.
 
 ### 6b. Minor fix
 
-One agent (`models.fix`) after the rounds and the mutation step, skipped when
+One agent (`blocks.minor-fix`; no model of its own: the fix's) after the rounds and the mutation step, skipped when
 there is no minor finding or a stage failed. It applies each advisory finding whose fix is cheap (a few
 lines in files the run changed, no new test file, no change of design), rejects the rest with a reason,
 reruns the gates and reverts when one got worse; no fix-diff review follows it. Applied findings leave
@@ -334,17 +335,65 @@ loop:
   round += 1
   gates (every gate), if HEAD changed since the last gates step; then in parallel the lenses, given its rows
   findings = gates findings + review(round, earlier findings), minors set aside
-  if no findings and every lens answered and round >= min_rounds:
+  if no findings and every lens answered and round >= min(n, review.min):
     if the mutation step ran: break
     mutation step; no survivor: break
     findings = survivors; if round == n: n += 1
-  if findings and round == n and extra rounds left: n += 1
+  if findings and round == n and review.extra rounds left: n += 1
   if findings: fix; a sent proof it does not report is a stray
   if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
     gates once more if the fix moved HEAD (its red gates are leftover); break
 after the loop: the mutation step once if it has not run (unless a fix died); survivors are leftover;
 minor fix (deletes the proofs on minors); every proof no fix was sent is a stray; strays become failures
 ```
+
+## Blocks
+
+Every stage is a block with a contract: the inputs its instructions may name, an output schema, invariants and a
+config. The script alone decides what a run does with a block's output (coverage, severity, the loop, failures).
+
+**A prompt** is the preamble (no-code or code-writing, § Stages), then the block's instructions, then its contract
+part, then the mailbox note. The instructions are a template: they name the values they need as `{{path}}`, and the
+core fills them from the registry below before the call. Every path must be one of the block's inputs and its value
+must be present and valid against the path's schema; otherwise the block fails before any agent is paid (`<label>
+input: <what is wrong>` in `failures`, and the caller sees a dead step). A string fills in as text, any other value as
+JSON (`JSON.stringify(v, null, 1)`). **The contract part** (`CONTRACT (binding, whatever the text above says):`) is
+the core's: the block's invariants (read-only, or a writer's commit rules and the ticket files it leaves alone), its
+output rules (what each output field holds) and what counts as died.
+
+**The registry** (`template/core/shared.js`, `REGISTRY`) lists every path with its JSON Schema:
+
+| kind | paths |
+|---|---|
+| run args | `REPO`, `BASE`, `TARGET`, `RUN` |
+| computed | `HEAD` (the HEAD the step runs on), `from_head` (the HEAD a fix started from), `IMPLEMENT_SKILL`, `round`, `rounds` (planned), `gate_list`, `gate_rows`, `mutate_command`, `test_ids`, `check_ids`; text that is `''` when it does not apply: `retry_note`, `replan_note`, `verify_review_note`, `unverified_note`, `earlier_findings`, `earlier_fixes`, `code_rules`, `profile.research`, `profile.runtime`, `profile.mutation.tool`, `duty.order`, `duty.test_case_review`, `duty.test_case_review_fix` |
+| stage outputs | `research` (the checked research: requirements, facts, plan, test_harness, files), `cases` (requirement lines expanded), `plan.cases` (the planner's, for the replan), `tested_checks` (implement's check rows with a test), `findings` (as sent to a fix), `given` (`{id, where, problem}` per finding a fix was given) |
+| block config | `config.edges` |
+| default | `default`: the block's default instructions, for a project prompt that wraps them (step 3 of the block-contracts spec) |
+
+**The validator** (`shared.js` `validate`) is the core's own: `type`, `properties`, `required`, `items`, `enum`,
+`pattern`, `anyOf`, `minItems`, `maxLength`; any other keyword anywhere in a schema throws. `render.mjs` exports the
+same code for the tests.
+
+**The config** of each block is `blocks.<name>`: defaults in the render config (`template/default.json`), and
+`profile.blocks.<name>` over them per run, field by field (an object field such as `duties` key by key, a list
+replaces). A `model` of `null` runs on the model of the block it follows: plan on research's, fix on implement's,
+fix-review on review's, minor-fix on fix's.
+
+| block | labels | inputs | output (`*_SCHEMA`) | invariants | config (default) |
+|---|---|---|---|---|---|
+| research | `research` | `TARGET`, `profile.research` | `RESEARCH_SCHEMA`: requirements, facts, plan, test_harness, questions | read-only; died: the run fails | `model` opus, `effort` high |
+| plan | `plan`, `replan` | `test_ids`, `replan_note`, `plan.cases`, `research` | `casesSchema(test ids)`: cases, questions | read-only; died: the run fails (plan) or the previous cases stand (replan) | `model` null (research's), `effort` high |
+| implement | `implement`, `implement:retry` | `retry_note`, `IMPLEMENT_SKILL`, `code_rules`, `cases`, `research` | `IMPL_SCHEMA`: head, checks, unverified, questions, notes | writer, commits as it stands; died (or head at base): one retry, then the run fails | `model` sonnet, `effort` high |
+| gates | `gates:discover`, `gates:r<n>`, `gates:r<n>:recheck` | `HEAD`, `REPO`, `gate_list` | `DISCOVER_SCHEMA`: gates, questions; `GATES_SCHEMA`: head, gates, notes | read-only; died, a missing or `not_run` row: a failure (discovery: the run fails) | `model` sonnet, `effort` medium |
+| review | `review:r<n>:checklist`, `review:r<n>:code` | `round`, `rounds`, `TARGET`, `BASE`, `check_ids`, `verify_review_note`, `unverified_note`, `profile.runtime`, `IMPLEMENT_SKILL`, `duty.order`, `code_rules`, `duty.test_case_review`, `gate_rows`, `earlier_findings`, `research` | `reviewSchema`: verdict, findings, checked, notes | read-only (the code lens may write uncommitted proofs); died, silent: a failure, the round is not clean | `model` opus, `effort` high, `rounds` 2, `extra` 0, `min` 2, `lenses` [checklist, code], `duties` {test_case_review: true, order: false}, `minors` 2 |
+| fix-review | `review:fix:r<n>[:<pass>]` | `HEAD`, `from_head`, `duty.test_case_review_fix`, `given`, `research` | `REVIEW_SCHEMA` | read-only; died: what it was given is left over as unverified; silent: a failure | `model` null (review's), `effort` high; follows `review.minors` and `review.duties` |
+| mutation | `mutation` | `HEAD`, `BASE`, `TARGET`, `RUN`, `config.edges`, `mutate_command`, `tested_checks`, `profile.mutation.tool` | `MUTATION_SCHEMA`: applies, ran, not_run, mutants | read-only; died, `ran` false, a `not_run` mutant: a failure | `model` haiku, `effort` medium, `edges` 5, `timeout` 300 |
+| fix | `fix:r<n>`, `fix:r<n>:review` | `round`, `IMPLEMENT_SKILL`, `code_rules`, `findings`, `earlier_fixes`, `research` | `FIX_SCHEMA`: applied, rejected, proofs, head | writer, commits only at the gate's baseline or better; died: a failure, the rounds stop | `model` null (implement's), `effort` high |
+| minor-fix | `fix:minor` | `IMPLEMENT_SKILL`, `code_rules`, `findings` | `FIX_SCHEMA` | writer, as fix; died: a failure | `model` null (fix's), `effort` medium |
+
+Every output field is read by the script or reaches the result (fix's `committed` and `gate_output`, read by neither,
+are gone); `notes`, where a schema has it, is the one free-text field.
 
 ## Mailbox
 
@@ -385,7 +434,12 @@ uncovered_requirements (test ids no case covers), dropped_facts, unresearched_re
 implement (`{checks, notes}`), mailbox (every receipt, with its agent label), failures}`. `status` is `done_with_failures`
 when `failures` is not empty, else `done_unverified` when `unverified` (implement's list with its check rows folded in) is not empty,
 else `done`. `leftover_findings` also holds every requirement not `met` after the last round; `leftover_findings` and `advisory` hold each finding once: a survivor by its patch, any other finding by source, place and problem, not by its positional id. A run that returns no findings has not necessarily been reviewed: a
-lens killed by an API error reads as `DIED` in `verdicts`, one that answered without evidence as `SILENT`.
+lens killed by an API error reads as `DIED` in `verdicts`, one that answered without evidence as `SILENT`, one
+whose input did not fill as `DIED` with a `<label> input:` entry in `failures`.
+
+A run that stops early returns `{status: 'failed', stage, note?, failures}` with what it has: `stage` is `config`
+(a moved arg or an unknown block config, before any agent), `gates` or `gates:discover`, `research`, `plan` or
+`implement`.
 
 ## Testing the core
 
@@ -393,7 +447,8 @@ lens killed by an API error reads as `DIED` in `verdicts`, one that answered wit
 `ticket-tdd.js` as an async function with a stub `agent()` that returns recorded results keyed by label,
 and checks what the script does with them: `tidy`, mutation survivors, checklist statuses, the
 deduplicated leftover, the run status, and that the lenses start after the gates step and get its
-rows. A change to the core's control flow gets a case there. `skills/test_mutate.mjs` (`node --test
+rows. A change to the core's control flow gets a case there. Its V tests run the core's validator on every
+agent schema, a valid sample and an invalid one per keyword the schema uses. `skills/test_mutate.mjs` (`node --test
 skills/test_mutate.mjs`) runs the mutant runner on a throwaway git repository.
 
 ## Template
@@ -401,19 +456,20 @@ skills/test_mutate.mjs`) runs the mutant runner on a throwaway git repository.
 `template/` renders this core from `template/core/` and a config, for the ablation study. The core
 stays hand-written; the template follows it, and `test_render.mjs` fails when the default config does
 not render the core byte for byte, so a change to `ticket-tdd.js` is made in the template too.
-`fixtures.json` holds the sha256 of the render of every slot variant; `test_render.mjs` checks each.
+`fixtures.json` holds the sha256 of the render of every config variant; `test_render.mjs` checks each, and a
+change that alters the render re-records them.
 
 `template/core/` holds one file per block and an orchestrator:
 
 | File | Holds |
 | --- | --- |
 | `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
-| `shared.js` | text helpers, the preambles, the mailbox and `ask()`, `idOf` |
+| `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, the mailbox and `ask()`, `REGISTRY`, `INPUTS`, `fill()` and `call()`, `idOf` |
 | `gates.js` | gates discovery (schema, call), the gates step (schema, `runGates`) |
-| `research.js` | its schema, the call, the checks that build `RESEARCH` |
-| `plan.js` | the cases schema, the plan call, the coverage and duplicate checks, the replan |
-| `implement.js` | its schema, the prompt builder, the call and its retry |
-| `review.js` | the review schemas, `SEVERITY` and `CHECKED`, `LENSES`, the lens call |
+| `research.js` | its schema, the call, the checks that build the `research` value and `RESEARCH_PART` |
+| `plan.js` | the case and cases schemas, the plan call, the coverage and duplicate checks, the replan |
+| `implement.js` | its schema, the call and its retry |
+| `review.js` | the review schemas, `SEVERITY`, `CHECKED` and the duties, `LENSES`, the lens call |
 | `mutation.js` | its schema, `runMutation` |
 | `fix.js` | its schema, `runFix` |
 | `fix-review.js` | `fixReview` |
@@ -421,7 +477,8 @@ not render the core byte for byte, so a change to `ticket-tdd.js` is made in the
 
 A file is a header comment, then parts, each opened by a `// @part <name>` line and running to the
 next. The orchestrator's `main` part is the script: render replaces each of its
-`// @include <file> <part>` lines by that part, then fills the slots. A missing part, or one included
+`// @include <file> <part>` lines by that part, then fills the one render-time slot, `{{blocks}}`, with
+the merged block defaults (every other `{{path}}` is a run-time template variable, § Blocks). A missing part, or one included
 never or twice, is an error. The parts sit where the single script needs them, so a block's schema
 and its call can be far apart in the render.
 
@@ -429,15 +486,18 @@ Adding a block takes a new `template/core/<block>.js`, an `// @include <block> <
 `orchestrator.js` for each of its parts, and its row in the table above. Render reads every file in
 `template/core/` but the orchestrator as a block, so no list in `render.mjs` changes.
 
-A config is JSON whose keys are the variant dimensions; it names only what it changes, each key merging
-over `default.json`:
+A config is JSON with one key, `blocks`, in the shape of `profile.blocks` (§ Blocks); it names only what it
+changes and merges over `default.json` the way `profile.blocks` merges at run time. The variant dimensions
+the ablation study uses:
 
-- `models`: the default model per stage (`research`, `planner`, `implement`, `gates`, `review`, `fix`, `mutation`).
-- `lenses`: the review lenses, a list from `checklist` and `code`; a config's list replaces the default's.
-- `duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review) and
+- `blocks.<name>.model`, `.effort`: per block.
+- `blocks.review.lenses`: the review lenses, a list from `checklist` and `code`; a config's list replaces the default's.
+- `blocks.review.duties`: `test_case_review` (on: the weakened-test sentence in the code lens and the fix review) and
   `order` (off; on adds a draft sentence to the code lens, marked "experiment draft" for the experiments
   to settle: any two paths that change one piece of state within one unit of processing, in both orders
-  and repeated). A key the default does not name, in `models` or `duties`, is an error.
+  and repeated).
+
+A key, block, field or duty the default does not name, or an unknown lens, is an error.
 
 ```
 node template/render.mjs [config.json]                                    # the workflow, on stdout
@@ -454,17 +514,16 @@ have stubs (one requirement); a stage behind a review round, such as a fix, need
 round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.
 
-### Adding a variant dimension
+### Adding a config field
 
-1. Put a `{{name}}` slot where the text varies, in the `template/core/` file that holds it. Keep the
-   slot inside one line when it can, so a key changes only the lines it controls.
-2. Add the key to `default.json` with the value that renders today's core; a new duty is off by default.
-3. Fill the slot in `render()`. Text that goes inside a prompt's template literal passes through
-   `literal()`.
-4. Add a test beside T03-T06: the key changed alone changes exactly the lines it controls.
-   T01 must still pass. Record the variant in `fixtures.json` (T13).
+1. Add the field to its block in `default.json` with the value that renders today's behaviour; a new duty
+   is off by default.
+2. Read it in the core as `C.<block>.<field>`. A value an instruction names goes in the registry
+   (`config.<field>`) and the block's `INPUTS`; a duty's sentence goes in `review.js` beside the others.
+3. Add a stub test that the field moves the behaviour, and a render test beside T03-T06 (it changes only
+   the block defaults line). Record a variant in `fixtures.json` when the ablation study varies it (T13).
 
-A new lens also needs its entry in `template/core/review.js`'s `LENSES` and its name in `render.mjs`'s `LENSES`.
+A new lens also needs its entry in `template/core/review.js`'s `LENSES` and its name in `shared.js`'s `LENS_NAMES`.
 
 ## Changing the prompts
 

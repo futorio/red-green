@@ -36,34 +36,20 @@ export function template(dir) {
 }
 const CORE_DIR = fileURLToPath(here('core/'))
 const TEMPLATE = template(CORE_DIR)
-// The core's own validator, the code the script runs, for the tests and the conformance check.
-export const validate = new Function(`${partsOf(CORE_DIR, 'shared')['shared validate']}\nreturn validate`)()
+// Code of the core's own, the code the script runs: its validator, for the tests and the conformance check, and its
+// block config merge.
+const fromCore = (part, name) => new Function(`${partsOf(CORE_DIR, 'shared')[`shared ${part}`]}\nreturn ${name}`)()
+export const validate = fromCore('validate', 'validate')
+const mergeBlocks = fromCore('config', 'mergeBlocks')
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
-const LENSES = ['checklist', 'code']
 
-// Duty texts, inserted into a JS template literal. Order is a draft for the ablation experiments to settle.
-const TEST_CASE_REVIEW_CODE = 'A test the diff weakened, deleted or left asserting nothing it promises is a finding. '
-const TEST_CASE_REVIEW_FIX = '; (3) no test was weakened, deleted or left asserting nothing it promises'
-const ORDER = ' ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.'
-
-const literal = s => s.replace(/[`\\]/g, '\\$&').replace(/\$\{/g, '\\${')
-const js = v => v === null ? 'null' : Array.isArray(v) ? `[${v.map(js).join(', ')}]` : `'${v}'`
-
+// A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
+// The one render-time slot is {{blocks}}; every other {{path}} is a run-time template variable.
 export function render(config) {
   for (const k of Object.keys(config)) if (!(k in DEFAULT)) throw new Error(`unknown config key: ${k}`)
-  for (const k of ['models', 'duties']) for (const j of Object.keys(config[k] || {})) if (!(j in DEFAULT[k])) throw new Error(`unknown config key: ${k}.${j}`)
-  // A config names only what it changes; each object key merges over the default's, a lens list replaces it.
-  const { models, duties } = Object.fromEntries(['models', 'duties'].map(k => [k, Object.assign({}, DEFAULT[k], config[k])]))
-  const lenses = config.lenses || DEFAULT.lenses
-  for (const l of lenses) if (!LENSES.includes(l)) throw new Error(`unknown lens: ${l}`)
-  const slots = {
-    models: `{ ${Object.entries(models).map(([k, v]) => `${k}: ${js(v)}`).join(', ')} }`,
-    lenses: js(lenses),
-    order: duties.order ? literal(ORDER) : '',
-    'test_case_review.code': duties.test_case_review ? TEST_CASE_REVIEW_CODE : '',
-    'test_case_review.fix': duties.test_case_review ? TEST_CASE_REVIEW_FIX : '',
-  }
-  return TEMPLATE.replace(/\{\{([\w.]+)\}\}/g, (_, k) => slots[k])
+  const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks)
+  if (errors.length) throw new Error(errors.join('; '))
+  return TEMPLATE.replace('{{blocks}}', JSON.stringify(merged))
 }
 
 // A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of the

@@ -9,7 +9,8 @@ import { validate } from './template/render.mjs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const SOURCE = readFileSync(new URL('../ticket-tdd.js', import.meta.url), 'utf8').replace('export const meta', 'const meta')
-const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', SOURCE)
+const coreOf = source => new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source)
+let core = coreOf(SOURCE)
 
 const clone = x => JSON.parse(JSON.stringify(x))
 const row = (item, extra) => Object.assign({ item, evidence: 'e' }, extra)
@@ -20,6 +21,8 @@ const PATCH = i => `diff --git a/src/a.cpp b/src/a.cpp\n--- a/src/a.cpp\n+++ b/s
 const mutant = (i, status) => ({ target: `C${i}`, patch: PATCH(i), status: status || 'survived' })
 const step = (...ms) => ({ applies: true, ran: true, mutants: ms })
 const MUT = { build: 'BUILD-CMD', test: 'TEST-CMD' }
+// Args whose profile, the default one otherwise, carries these block configs.
+const withBlocks = blocks => ({ profile: { mutation: MUT, gates: [{ name: 'tests', command: 'npm test' }], blocks } })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
@@ -50,7 +53,8 @@ function base(over) {
 }
 
 // Runs the core. results[label] is a value, or a function of (call) returning one; null is a dead agent.
-// extra: more args; a case gets no extra round unless it asks for one (extra_rounds).
+// rounds: profile.blocks.review.rounds, 1 when not given, the default when 'default'; extra: more args, whose
+// profile.blocks merge over that.
 async function runCore(over, rounds, extra) {
   const results = base(over)
   const calls = []
@@ -65,8 +69,11 @@ async function runCore(over, rounds, extra) {
     return r && clone(r)
   }
   const parallel = thunks => Promise.all(thunks.map(async t => { try { return await t() } catch (e) { return null } }))
-  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', rounds: rounds || 1, baseline: { tests: '17 of 17' }, profile: { mutation: MUT, gates: [{ name: 'tests', command: 'npm test' }] }, extra_rounds: 0 }
+  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', baseline: { tests: '17 of 17' }, profile: { mutation: MUT, gates: [{ name: 'tests', command: 'npm test' }] } }
   Object.assign(args, extra)
+  const blocks = Object.assign({}, args.profile.blocks)
+  blocks.review = Object.assign(rounds === 'default' ? {} : { rounds: rounds || 1 }, blocks.review)
+  args.profile = Object.assign({}, args.profile, { blocks })
   const result = await core(args, agent, parallel, () => {}, () => {})
   return { result, calls, events }
 }
@@ -230,10 +237,10 @@ test('W77: the generator gets the tested checks and the runner with the build, t
   assert.ok(call.prompt.includes('node /t/.claude/workflows/ticket-tdd/skills/mutate.mjs --mutants /run/mutants.json --repo /r --head bbbb111 --dir /run --test \'TEST-CMD\' --build \'make \'\\\'\'b\'\\\'\'\' --timeout 7'))
   assert.match(call.prompt, /TESTED-FILE/)
   assert.ok(!/UNTESTED PHRASE|FLAKY-FILE/.test(call.prompt))
-  assert.match(call.prompt, /at most five/)
+  assert.match(call.prompt, /at most 5 on edges/)
   assert.match(call.prompt, /git diff aaaa000\.\.HEAD/)
   assert.match(call.prompt, /\/t\.md/)
-  assert.equal((await runCore({}, 1, { models: { mutation: 'sonnet' } })).calls.find(c => c.label === 'mutation').opts.model, 'sonnet')
+  assert.equal((await runCore({}, 1, withBlocks({ mutation: { model: 'sonnet' } }))).calls.find(c => c.label === 'mutation').opts.model, 'sonnet')
 })
 
 test('W78: the plug-in form puts the profile\'s tool text in the prompt and no runner or checks', async () => {
@@ -343,7 +350,7 @@ test('W08: a lens with three minors keeps the first two', async () => {
 test('W09: an unmet requirement goes to fix as a major, unmet and unrowed ones end in the leftover', async () => {
   const { result, calls } = await runCore({
     research: Object.assign({}, base().research, { requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: [harness('R1'), harness('R2', 'review'), harness('R3', 'review')] }),
-    'review:r1:checklist': clean([row('R1', { status: 'met' }), row('R2', { status: 'unmet', evidence: 'clause x fails' })]),
+    'review:r1:checklist': clean([row('R1', { status: 'met' }), row('R2', { status: 'unmet', promise: 'p', counterexample: 'c', evidence: 'clause x fails' })]),
     'fix:r1': { applied: [{ id: 'R1-R2', what: 'w' }], rejected: [], head: 'bbbb111' },
   })
   assert.match(prompt(calls, 'fix:r1'), /R1-R2/)
@@ -413,19 +420,19 @@ test('W23: a run reviews every round with both lenses', async () => {
   assert.ok(called(calls, 'review:r3:code'))
 })
 
-test('W28: with extra_rounds, a major fixed in the last planned round gets one more full round', async () => {
+test('W28: with review.extra, a major fixed in the last planned round gets one more full round', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
     mutation: step(),
-  }, 1, { extra_rounds: 1 })
+  }, 1, withBlocks({ review: { extra: 1 } }))
   assert.ok(called(calls, 'review:r2:code'))
   assert.equal(result.rounds_run, 2)
   assert.deepEqual(result.leftover_findings, [])
 })
 
-test('W29: with extra_rounds, a major still found in the extra round is fixed and its fix gets a fix-diff review', async () => {
+test('W29: with review.extra, a major still found in the extra round is fixed and its fix gets a fix-diff review', async () => {
   const again = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:2', 't')] }
   const { result, calls } = await runCore({
     'review:r1:code': major,
@@ -435,7 +442,7 @@ test('W29: with extra_rounds, a major still found in the extra round is fixed an
     'fix:r2': { applied: [{ id: 'R2-code-1', what: 'w' }], rejected: [], head: 'dddd333' },
     'gates:r2:recheck': gatesAt('dddd333'),
     mutation: step(),
-  }, 1, { extra_rounds: 1 })
+  }, 1, withBlocks({ review: { extra: 1 } }))
   assert.ok(!called(calls, 'review:r3:code'))
   assert.match(prompt(calls, 'review:fix:r2'), /git diff cccc222\.\.HEAD/)
   assert.deepEqual(withIds(result.leftover_findings, 'R2-code-1'), [])
@@ -460,7 +467,7 @@ test('W31: no minors calls no minor fixer; a dead one is a failure', async () =>
 })
 
 test('W32: with default rounds a run plans, reviews two full rounds with both lenses, then runs the mutation tool', async () => {
-  const { result, calls } = await runCore({}, 'auto')
+  const { result, calls } = await runCore({}, 'default')
   assert.equal(result.rounds_planned, 2)
   assert.ok(called(calls, 'plan') && called(calls, 'review:r2:checklist') && called(calls, 'review:r2:code') && called(calls, 'mutation'))
   assert.match(prompt(calls, 'review:r1:code'), /Start from the change-site facts/)
@@ -935,6 +942,51 @@ test('W82: the fix schema holds only what the script reads: no committed, no gat
   assert.deepEqual(s.required, ['applied', 'rejected', 'proofs', 'head'])
 })
 
+test('W83: profile.blocks.<name>.model and effort override the defaults; a block with no model runs on the one it follows', async () => {
+  const opts = (calls, l) => [calls.find(c => c.label === l).opts.model, calls.find(c => c.label === l).opts.effort]
+  const minor = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't')] }
+  const run = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' }, 'review:fix:r1': minor }
+  const plain = (await runCore(run)).calls
+  const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['sonnet', 'high'], 'gates:r1': ['sonnet', 'medium'], 'review:r1:code': ['opus', 'high'],
+    'fix:r1': ['sonnet', 'high'], 'review:fix:r1': ['opus', 'high'], mutation: ['haiku', 'medium'], 'fix:minor': ['sonnet', 'medium'] }
+  for (const [l, w] of Object.entries(want)) assert.deepEqual(opts(plain, l), w, l)
+  const { calls } = await runCore(run, 1, withBlocks({ research: { model: 'sonnet', effort: 'max' }, implement: { model: 'haiku' }, review: { effort: 'low' }, 'minor-fix': { model: 'opus' } }))
+  assert.deepEqual(opts(calls, 'research'), ['sonnet', 'max'])
+  assert.deepEqual(opts(calls, 'plan'), ['sonnet', 'high'])
+  assert.deepEqual(opts(calls, 'fix:r1'), ['haiku', 'high'])
+  assert.deepEqual(opts(calls, 'review:r1:code'), ['opus', 'low'])
+  assert.deepEqual(opts(calls, 'review:fix:r1'), ['opus', 'high'])
+  assert.deepEqual(opts(calls, 'fix:minor'), ['opus', 'medium'])
+})
+
+test('W84: the review rounds, extra and min rounds, the minors cap, the edge cap and the mutant timeout come from the block config', async () => {
+  const three = (await runCore({}, 3)).result
+  assert.deepEqual([three.rounds_planned, three.rounds_run], [3, 2])
+  const once = (await runCore({}, 3, withBlocks({ review: { min: 1 } }))).result
+  assert.equal(once.rounds_run, 1)
+  const minors = { verdict: 'findings', checked: [row('x')], findings: ['m1', 'm2', 'm3'].map(w => finding('minor', w, 't')) }
+  const capped = await runCore({ 'review:r1:code': minors }, 1, withBlocks({ review: { minors: 1 } }))
+  assert.deepEqual(capped.result.advisory.map(f => f.where), ['m1'])
+  assert.match(prompt(capped.calls, 'review:r1:code'), /report at most 1 minors/)
+  assert.match(prompt((await runCore({})).calls, 'review:r1:code'), /report at most 2 minors/)
+  const mut = (await runCore({}, 1, withBlocks({ mutation: { edges: 2, timeout: 60 } }))).calls
+  assert.match(prompt(mut, 'mutation'), /at most 2 on edges/)
+  assert.match(prompt(mut, 'mutation'), /--timeout 60`/)
+  assert.match(prompt((await runCore({})).calls, 'mutation'), /--timeout 300`/)
+})
+
+test('W85: a removed arg, or a block, field, duty or lens the config does not know, fails the run before any agent', async () => {
+  for (const extra of [{ models: { mutation: 'sonnet' } }, { rounds: 2 }, { extra_rounds: 1 }, { min_rounds: 1 },
+    withBlocks({ reviews: {} }), withBlocks({ review: { round: 2 } }), withBlocks({ review: { duties: { probe: true } } }), withBlocks({ review: { lenses: ['mechanics'] } })]) {
+    const { result, calls } = await runCore({}, 1, extra)
+    assert.equal(calls.length, 0, JSON.stringify(extra))
+    assert.equal(result.status, 'failed')
+    assert.equal(result.stage, 'config')
+  }
+  const { result } = await runCore({}, 1, { rounds: 2 })
+  assert.match(result.note, /args\.rounds.*profile\.blocks\.review\.rounds/)
+})
+
 // The validator on every agent schema of the core: per schema a valid sample, and per keyword the schema uses an
 // invalid one. A schema's keywords are found by walking it, so a keyword without an invalid sample fails the test.
 const keywordsOf = s => [...new Set(Object.keys(s).concat(Object.values(s.properties || {}).flatMap(keywordsOf),
@@ -943,7 +995,7 @@ const edit = (v, fn) => { const c = clone(v); fn(c); return c }
 const fullResearch = Object.assign({ questions: [] }, base().research)
 const lensClean = clean([row('R1', { status: 'met', promise: 'p', counterexample: 'c' })])
 const fixRes = { applied: [{ id: 'a', what: 'w' }], rejected: [], proofs: [], head: 'h' }
-const common = v => ({ type: 'x', properties: { mailbox: [{ id: 'm', status: 'applied', why: 7 }] }, required: {}, items: { mailbox: ['x'] }, enum: { mailbox: [{ id: 'm', status: 'odd', why: 'w' }] } })
+const common = () => ({ type: 'x', properties: { mailbox: [{ id: 'm', status: 'applied', why: 7 }] }, required: {}, items: { mailbox: ['x'] }, enum: { mailbox: [{ id: 'm', status: 'odd', why: 'w' }] } })
 const SAMPLES = {
   research: [fullResearch, {
     pattern: edit(fullResearch, r => { r.requirements = ['one'] }),
@@ -964,6 +1016,7 @@ const SAMPLES = {
   'review:r1:code': [clean([row('x')]), { enum: { verdict: 'dirty', findings: [], checked: [] }, required: { verdict: 'clean', findings: [] } }],
   mutation: [step(mutant(1)), { enum: step(mutant(1, 'zombie')), required: { applies: true, mutants: [] } }],
   'fix:r1': [fixRes, { enum: edit(fixRes, r => { r.proofs = [{ id: 'a', path: 'p', outcome: 'kept' }] }), required: { applied: [], rejected: [], proofs: [] } }],
+  'gates:discover': [discovered(), { required: { gates: [] } }],
 }
 
 test('V01: every agent schema of the core takes its valid sample and rejects an invalid one per keyword it uses', async () => {
@@ -971,10 +1024,11 @@ test('V01: every agent schema of the core takes its valid sample and rejects an 
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
   })
+  calls.push(...(await runCore({ 'gates:discover': discovered() }, 1, noGates)).calls)
   for (const [label, [valid, own]] of Object.entries(SAMPLES)) {
     const schema = calls.find(c => c.label === label).opts.schema
     assert.deepEqual(validate(schema, valid), [], label)
-    const invalid = Object.assign(common(valid), own)
+    const invalid = Object.assign(common(), own)
     for (const k of keywordsOf(schema)) {
       assert.ok(k in invalid, `${label}: no invalid sample for ${k}`)
       assert.notDeepEqual(validate(schema, invalid[k]), [], `${label}: ${k}`)
@@ -992,4 +1046,65 @@ test('V03: the validator names the place of each error', () => {
   const s = { type: 'object', properties: { a: { type: 'array', items: { type: 'string', enum: ['x'] } } }, required: ['a', 'b'] }
   assert.deepEqual(validate(s, { a: ['x', 'y'] }), ['$: b missing', '$.a[1]: "y" not in ["x"]'])
   assert.deepEqual(validate({ type: 'integer' }, 2.5), ['$: number, not integer'])
+})
+
+// A run that calls every block, each label once: discovery, replan, the implement retry, a fix and its fix-diff
+// review with one more fix and review, the recheck, mutation and the minor fix.
+const everyBlock = () => {
+  const green = gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't'))
+  const late = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'b:1', 't'), finding('minor', 'c:1', 't')] }
+  return runCore({
+    'gates:discover': discovered(),
+    research: research({ requirements: ['R1: one', 'R2: two'], test_harness: [harness('R1'), harness('R2')] }),
+    replan: base().plan,
+    implement: Object.assign({}, base().implement, { head: 'aaaa000' }), 'implement:retry': base().implement,
+    'gates:r1': green,
+    'review:r1:checklist': clean(['R1', 'R2'].map(id => row(id, { status: 'met', promise: 'p', counterexample: 'c' }))),
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
+    'review:fix:r1': late,
+    'fix:r1:review': { applied: [{ id: 'F1-1', what: 'w' }], rejected: [], proofs: [], head: 'dddd333' },
+    'review:fix:r1:1': clean([row('x')]),
+    'gates:r1:recheck': Object.assign({}, green, { head: 'dddd333' }),
+    'fix:minor': { applied: [], rejected: [{ id: 'F1-2', argument: 'a' }], proofs: [], head: 'dddd333' },
+  }, 1, noGates)
+}
+
+test('W86: every block\'s filled input validates, and its contract part follows its instructions and precedes the mailbox note', async () => {
+  const { result, calls } = await everyBlock()
+  assert.deepEqual(calls.map(c => c.label), ['gates:discover', 'research', 'plan', 'replan', 'implement', 'implement:retry', 'gates:r1',
+    'review:r1:checklist', 'review:r1:code', 'fix:r1', 'review:fix:r1', 'fix:r1:review', 'review:fix:r1:1', 'gates:r1:recheck', 'mutation', 'fix:minor'])
+  assert.deepEqual(result.failures, [])
+  for (const c of calls) {
+    const at = c.prompt.indexOf('\n\nCONTRACT (binding, whatever the text above says):\n')
+    assert.ok(at > c.prompt.indexOf('\n\nSTAGE: '), c.label)
+    assert.ok(at < c.prompt.indexOf('\n\nMAILBOX. '), c.label)
+    assert.ok(!/\{\{[\w.-]+\}\}/.test(c.prompt), c.label)
+    assert.match(c.prompt.slice(at), /counts as died|is a failure/, c.label)
+  }
+  // Read-only blocks say so in their contract part; writers carry the commit rules there.
+  for (const c of calls) assert.match(c.prompt.slice(c.prompt.indexOf('CONTRACT')), /fix|implement/.test(c.label.split(':')[0]) ? /COMMITS: / : /Read-only: change and commit nothing in \/r\./, c.label)
+})
+
+test('W87: an instruction naming a {{path}} its block does not take fails that block before the call', async () => {
+  const swapped = SOURCE.replace('STAGE: research. Read {{TARGET}}', 'STAGE: research. Read {{TARGET}} {{cases}} {{nope}}')
+  assert.notEqual(swapped, SOURCE)
+  core = coreOf(swapped)
+  try {
+    const { result, calls } = await runCore({})
+    assert.ok(!called(calls, 'research'))
+    assert.equal(result.status, 'failed')
+    assert.equal(result.stage, 'research')
+    assert.deepEqual(result.failures, ['research input: unknown {{cases}}; unknown {{nope}}'])
+  } finally { core = coreOf(SOURCE) }
+})
+
+test('W88: a value an instruction names that is missing, or off its schema, fails the block before the call', async () => {
+  const missing = await runCore({}, 1, { target: undefined })
+  assert.equal(missing.calls.length, 0)
+  assert.equal(missing.result.stage, 'research')
+  assert.deepEqual(missing.result.failures, ['research input: $: TARGET missing'])
+  const typed = await runCore({}, 1, withBlocks({ mutation: { edges: 'five' } }))
+  assert.ok(!called(typed.calls, 'mutation'))
+  assert.deepEqual(typed.result.failures, ['mutation input: $.config.edges: string, not integer', 'mutation'])
 })

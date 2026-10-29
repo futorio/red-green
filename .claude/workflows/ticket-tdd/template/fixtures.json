@@ -1,62 +1,90 @@
 {
   "default": {
     "config": {},
-    "sha256": "8d60c1313c348770a2754e31f528d6cd002230cd4ad449cd7fa825a92843b9ed"
+    "sha256": "f0581d0cd0d995c1bc6734e1c8f02039c6ed406b0abfde10d6374d2ab8faa560"
   },
   "duties.order": {
     "config": {
-      "duties": {
-        "order": true
+      "blocks": {
+        "review": {
+          "duties": {
+            "order": true
+          }
+        }
       }
     },
-    "sha256": "ac0076eddce53c49942fb35fd6f1e3849905d8a7ed73a98b8dc8373600da7bfb"
+    "sha256": "ff316b491deb9f1cb94c8ae4d35b97770c84debcc580c56b9bc846b5bd60f26a"
   },
   "duties.test_case_review": {
     "config": {
-      "duties": {
-        "test_case_review": false
+      "blocks": {
+        "review": {
+          "duties": {
+            "test_case_review": false
+          }
+        }
       }
     },
-    "sha256": "db6a57ddb1bd392f852d99e131d606ec1b350b9ebe218662775e794343624fe0"
+    "sha256": "653b2481b799dd270f6a81e8bda714292984ed016ae33d67edd1f7dcc77a23fe"
   },
   "duties.both": {
     "config": {
-      "duties": {
-        "order": true,
-        "test_case_review": false
+      "blocks": {
+        "review": {
+          "duties": {
+            "order": true,
+            "test_case_review": false
+          }
+        }
       }
     },
-    "sha256": "653a4f3edc2cdf2fcd9987a719d475a6d82ad6b4e704f149b7b0581b4e7748d7"
+    "sha256": "abded23130662de4de5a805699fb6828697be2d98d12ae693cd596367bd451fa"
   },
   "lenses.checklist": {
     "config": {
-      "lenses": [
-        "checklist"
-      ]
+      "blocks": {
+        "review": {
+          "lenses": [
+            "checklist"
+          ]
+        }
+      }
     },
-    "sha256": "b2772fbe815b9d5bb753933896ef1885e38926c26248b6fc3b06845f7accc9cf"
+    "sha256": "47623b1683a0f1283b5dff1dc6d1fbcd8a3a8618f829b8e848152ba211e1a844"
   },
   "lenses.code": {
     "config": {
-      "lenses": [
-        "code"
-      ]
+      "blocks": {
+        "review": {
+          "lenses": [
+            "code"
+          ]
+        }
+      }
     },
-    "sha256": "0d217efadc8fb6147ee97a099b8d0a63332b7be92dbac1a12c363e235cf8663c"
+    "sha256": "6203a3b212d4170149b21563028d513e2c352a8c8ff7bd1573df69a7b96ad57c"
   },
   "lenses.none": {
     "config": {
-      "lenses": []
+      "blocks": {
+        "review": {
+          "lenses": []
+        }
+      }
     },
-    "sha256": "b224cd1ca9f26ce91a8accabba39c6004758f2391295948ebf94d40c39886703"
+    "sha256": "d23ebd8c73e8fc1354d98ae273bfdfa85a3767629092b12763e140b5d6b25511"
   },
   "models.review": {
     "config": {
-      "models": {
-        "review": "sonnet",
-        "fix": "opus"
+      "blocks": {
+        "review": {
+          "model": "sonnet"
+        },
+        "fix": {
+          "model": "opus"
+        }
       }
     },
-    "sha256": "491e86f66d92b5f367940039e1f38e862dbad5bbad9ed9e2b8ea28b141f931c0"
+    "sha256": "970f3f212119e173d29966121888ba8c37f88eab442ac8a5bb237b340e2fbd70"
   }
 }
