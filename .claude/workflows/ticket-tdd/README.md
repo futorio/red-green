@@ -594,6 +594,26 @@ A run that stops early returns `{status: 'failed', stage, note?, failures}` with
 (a moved arg or profile field, or a block config that is unknown, off its schema or conflicting, before any agent), `gates` or `gates:discover`, `research`, `plan` or
 `implement`.
 
+## Tracing
+
+`trace.mjs` turns a finished run into spans, one per agent call, in a shape no runtime owns: `{label, model,
+harness, project?, start, end, tokens: {in, out, cache_read, cache_write}, attrs}`. `attrs` holds the stage metrics,
+string or number values with no schema: the call's `status` (`ok`, `died` with no answer, `unfinished` with no
+result) and the length of every list in its output, with a count per `severity` or `status` value in it
+(`findings.major`, `mutants.survived`). The core and its prompts know nothing of it. No money: tokens and the model
+only.
+
+```
+node trace.mjs <wf dir> [--project NAME]            # spans as JSONL
+node trace.mjs <wf dir> [--project NAME] --table    # calls, tokens and seconds per block and round, and the run's total
+```
+
+The one adapter so far reads a Claude Code Workflow run (`harness` `claude-code-workflow`):
+`~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`, its `journal.jsonl` (each agent's label and
+result) and the `agent-<id>.jsonl` beside it (times, model, usage counted once per API message). `project` is the
+directory the session was launched in, unless `--project` names it. Another runtime gets its own adapter returning
+the same spans. `test_trace.mjs` runs it on `trace-fixture/`, a real run with its text cut.
+
 ## Testing the core
 
 `test_ticket_tdd.mjs` (beside this file; run by hand with `node --test`, no dependency) evaluates
