@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { render, DEFAULT, template, defaults } from './render.mjs'
+import { render, DEFAULT, template, defaults, stageCall } from './render.mjs'
 
 const CORE = readFileSync(new URL('../../ticket-tdd.js', import.meta.url), 'utf8')
 const CLI = new URL('./render.mjs', import.meta.url).pathname
@@ -199,4 +199,53 @@ test('T20: --conform fails a drifted output, naming its schema errors and what t
   assert.equal(broken.code, 1)
   assert.deepEqual(broken.report.schema_errors, ['$: checked missing'])
   assert.match(broken.report.crash, /checked/)
+})
+
+test('T21: --conform reads a fix\'s findings and the checklist\'s ids from the call, not its prompt text', () => {
+  const cfg = file('plugins.json', blocks({ fix: { prompt: 'Fix these: {{findings}}' }, review: { prompt: 'Ids {{check_ids}}.' } }))
+  const { code, report } = conform(cfg, '--conform', 'review:r1:code', RECORDED)
+  assert.equal(code, 0, JSON.stringify(report.failures))
+  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id]), [['fix:r1', 'R1-code-1'], ['fix:minor', 'R1-code-2']])
+})
+
+// The default render's prompts, byte for byte as acae72a rendered them (before the defaults moved to Markdown): per
+// case and label, the first 16 hex digits of the prompt's sha256. The cases reach every call with every note on: a
+// fix with proofs and earlier fixes under one_commit, a replan with uncovered and duplicate checks, a retry, a
+// checklist with verify-by-review ids and unverified claims, gates discovery, both mutation approaches. acae72a took
+// the moved fields at their old places: profile.gates, .mutation, .runtime and .research (here a prompt wrapping
+// {{default}}).
+const G = [{ name: 'gates', command: 'GATES' }]
+const met = id => ({ verdict: 'clean', findings: [], checked: [{ item: id, evidence: 'e', status: 'met', promise: 'p', counterexample: 'c' }] })
+const said = (severity, where, proof) => Object.assign({ severity, where, problem: `P-${where}`, trigger: 't', consequence: 'c', fix: 'f' }, proof && { proof: { path: `t/${where}.test`, command: 'npm t', red: 'red' } })
+const findings = (...fs) => ({ verdict: 'findings', findings: fs, checked: [{ item: 'x', evidence: 'e' }] })
+const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected: [], proofs: proof ? [{ id, path: proof, outcome: 'deleted' }] : [], head })
+const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
+const ACAE = {
+  plain: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { test: 'TEST-CMD' } } } }, results: cleanRounds },
+    { research: 'f1f81516fad30008', plan: '10dabcb0a2ad1849', implement: '6ff71f6cf72e68ad', 'gates:r1': 'dbd8102be491f327', 'review:r1:checklist': '717b3afce0abfac8',
+      'review:r1:code': '992bb4ada05207ea', 'review:r2:checklist': '707c6250166200da', 'review:r2:code': '31acdce4c80162b6', mutation: 'f6c66eda07a8ed20' }],
+  fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
+    gates: { gates: G }, mutation: { build: 'B-CMD', test: 'TEST-CMD', timeout: 9 }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
+  results: { 'review:r1:checklist': met('R1'), 'review:r1:code': findings(said('major', 'a.js:1', true), said('minor', 'b.js:2')),
+    'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
+    'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
+    'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
+  { research: 'b260d6f66e11aa64', implement: 'caab9cd86e5a9d6b', 'review:r1:code': '6c304ed6c7d09d22', 'fix:r1': 'd31a85c592fb310b', 'gates:r2': 'ef8068ac5fc53b88',
+    'review:r2:checklist': '7aa1147dee9cb39e', 'review:r2:code': '19cf0931c2b1d146', 'fix:r2': 'd83b4a37cd8fff98', 'review:fix:r2': '9ad9723af20c7c72',
+    'fix:r2:review': 'e46a6a8775ecb70e', 'review:fix:r2:1': 'ebd1cd37adade2ee', 'gates:r2:recheck': '1d2ba6cf43d0c772', mutation: '930ea51d19005b03', 'fix:minor': '670b7e92babd49f4' }],
+  replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
+    research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
+    plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
+    implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
+    'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
+  { replan: '20e6038ea250d70c', 'implement:retry': '823832a3d27e3726', 'review:r1:checklist': '36c192cef922e3a7', 'review:r1:code': '665c181a8f548cc0' }],
+  discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
+    { 'gates:discover': '5cbc847c1946ab34', 'gates:r1': 'dbd8102be491f327', 'review:r1:code': '546981489d557523', mutation: 'ed5863ab552f2d44' }],
+}
+
+test('T22: the default render\'s prompts are byte for byte those of acae72a', async () => {
+  const source = render(DEFAULT)
+  for (const [name, [kase, want]] of Object.entries(ACAE))
+    for (const [label, sha] of Object.entries(want))
+      assert.equal(createHash('sha256').update((await stageCall(source, kase, label)).prompt).digest('hex').slice(0, 16), sha, `${name} ${label}`)
 })

@@ -43,7 +43,7 @@ let dup = duplicates(plan)
 if (cov.length || dup.length) {
   plan = await call('plan', NO_CODE_PRE, 'replan', {
     test_ids: testIds.join(', '), 'plan.cases': plan.cases, research,
-    uncovered: cov.join(', '), uncovered_note: note(cov.length), duplicates: JSON.stringify(dup), duplicates_note: note(dup.length),
+    uncovered: cov, uncovered_note: cov.length > 0, duplicates: dup, duplicates_note: dup.length > 0,
   }, PLAN_CONTRACT, { schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
   cov = coverage(plan)
   dup = duplicates(plan)

@@ -22,14 +22,14 @@ const placeOf = patch => {
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 async function runMutation() {
   mutated = true
-  const X = CONFIG.mutation
-  if (!X.tool && !X.test) { log('mutation: blocks.mutation has no test or tool, step skipped'); return [] }
+  const { tool, test, build, edges, timeout } = CONFIG.mutation
+  if (!tool && !test) { log('mutation: no blocks.mutation, step skipped'); return [] }
   phase('Gates')
   // The approach: the project's tool, or mutants generated against the checks and run by the runner.
-  const [covers, part, values] = X.tool ? ['files the tool covers', 'tool', { 'config.tool': X.tool }]
+  const [covers, part, values] = tool ? ['files the tool covers', 'tool', { 'config.tool': tool }]
     : ['production source', 'generated', {
-      BASE, TARGET, RUN, 'config.edges': X.edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
-      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''} --timeout ${X.timeout}`,
+      BASE, TARGET, RUN, 'config.edges': edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
+      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(test)}${build ? ` --build ${sq(build)}` : ''} --timeout ${timeout}`,
     }]
   const res = await call('mutation', NO_CODE_PRE, part, Object.assign({ HEAD: headNow }, values),
     contract(READ_ONLY, `applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}. If it applies and did not run, ran is false and not_run the reason — never a pass.`,

@@ -19,7 +19,7 @@ const IMPL_SCHEMA = { type: 'object', properties: {
 
 phase('Implement')
 const implementCall = (retry, label) => call('implement', PRE, 'implement', {
-  retry_note: note(retry), BASE, previous_notes: retry ? JSON.stringify(retry) : undefined,
+  retry_note: !!retry, BASE, previous_notes: retry || undefined,
   IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research,
 }, contract(writer('Commit your work as it stands, even with a gate worse than its baseline: the gates step hands what is red to the fix.'),
   'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id) and per boundary phrase (ref: the ticket\'s words, quoted); unverified; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open); notes.',

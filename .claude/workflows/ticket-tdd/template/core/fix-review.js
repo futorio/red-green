@@ -8,7 +8,7 @@ async function fixReview(fromHead, given, label) {
   fixReviews += 1
   phase('Review')
   const res = await call('fix-review', NO_CODE_PRE, 'fix-review', {
-    HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': note(CONFIG.review.duties.test_case_review),
+    HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': CONFIG.review.duties.test_case_review,
     given: given.map(f => ({ id: f.id, where: f.where, problem: f.problem })),
   }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified')),
   { schema: REVIEW_SCHEMA, phase: 'Review', label })

@@ -51,12 +51,13 @@ const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'm
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
 // These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
 const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
-  [P, 'profile', { research: 'profile.blocks.research.prompt, wrapping {{default}}', runtime: 'profile.blocks.review.prompt, wrapping {{default}}', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
+  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
 Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => configErrors.push(`blocks.${b}: prompt or skill, not both`))
-const MU = CONFIG.mutation
-if (MU.build && !MU.test) configErrors.push('blocks.mutation: build without test')
-if (MU.tool && (MU.test || MU.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
+// Mutation runs on a test or a tool; with no blocks.mutation given the step is skipped.
+if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')
+if (CONFIG.mutation.build && !CONFIG.mutation.test) configErrors.push('blocks.mutation: build without test')
+if (CONFIG.mutation.tool && (CONFIG.mutation.test || CONFIG.mutation.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
 if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
 GATES = CONFIG.gates.gates || []
 // Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.

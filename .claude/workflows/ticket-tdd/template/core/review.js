@@ -34,9 +34,10 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
   const lensResults = await parallel(active.map(l => () => call('review', NO_CODE_PRE, l.key, {
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
-    history: JSON.stringify(history), earlier_findings: note(history.length),
-    verify_review: JSON.stringify(plan.verify_review), verify_review_note: note(plan.verify_review.length),
-    unverified: JSON.stringify(impl.unverified), unverified_note: note(impl.unverified.length),
-    'duty.order': note(CONFIG.review.duties.order), 'duty.test_case_review': note(CONFIG.review.duties.test_case_review),
+    history, earlier_findings: history.length > 0,
+    verify_review: plan.verify_review, verify_review_note: plan.verify_review.length > 0,
+    unverified: impl.unverified, unverified_note: impl.unverified.length > 0,
+    'config.runtime': CONFIG.review.runtime, runtime_note: !!CONFIG.review.runtime,
+    'duty.order': CONFIG.review.duties.order, 'duty.test_case_review': CONFIG.review.duties.test_case_review,
   }, contract(...l.rules(), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
   { schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))

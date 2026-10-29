@@ -22,10 +22,10 @@ const mutant = (i, status) => ({ target: `C${i}`, patch: PATCH(i), status: statu
 const step = (...ms) => ({ applies: true, ran: true, mutants: ms })
 const MUT = { build: 'BUILD-CMD', test: 'TEST-CMD' }
 const TESTS = [{ name: 'tests', command: 'npm test' }]
-// Args whose profile declares these gates (TESTS unless given; null: none) and mutation commands (MUT unless given),
-// with these block configs over them and the other profile fields as given.
+// Args whose profile declares these gates (TESTS unless given; null: none) and mutation commands (MUT unless given;
+// null: no mutation block), with these block configs over them and the other profile fields as given.
 const withProfile = ({ gates = TESTS, mutation = MUT, blocks = {}, ...rest } = {}) => ({ profile: Object.assign(rest, { blocks: Object.assign({}, blocks, {
-  gates: Object.assign(gates ? { gates } : {}, blocks.gates), mutation: Object.assign({}, mutation, blocks.mutation) }) }) })
+  gates: Object.assign(gates ? { gates } : {}, blocks.gates) }, (mutation || blocks.mutation) && { mutation: Object.assign({}, mutation, blocks.mutation) }) }) })
 const withBlocks = blocks => withProfile({ blocks })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
@@ -266,7 +266,7 @@ test('W79: the result\'s mutation holds every mutant with id, place, patch and s
     counts: { killed: 2, survived: 1, invalid: 1, not_run: 0 },
   })
   assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.mutation, null)
-  const none = await runCore({}, 1, withProfile({ mutation: {} }))
+  const none = await runCore({}, 1, withProfile({ mutation: null }))
   assert.ok(!called(none.calls, 'mutation'))
   assert.equal(none.result.mutation, null)
   assert.equal(none.result.status, 'done')
@@ -278,8 +278,8 @@ test('W80: a mutant\'s file is its patch\'s +++ side, the --- side when that is 
   assert.deepEqual(result.mutation.mutants.map(m => [m.file, m.line]), [['new.cpp', 5], ['gone.cpp', 1]])
 })
 
-test('W81: blocks.mutation with a build and no test, or a tool beside test or build, fails the run before any agent', async () => {
-  for (const mutation of [{ build: 'B' }, { tool: 'T', test: 'X' }, { tool: 'T', build: 'B' }]) {
+test('W81: blocks.mutation given with neither test nor tool, with a build and no test, or a tool beside test or build, fails the run before any agent', async () => {
+  for (const mutation of [{}, { timeout: 9 }, { edges: 3 }, { build: 'B' }, { tool: 'T', test: 'X' }, { tool: 'T', build: 'B' }]) {
     const { result, calls } = await runCore({}, 1, withProfile({ mutation }))
     assert.equal(calls.length, 0, JSON.stringify(mutation))
     assert.equal(result.stage, 'config')
@@ -1121,7 +1121,7 @@ test('W88: a value an instruction names that is missing, or off its schema, fail
   assert.equal(missing.calls.length, 0)
   assert.equal(missing.result.stage, 'research')
   assert.deepEqual(missing.result.failures, ['research input: $: TARGET missing'])
-  const swapped = SOURCE.replace("'config.edges': X.edges", "'config.edges': 'five'")
+  const swapped = SOURCE.replace("'config.edges': edges,", "'config.edges': 'five',")
   assert.notEqual(swapped, SOURCE)
   core = coreOf(swapped)
   try {
@@ -1138,7 +1138,7 @@ test('W89: a block config value off its registry schema fails the run before any
     [{ review: { lenses: ['mechanics'] } }, 'blocks.review.lenses[0]'], [{ review: { duties: { order: 'yes' } } }, 'blocks.review.duties.order'],
     [{ research: { model: 3 } }, 'blocks.research.model'], [{ gates: { effort: 2 } }, 'blocks.gates.effort'],
     [{ gates: { gates: [{ name: 'g' }] } }, 'blocks.gates.gates'], [{ mutation: { test: 7 } }, 'blocks.mutation.test'],
-    [{ plan: { prompt: ['x'] } }, 'blocks.plan.prompt'], [{ fix: { skill: 1 } }, 'blocks.fix.skill']]) {
+    [{ plan: { prompt: ['x'] } }, 'blocks.plan.prompt'], [{ fix: { skill: 1 } }, 'blocks.fix.skill'], [{ review: { runtime: 3 } }, 'blocks.review.runtime']]) {
     const { result, calls } = await runCore({}, 1, withBlocks(blocks))
     assert.equal(calls.length, 0, JSON.stringify(blocks))
     assert.equal(result.stage, 'config')
@@ -1169,10 +1169,15 @@ test('W92: {{default}} in a project prompt inlines the default instructions of e
   }
 })
 
-test('W93: a skill path replaces the instructions with reading it; a block given both prompt and skill fails the run before any agent', async () => {
-  const { calls } = await runCore({}, 1, withBlocks({ implement: { skill: '/p/impl.md' } }))
-  assert.equal(instructions(prompt(calls, 'implement')), 'Read /p/impl.md and follow it.')
-  assert.match(prompt(calls, 'implement'), /CONTRACT[^]*COMMITS: /)
+test('W93: a skill path replaces the how-to with reading it, followed by the call\'s data; a block given both prompt and skill fails the run before any agent', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } },
+    1, withBlocks({ fix: { skill: '/p/fix.md' } }))
+  const plain = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } })
+  const fix = prompt(calls, 'fix:r1')
+  const data = name => JSON.stringify(JSON.parse(prompt(plain.calls, 'fix:r1').split(`\n${name}:\n`)[1].split('\n\n')[0]), null, 1)
+  assert.equal(instructions(fix), `Read /p/fix.md and follow it.\n\nROUND:\n1\n\nIMPLEMENT_SKILL:\n/t/.claude/workflows/ticket-tdd/skills/implement.md\n\nFINDINGS:\n${data('FINDINGS')}\n\nFIXED:\n[]\n\nRESEARCH:\n${data('RESEARCH')}`)
+  assert.match(fix, /CONTRACT[^]*COMMITS: /)
+  assert.ok(!/verify before you agree|Start from the change-site facts/.test(fix))
   const both = await runCore({}, 1, withBlocks({ implement: { skill: '/p/impl.md', prompt: 'x' } }))
   assert.equal(both.calls.length, 0)
   assert.equal(both.result.stage, 'config')
@@ -1191,7 +1196,7 @@ test('W94: the gates and mutation approaches are read from profile.blocks: decla
 })
 
 test('W95: the removed profile strings and the moved profile fields fail the run before any agent, naming where they went', async () => {
-  for (const [field, value, where] of [['research', 'text', /profile\.blocks\.research\.prompt/], ['runtime', 'text', /profile\.blocks\.review\.prompt/],
+  for (const [field, value, where] of [['research', 'text', /profile\.blocks\.research\.prompt as "\{\{default\}\}\\n<text>"/], ['runtime', 'text', /profile\.blocks\.review\.runtime/],
     ['gates', TESTS, /profile\.blocks\.gates\.gates/], ['mutation', MUT, /profile\.blocks\.mutation\b/]]) {
     const args = withProfile()
     args.profile[field] = value
@@ -1200,5 +1205,25 @@ test('W95: the removed profile strings and the moved profile fields fail the run
     assert.equal(result.stage, 'config', field)
     assert.match(result.note, new RegExp(`profile\\.${field}\\b`), field)
     assert.match(result.note, where, field)
+  }
+})
+
+test('W96: blocks.review.runtime is where the code lens checks that every new branch executes; null leaves it out', async () => {
+  const { calls } = await runCore({}, 1, withBlocks({ review: { runtime: 'Node 22 on the CI image' } }))
+  assert.ok(prompt(calls, 'review:r1:code').includes('would every new branch execute as intended in Node 22 on the CI image, is every new assertion falsifiable'))
+  assert.ok(prompt((await runCore({})).calls, 'review:r1:code').includes('would every new branch execute as intended, is every new assertion falsifiable'))
+})
+
+test('W97: the notes\' data are typed values: one off its registry schema fails the block before the call', async () => {
+  for (const [from, to, label, wrong] of [['unverified: impl.unverified,', "unverified: 'x',", 'review:r1:checklist', '$.unverified: string, not array'],
+    ['duplicates: dup,', "duplicates: 'x',", 'replan', '$.duplicates: string, not array']]) {
+    const swapped = SOURCE.replace(from, to)
+    assert.notEqual(swapped, SOURCE, from)
+    core = coreOf(swapped)
+    try {
+      const { result, calls } = await runCore({ plan: { cases: base().plan.cases.concat(Object.assign({}, base().plan.cases[0], { id: 'C2' })) }, replan: base().plan })
+      assert.ok(!called(calls, label), label)
+      assert.ok(result.failures.includes(`${label} input: ${wrong}`), JSON.stringify(result.failures))
+    } finally { core = coreOf(SOURCE) }
   }
 })

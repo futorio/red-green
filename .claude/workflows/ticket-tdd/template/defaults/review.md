@@ -1,11 +1,11 @@
 <!-- Block review: one default per lens (a part named by its key in LENSES), the head and frame both include, the
-lenses' notes and the duties' sentences. A part keeps its whitespace: some notes start with a space or a blank line,
-the test-case review duty ends with a space. -->
+lenses' notes, the duties' sentences and the words for a weakened test the fix review's duty shares. A part keeps its
+whitespace: some notes start with a space or a blank line, the test-case review duty ends with a space. -->
 <!-- @part checklist -->
 {{> review head}} checklist. Review the change against its statement. For each requirement id — {{check_ids}} — the promise is the sentence of the statement it rests on, whatever the code, its docs or its tests say. Then find a counterexample: the input or path most likely to make the promise false on the diff `git diff {{BASE}}..HEAD` — a boundary, an empty or malformed input, an error path, an exit code, a second caller.{{verify_review_note}} Scope: a change the statement does not call for is a finding.{{unverified_note}}
 {{> review frame}}
 <!-- @part code -->
-{{> review head}} code. Read the code as code: would every new branch execute as intended, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}
+{{> review head}} code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}
 {{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so and stop.
 {{> review frame}}
 <!-- @part head -->
@@ -28,5 +28,9 @@ EARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-ra
 
 <!-- @part duty.order -->
  ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.
+<!-- @part runtime_note -->
+ in {{config.runtime}}
 <!-- @part duty.test_case_review -->
-A test the diff weakened, deleted or left asserting nothing it promises is a finding. 
+A test the diff {{> review weakened}} is a finding. 
+<!-- @part weakened -->
+weakened, deleted or left asserting nothing it promises

@@ -86,7 +86,7 @@ const STUB_RESULTS = {
 }
 
 // Runs the core on a case: agents answer from the case's results, except `stop`, which never answers; a label with no
-// result gets answer's, a gates step green rows, any other none.
+// result gets answer's (given the label and the call's values), a gates step green rows, any other none.
 function drive(source, kase, stop, answer) {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const core = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source.replace('export const meta', 'const meta'))
@@ -94,7 +94,7 @@ function drive(source, kase, stop, answer) {
   const gates = names => ({ head: 'HEAD', gates: names.map((name, i) => ({ name, status: 'green', line: (kase.gate_lines || [])[i] || 'GATES' })) })
   const agent = async (prompt, opts) => {
     if (stop(prompt, opts)) return new Promise(() => {})
-    const r = opts.label in results ? results[opts.label] : answer && answer(opts.label, prompt) || (opts.label.startsWith('gates:') ? gates(opts.schema.properties.gates.items.properties.name.enum) : null)
+    const r = opts.label in results ? results[opts.label] : answer && answer(opts.label, opts.values) || (opts.label.startsWith('gates:') ? gates(opts.schema.properties.gates.items.properties.name.enum) : null)
     return r && JSON.parse(JSON.stringify(r))
   }
   const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
@@ -111,24 +111,24 @@ export function stageCall(source, kase, label) {
 }
 
 // The conformance check: a block's real output, given as the result of the agent labelled <label>, through a run whose
-// other blocks answer clean: review lenses with a met row per requirement id and no finding, the mutation step not
-// applying, each fix rejecting every finding it is sent and deleting its proofs. Reports the output's schema errors
-// (against the schema that agent gets), every finding the script sent to a fix (`sent_to`: its label), and the run's result: its status,
-// failures, verdicts, leftover and advisory findings, mutation, research issues and unverified list; a run the output
-// breaks reports the error as crash. It passes when there is no schema error, failure or crash.
-const sentOf = prompt => JSON.parse((/\nFINDINGS:\n(\[[^]*?\n\])/.exec(prompt) || [, '[]'])[1])
+// other blocks answer clean from their calls' values: review lenses with a met row per requirement id and no finding,
+// the mutation step not applying, each fix rejecting every finding it is sent and deleting its proofs. Reports the
+// output's schema errors (against the schema that agent gets), every finding the script sent to a fix (`sent_to`: its
+// label), and the run's result: its status, failures, verdicts, leftover and advisory findings, mutation, research
+// issues and unverified list; a run the output breaks reports the error as crash. It passes when there is no schema
+// error, failure or crash.
 export async function conform(source, kase, label, output) {
   const { schema } = await stageCall(source, kase, label)
   const sent = []
-  const answer = (l, prompt) => {
+  const answer = (l, values) => {
     if (/^review:r\d+:checklist$/.test(l)) {
-      const ids = ((/For each requirement id — (.*?) — /.exec(prompt) || [, ''])[1]).split(', ').filter(Boolean)
+      const ids = values.check_ids.split(', ').filter(Boolean)
       return { verdict: 'clean', findings: [], checked: ids.map(item => ({ item, evidence: 'stub', status: 'met', promise: 'stub', counterexample: 'stub' })) }
     }
     if (l.startsWith('review:')) return { verdict: 'clean', findings: [], checked: [{ item: 'stub', evidence: 'stub' }] }
     if (l === 'mutation') return { applies: false, ran: false, mutants: [] }
     if (!l.startsWith('fix:')) return null
-    const given = sentOf(prompt)
+    const given = values.findings
     sent.push(...given.map(f => Object.assign({ sent_to: l }, f)))
     return { applied: [], rejected: given.map(f => ({ id: f.id, argument: 'conformance stub' })), proofs: given.filter(f => f.proof).map(f => ({ id: f.id, path: f.proof.path, outcome: 'deleted' })), head: 'HEAD' }
   }

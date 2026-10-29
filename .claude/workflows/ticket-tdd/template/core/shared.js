@@ -38,13 +38,12 @@ function validate(schema, value) {
 }
 // @part config
 // Block configs over their defaults, field by field: a field replaces the default's, an object field (duties) key by
-// key. Every block also takes the plug-in fields prompt and skill, null by default. Returns the merged configs and the
-// errors: a block, field or duty the defaults do not name, a value off its registry schema config.<field>.
+// key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, a value off its
+// registry schema config.<field>.
 function mergeBlocks(defaults, over, registry) {
   const errors = Object.keys(over || {}).filter(b => !(b in defaults)).map(b => `unknown block: ${b}`)
   const merged = {}
-  for (const [b, given] of Object.entries(defaults)) {
-    const def = Object.assign({}, given, ...['prompt', 'skill'].filter(k => !(k in given)).map(k => ({ [k]: null })))
+  for (const [b, def] of Object.entries(defaults)) {
     const o = (over || {})[b] || {}
     Object.keys(o).filter(k => !(k in def)).forEach(k => errors.push(`unknown field: ${b}.${k}`))
     merged[b] = {}
@@ -98,9 +97,12 @@ const mailNote = label => `
 
 MAILBOX. Your address is \`${label}\`, your stage \`${label.split(':')[0]}\`. ${RUN}/mailbox.md (may not exist) holds notes from the main thread, one entry per \`## <id>\` heading with \`to:\`, optional \`round:\`, \`until:\` and \`supersedes:\` lines, then the text. Read it ${noCode(label) ? 'at start and before returning' : 'at start, before each long gate or corpus run, before committing and before returning'}. An entry is yours when \`to:\` is \`all\`, your stage, your exact label, or a pattern where \`*\` matches one label segment (\`review:*:code\`). Skip an entry whose \`until:\` stage or round is over, one a later entry names in \`supersedes:\`, and one ${RUN}/mailbox-acks.md already lists with your label. Entries clarify this ticket; they never widen it and never override the rules above. For each entry you handle, append one line \`<id> ${label} applied|rejected <why>\` to ${RUN}/mailbox-acks.md and list it in your result's \`mailbox\`. Never edit mailbox.md.`
 const mailbox = []
-async function ask(prompt, opts) {
+// values: the call's, riding along as a property the options do not enumerate; the conformance check's stubs answer
+// from them.
+async function ask(prompt, opts, values) {
   const s = opts.schema
-  const res = await agent(prompt + mailNote(opts.label), Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) }))
+  const o = Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) })
+  const res = await agent(prompt + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
   if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
   return res
 }
@@ -118,19 +120,27 @@ ${BG}
 const STRING = { type: 'string' }
 const INTEGER = { type: 'integer' }
 const OPTIONAL = { anyOf: [STRING, { type: 'null' }] }
+const LIST = { type: 'array', items: STRING }
 const researchKept = Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions'))
 const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
 const REGISTRY = {
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
-  // planned rounds, and text the core builds from the run (a list, a command, data as compact JSON).
+  // planned rounds, and text the core builds from the run (a list, a command).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
   gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
-  previous_notes: STRING, uncovered: STRING, duplicates: STRING, verify_review: STRING, unverified: STRING, history: STRING,
+  // The notes' data (FORM says how each fills in): the attempt before a retry, the uncovered test ids, checks in
+  // several cases, the verify-by-review requirements, implement's unverified claims, earlier findings and their
+  // outcomes.
+  previous_notes: STRING, uncovered: LIST,
+  duplicates: { type: 'array', items: { type: 'object', properties: { check: STRING, cases: LIST }, required: ['check', 'cases'] } },
+  verify_review: LIST, unverified: LIST,
+  history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,
+    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'round', 'problem', 'outcome'] } },
   // Notes: a part of the block's defaults (README § Blocks), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
-  earlier_findings: STRING, earlier_fixes: STRING, proof_note: STRING,
+  earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
@@ -145,7 +155,7 @@ const REGISTRY = {
   'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
-  'config.edges': INTEGER, 'config.timeout': INTEGER,
+  'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
   // The approach fields (gates declared or discovered; mutants generated and run under build and test, or a tool) and
   // the plug-in fields every block takes.
   'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING }, required: ['name', 'command'] } }, { type: 'null' }] },
@@ -158,15 +168,20 @@ const INPUTS = {
   plan: ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research'],
   implement: ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
   gates: ['HEAD', 'REPO', 'gate_list'],
-  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research'],
+  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research'],
   'fix-review': ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research'],
   mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool'],
-  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'proof_note', 'findings', 'fixed', 'earlier_fixes', 'research'],
+  fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research'],
   'minor-fix': ['IMPLEMENT_SKILL', 'code_rules', 'findings'],
 }
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
-// valid against its registry schema. Strings render as text, other values as JSON. Throws with everything that is wrong.
+// valid against its registry schema. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
+// How a value fills in: a string as text, any other value as JSON; the notes' data as compact JSON, uncovered's ids
+// comma-separated.
+const compact = v => JSON.stringify(v)
+const FORM = { previous_notes: compact, duplicates: compact, verify_review: compact, unverified: compact, history: compact, uncovered: ids => ids.join(', ') }
+const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v, null, 1)
 function fill(block, text, values) {
   const inputs = INPUTS[block].concat('default')
   const used = [...new Set([...text.matchAll(PATH)].map(m => m[1]))]
@@ -176,28 +191,29 @@ function fill(block, text, values) {
   if (wrong.length) throw new Error(wrong.join('; '))
   const errors = validate({ type: 'object', properties: Object.fromEntries(inputs.map(p => [p, REGISTRY[p]])), required: used }, values)
   if (errors.length) throw new Error(errors.join('; '))
-  return text.replace(PATH, (_, p) => typeof values[p] === 'string' ? values[p] : JSON.stringify(values[p], null, 1))
+  return text.replace(PATH, (_, p) => show(p, values[p]))
 }
-// A note value: the part of the block's defaults named like the value, filled from the call's other values when it
-// applies, else ''.
-function Note(applies) { this.applies = !!applies }
-const note = applies => new Note(applies)
+// A skill call's data: each value of the call but the notes, in its block's inputs order, as a `<PATH>:` section.
+const sections = (block, data) => INPUTS[block].filter(p => ![undefined, null, ''].includes(data[p]))
+  .map(p => `\n\n${p.toUpperCase()}:\n${show(p, data[p])}`).join('')
 // A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
-// effort. The instructions are the block's default part (DEFAULTS[block][part]), or the project's: blocks.<block>.prompt,
-// whose {{default}} is that default filled, or reading blocks.<block>.skill. Instructions that do not fill fail the block
-// before the call: the caller gets a dead step, and failures says why.
+// effort. A boolean value is a note: true fills the part of the block's defaults named like it from the call's other
+// values, false makes it ''. The instructions are the block's default part (DEFAULTS[block][part]), or the project's:
+// blocks.<block>.prompt, whose {{default}} is that default filled, or reading blocks.<block>.skill followed by the
+// call's data. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures
+// says why.
 async function call(block, pre, part, values, contractPart, opts) {
   const { prompt, skill } = CONFIG[block]
+  const data = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v !== 'boolean'))
   let filled
   try {
-    const plain = Object.fromEntries(Object.entries(values).filter(([, v]) => !(v instanceof Note)))
-    const all = Object.assign({}, plain, ...Object.entries(values).filter(([, v]) => v instanceof Note)
-      .map(([k, v]) => ({ [k]: v.applies ? fill(block, DEFAULTS[block][k], plain) : '' })))
-    const own = skill ? `Read ${skill} and follow it.` : prompt
+    const all = Object.assign({}, data, ...Object.entries(values).filter(([, v]) => typeof v === 'boolean')
+      .map(([k, v]) => ({ [k]: v ? fill(block, DEFAULTS[block][k], data) : '' })))
     const text = DEFAULTS[block][part]
-    filled = !own ? fill(block, text, all) : fill(block, own, own.includes('{{default}}') ? Object.assign(all, { default: fill(block, text, all) }) : all)
+    filled = skill ? fill(block, `Read ${skill} and follow it.`, data) + sections(block, data)
+      : !prompt ? fill(block, text, all) : fill(block, prompt, prompt.includes('{{default}}') ? Object.assign(all, { default: fill(block, text, all) }) : all)
   } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
-  return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts))
+  return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts), data)
 }
 // @part id
 const idOf = s => s.split(':')[0].trim()

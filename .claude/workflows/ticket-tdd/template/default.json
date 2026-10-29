@@ -1,13 +1,13 @@
 {
   "blocks": {
-    "research": { "model": "opus", "effort": "high" },
-    "plan": { "model": null, "effort": "high" },
-    "implement": { "model": "sonnet", "effort": "high" },
-    "gates": { "model": "sonnet", "effort": "medium", "gates": null },
-    "review": { "model": "opus", "effort": "high", "rounds": 2, "extra": 0, "min": 2, "lenses": ["checklist", "code"], "duties": { "test_case_review": true, "order": false }, "minors": 2 },
-    "fix-review": { "model": null, "effort": "high" },
-    "mutation": { "model": "haiku", "effort": "medium", "edges": 5, "timeout": 300, "build": null, "test": null, "tool": null },
-    "fix": { "model": null, "effort": "high" },
-    "minor-fix": { "model": null, "effort": "medium" }
+    "research": { "model": "opus", "effort": "high", "prompt": null, "skill": null },
+    "plan": { "model": null, "effort": "high", "prompt": null, "skill": null },
+    "implement": { "model": "sonnet", "effort": "high", "prompt": null, "skill": null },
+    "gates": { "model": "sonnet", "effort": "medium", "gates": null, "prompt": null, "skill": null },
+    "review": { "model": "opus", "effort": "high", "rounds": 2, "extra": 0, "min": 2, "lenses": ["checklist", "code"], "duties": { "test_case_review": true, "order": false }, "minors": 2, "runtime": null, "prompt": null, "skill": null },
+    "fix-review": { "model": null, "effort": "high", "prompt": null, "skill": null },
+    "mutation": { "model": "haiku", "effort": "medium", "edges": 5, "timeout": 300, "build": null, "test": null, "tool": null, "prompt": null, "skill": null },
+    "fix": { "model": null, "effort": "high", "prompt": null, "skill": null },
+    "minor-fix": { "model": null, "effort": "medium", "prompt": null, "skill": null }
   }
 }
