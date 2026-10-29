@@ -37,6 +37,7 @@ review of its own diff. Freeing the run directory is the main thread's step afte
 | `baseline` | `{<gate name>: <summary line at base, with the cause of any failure already there>}`, one entry per gate in `profile.blocks.gates.gates`; a missing entry fails the run before research; ignored when no gates are declared | required with declared gates |
 | `one_commit` | the ticket pins exactly one commit: later stages `--amend` it | `false` |
 | `profile` | the project's additions, below | `{}` |
+| `replay` | harness-only: `render.mjs` sets it when it replays a case (§ Template); research's recorded output is taken as given, without the plan-step check and `research:retry`. A real run never sets it | `false` |
 
 `models`, `rounds`, `extra_rounds` and `min_rounds` moved into the block config (`profile.blocks`, § Blocks), and so
 did `profile.gates`, `profile.mutation` and `profile.runtime` (now `profile.blocks.review.runtime`);
@@ -161,7 +162,7 @@ documents they cite and the code they touch, and returns JSON only (schema-force
 - `plan[]`: the fewest actions in dependency order, built from the facts to meet the requirements, reusing
   what the facts name first; every step changes code, config or docs (running checks, committing and
   recording results are the implementer's and the gates'); each step is two or three sentences (at most 600
-  characters, schema-forced) naming the part of the code it acts on and every tool, symbol and file involved,
+  characters, checked by the core: an answer with a longer step gets one `research:retry`) naming the part of the code it acts on and every tool, symbol and file involved,
   and leaves line ranges, flags, commands and lists to the facts;
 - `test_harness[]`: exactly one `{requirement, by: test|review|launch|none, how}` per requirement, no
   run commands.
@@ -189,11 +190,11 @@ check. `files[]` is derived from the `where` of the `code` and
 
 | block | `research` (§ Blocks) |
 |---|---|
-| labels | `research` |
-| inputs | `TARGET` |
-| defaults | `defaults/research.md`: `research`; its `section` is the RESEARCH part later blocks include |
-| output | `RESEARCH_SCHEMA`: requirements, facts, plan, test_harness, questions |
-| invariants | read-only; died (no answer): the run fails |
+| labels | `research`, `research:retry` |
+| inputs | `TARGET`, `retry_note`; `previous_notes` (the check errors) on `research:retry` alone |
+| defaults | `defaults/research.md`: `research`, `retry_note`; its `section` is the RESEARCH part later blocks include |
+| output | `RESEARCH_SCHEMA`: requirements, facts, plan, test_harness, questions; as the `research` input of later blocks, without the `R<n>: ` pattern and the 600-character limit, which only research's own output is held to |
+| invariants | read-only; a plan step over 600 characters: one retry with the core's errors, then died; died (no answer): the run fails, a failed retry with a `research:retry output:` entry in `failures` |
 | config | `model` opus, `effort` high |
 
 ### 2. Test-case planning, and the coverage check
@@ -649,7 +650,7 @@ the agent labelled `<label>` (`review:r1:code`, `fix:r1`, ...) receives. The cas
 commit the diff starts from: the prompt names both, the agent reads them; the stub args declare one gate,
 `gates`; a case whose profile declares none gets a stub discovery step that finds that same gate), `gate_lines` are the lines of the declared gates, in order, in every gates step's rows (all `green`), and `results[label]` is an earlier stage's recorded result. Research, plan and implement
 have stubs (one requirement); a stage behind a review round, such as a fix, needs the
-round's results in the case. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
+round's results in the case. The replay passes `args.replay: true` (§ Parameters), so a recorded research is not re-checked: a plan step over 600 characters recorded before that limit reaches later prompts verbatim. A run that fails before the label (`config`, a `<label> input:` failure, a dead stage) is an error naming its stage and failures. `--json` prints `{ prompt, schema, model, effort }`: the call that agent
 gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) hands to headless Claude Code.
 
 ### Adding a config field

@@ -61,7 +61,7 @@ const PARTS = Object.assign({}, ...readdirSync(CORE_DIR).map(f => partsOf(CORE_D
 const fromCore = (parts, name) => new Function(`${parts.map(p => PARTS[p]).join('\n')}\nreturn ${name}`)()
 export const validate = fromCore(['shared validate'], 'validate')
 const mergeBlocks = fromCore(['shared validate', 'shared config'], 'mergeBlocks')
-const REGISTRY = fromCore(['shared validate', 'research schema', 'plan schema', 'implement schema', 'review schema', 'shared registry'], 'REGISTRY')
+export const REGISTRY = fromCore(['shared validate', 'research schema', 'plan schema', 'implement schema', 'review schema', 'shared registry'], 'REGISTRY')
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
@@ -98,15 +98,18 @@ function drive(source, kase, stop, answer) {
     return r && JSON.parse(JSON.stringify(r))
   }
   const parallel = thunks => Promise.all(thunks.map(t => t().catch(() => null)))
-  return core(Object.assign({}, STUB_ARGS, kase.args), agent, parallel, () => {}, () => {})
+  // replay: recorded results stand as given; the core skips research's own-output check.
+  return core(Object.assign({}, STUB_ARGS, kase.args, { replay: true }), agent, parallel, () => {}, () => {})
 }
 
 // The call the agent labelled <label> receives: { prompt, schema, model, effort }.
 export function stageCall(source, kase, label) {
   return new Promise((resolve, reject) => {
     const stop = (prompt, opts) => opts.label === label && (resolve({ prompt, schema: opts.schema, model: opts.model, effort: opts.effort }), true)
+    // A run that failed before the label names its failure; one that ended without it needs the earlier stages' results.
     drive(source, kase, stop)
-      .then(() => reject(new Error(`stage ${label} not reached; give the case results for the stages before it`)), reject)
+      .then(r => reject(new Error(r && r.status === 'failed' ? `stage ${label} not reached: run failed at ${r.stage}: ${[r.note].concat(r.failures).filter(Boolean).join('; ') || 'its agent died'}`
+        : `stage ${label} not reached; give the case results for the stages before it`)), reject)
   })
 }
 

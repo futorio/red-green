@@ -1104,7 +1104,7 @@ test('W86: every block\'s filled input validates, and its contract part follows 
 })
 
 test('W87: an instruction naming a {{path}} its block does not take fails that block before the call', async () => {
-  const swapped = SOURCE.replace('STAGE: research. Read {{TARGET}}', 'STAGE: research. Read {{TARGET}} {{cases}} {{nope}}')
+  const swapped = SOURCE.replace('Read {{TARGET}}, its parent spec', 'Read {{TARGET}} {{cases}} {{nope}}, its parent spec')
   assert.notEqual(swapped, SOURCE)
   core = coreOf(swapped)
   try {
@@ -1226,4 +1226,27 @@ test('W97: the notes\' data are typed values: one off its registry schema fails 
       assert.ok(result.failures.includes(`${label} input: ${wrong}`), JSON.stringify(result.failures))
     } finally { core = coreOf(SOURCE) }
   }
+})
+
+test('W98: a research plan step over 600 characters gets one research:retry with the errors, same model and effort; its good answer goes on', async () => {
+  const long = Object.assign({}, base().research, { plan: ['ok', 'x'.repeat(601)] })
+  const good = Object.assign({}, base().research, { plan: ['GOOD-STEP'] })
+  const { result, calls } = await runCore({ research: long, 'research:retry': good })
+  assert.equal(count(calls, 'research:retry'), 1)
+  const first = calls.find(c => c.label === 'research'), retry = calls.find(c => c.label === 'research:retry')
+  assert.ok(!/previous answer/.test(first.prompt))
+  assert.match(retry.prompt, /STAGE: research\. A previous answer at this stage failed the core's checks: "\$\.plan\[1\]: longer than 600"\./)
+  assert.match(retry.prompt, /MAILBOX\. Your address is `research:retry`, your stage `research`\. .* Read it at start and before returning\./)
+  assert.deepEqual([retry.opts.model, retry.opts.effort, retry.opts.schema], [first.opts.model, first.opts.effort, first.opts.schema])
+  assert.ok(prompt(calls, 'plan').includes('GOOD-STEP'))
+  assert.notEqual(result.status, 'failed')
+})
+
+test('W99: a research:retry that fails the checks too is a dead research; the run fails at research', async () => {
+  const long = Object.assign({}, base().research, { plan: ['x'.repeat(601)] })
+  const { result, calls } = await runCore({ research: long, 'research:retry': long })
+  assert.ok(!called(calls, 'plan'))
+  assert.equal(result.status, 'failed')
+  assert.equal(result.stage, 'research')
+  assert.deepEqual(result.failures, ['research:retry output: $.plan[0]: longer than 600'])
 })

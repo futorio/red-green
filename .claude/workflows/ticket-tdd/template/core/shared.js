@@ -73,7 +73,7 @@ Run directory for state files and scratch: ${RUN}.
 - The repository's own agent instructions (AGENTS.md, CLAUDE.md, or whatever it keeps) bind you; they outrank this preamble on anything project-specific.`
 const LAST = `${extra(lines(P.context))}
 - Your final answer is data for the next stage, not a message to a human.`
-const noCode = label => ['gates:discover', 'research', 'plan', 'replan'].includes(label) || label.startsWith('review:')
+const noCode = label => ['gates:discover', 'research', 'research:retry', 'plan', 'replan'].includes(label) || label.startsWith('review:')
 const NO_CODE_PRE = `${CORE_PRE}${LAST}`
 const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
@@ -121,7 +121,9 @@ const STRING = { type: 'string' }
 const INTEGER = { type: 'integer' }
 const OPTIONAL = { anyOf: [STRING, { type: 'null' }] }
 const LIST = { type: 'array', items: STRING }
-const researchKept = Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions'))
+// The research input requires nothing extra: the limits research's own checks hold (the `R<n>: ` prefix, a plan step's
+// 600 characters) are left out, so a result recorded before a limit still fills a later block.
+const researchKept = Object.assign(Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions')), { requirements: LIST, plan: LIST })
 const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
 const REGISTRY = {
   // Run args.
@@ -164,7 +166,7 @@ const REGISTRY = {
   default: STRING,
 }
 const INPUTS = {
-  research: ['TARGET'],
+  research: ['TARGET', 'previous_notes', 'retry_note'],
   plan: ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research'],
   implement: ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
   gates: ['HEAD', 'REPO', 'gate_list'],

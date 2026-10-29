@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { render, DEFAULT, template, defaults, stageCall } from './render.mjs'
+import { render, DEFAULT, template, defaults, stageCall, validate, REGISTRY } from './render.mjs'
 
 const CORE = readFileSync(new URL('../../ticket-tdd.js', import.meta.url), 'utf8')
 const CLI = new URL('./render.mjs', import.meta.url).pathname
@@ -248,4 +248,22 @@ test('T22: the default render\'s prompts are byte for byte those of acae72a', as
   for (const [name, [kase, want]] of Object.entries(ACAE))
     for (const [label, sha] of Object.entries(want))
       assert.equal(createHash('sha256').update((await stageCall(source, kase, label)).prompt).digest('hex').slice(0, 16), sha, `${name} ${label}`)
+})
+
+test('T23: a stage the run does not reach because of a failure is an error naming that failure', async () => {
+  await assert.rejects(stageCall(render(DEFAULT), { args: { profile: { blocks: { nope: {} } } } }, 'research'), /run failed at config: unknown block: nope/)
+  await assert.rejects(stageCall(render(blocks({ research: { prompt: '{{nope}}' } })), {}, 'plan'), /run failed at research: research input: unknown \{\{nope\}\}/)
+  const caseFile = file('case-config.json', { args: { profile: { blocks: { nope: {} } } } })
+  assert.throws(() => execFileSync('node', [CLI, '--case', caseFile, '--prompt', 'review:r1:code'], { stdio: 'pipe' }), /run failed at config: unknown block: nope/)
+})
+
+test('T25: a replay takes a recorded research plan step over 600 characters as given: no research:retry, review gets it verbatim', async () => {
+  const step = 'RECORDED-' + 'x'.repeat(700)
+  const research = { requirements: ['R1: the ticket'], facts: [], plan: [step], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] }
+  assert.ok((await stageCall(render(DEFAULT), { results: { research } }, 'review:r1:code')).prompt.includes(JSON.stringify(step)))
+})
+
+test('T24: the research input takes what research\'s own checks limit: a plan step over 600 characters, a requirement without the space', () => {
+  const recorded = { requirements: ['R1:one'], facts: [], plan: ['x'.repeat(900)], test_harness: [], files: [] }
+  assert.deepEqual(validate(REGISTRY.research, recorded), [])
 })
