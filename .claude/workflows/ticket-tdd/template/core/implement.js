@@ -18,10 +18,8 @@ const IMPL_SCHEMA = { type: 'object', properties: {
 // @part call
 
 phase('Implement')
-const implementCall = (retry, label) => call('implement', PRE, 'implement', {
-  retry_note: !!retry, BASE, previous_notes: retry || undefined,
-  IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research,
-}, contract(writer('Commit your work as it stands, even with a gate worse than its baseline.'),
+const implementCall = (retry, label) => call('implement', PRE, 'implement',
+  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research }, retryValues(retry)), contract(writer('Commit your work as it stands, even with a gate worse than its baseline.'),
   'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id; requirement: its id, e.g. R1) and per boundary phrase (ref: the ticket\'s words, quoted); questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open).',
   died(`Answer with a head past ${BASE}`)), { schema: IMPL_SCHEMA, phase: 'Implement', label })
 let impl = await implementCall(null, 'implement')

@@ -65,6 +65,8 @@ function fill(block, text, values) {
   if (errors.length) throw new Error(errors.join('; '))
   return text.replace(PATH, (_, p) => show(p, values[p]))
 }
+// A retry's values, research's and implement's: the retry note, on with the attempt before it when there is one.
+const retryValues = notes => ({ retry_note: !!notes, previous_notes: notes || undefined })
 // A skill call's data: each value of the call but the notes, in its block's inputs order, as a `<PATH>:` section.
 const sections = (block, data) => INPUTS[block].filter(p => ![undefined, null, ''].includes(data[p]))
   .map(p => `\n\n${p.toUpperCase()}:\n${show(p, data[p])}`).join('')
