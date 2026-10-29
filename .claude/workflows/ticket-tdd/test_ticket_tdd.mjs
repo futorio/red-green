@@ -5,6 +5,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { validate } from './template/render.mjs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const SOURCE = readFileSync(new URL('../ticket-tdd.js', import.meta.url), 'utf8').replace('export const meta', 'const meta')
@@ -37,8 +38,8 @@ function base(over) {
     'review:r2:checklist': clean([row('R1', { status: 'met' })]),
     'review:r2:code': clean([row('x')]),
     mutation: step(),
-    'fix:r1': { applied: [], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
-    'fix:minor': { applied: [], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [], head: 'bbbb111' },
+    'fix:minor': { applied: [], rejected: [], head: 'bbbb111' },
     'review:fix:r1': clean([row('x')]),
     'review:fix:r1:1': clean([row('x')]),
     'review:fix:r2': clean([row('x')]),
@@ -81,7 +82,7 @@ const sentTo = (calls, label) => JSON.parse(prompt(calls, label).split('FINDINGS
 test('W01: a survivor is a major M-<n> placed by its first hunk header that reaches fix; killed and invalid ones make no finding', async () => {
   const { result, calls } = await runCore({
     mutation: step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3)),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-3', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'M-3', argument: 'a' }], head: 'bbbb111' },
   })
   const sent = sentTo(calls, 'fix:r1')
   assert.deepEqual(sent.map(f => [f.id, f.source, f.severity, f.where]), [['M-3', 'mutation', 'major', 'src/a.cpp:13']])
@@ -128,7 +129,7 @@ test('W04: the lens prompts carry each gate as name, status and line; the checkl
 test('W05: a red gate is one major finding made by the script; on the recheck it is left over, a green gate makes none', async () => {
   const { result, calls } = await runCore({
     'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'A-RED 2 of 3'), gate('B', 'green', 'B ok')),
-    'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r1:recheck': gatesAt('cccc222', gate('A', 'red', 'A-STILL-RED 1 of 3'), gate('B', 'green', 'B ok')),
     mutation: step(),
   }, 1, twoGates)
@@ -150,7 +151,7 @@ test('W05: a red gate is one major finding made by the script; on the recheck it
 test('W14: after a fix that moved HEAD the gates step runs every gate, with no scoping', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
     mutation: step(),
   }, 2)
@@ -194,7 +195,7 @@ test('W51: a declared gate without a baseline entry fails the run before any age
 test('W52: the result records per round the gates rows that gated its HEAD, and the recheck rows', async () => {
   const { result } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'green', 'RECHECK 17 of 17')),
     mutation: step(),
   })
@@ -205,7 +206,7 @@ test('W52: the result records per round the gates rows that gated its HEAD, and 
 test('W15: a fix that leaves HEAD alone reuses the gates result', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'bbbb111' },
   }, 2)
   assert.ok(called(calls, 'review:r2:code'))
   assert.ok(!called(calls, 'gates:r2'))
@@ -214,7 +215,7 @@ test('W15: a fix that leaves HEAD alone reuses the gates result', async () => {
 test('W16: a run with survivors makes no ruling call; the fix alone may reject one', async () => {
   const { calls } = await runCore({
     mutation: mutants(1),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'equivalent' }], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'equivalent' }], head: 'bbbb111' },
   })
   assert.ok(called(calls, 'fix:r1'))
   assert.deepEqual(calls.map(c => c.label).filter(l => /survivor|rul/.test(l)), [])
@@ -247,7 +248,7 @@ test('W78: the plug-in form puts the profile\'s tool text in the prompt and no r
 test('W79: the result\'s mutation holds every mutant with id, place, patch and status, and counts by status', async () => {
   const { result } = await runCore({
     mutation: step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3), mutant(4, 'killed')),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-3', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'M-3', argument: 'a' }], head: 'bbbb111' },
   })
   assert.deepEqual(result.mutation, {
     mutants: [[1, 'killed'], [2, 'invalid'], [3, 'survived'], [4, 'killed']].map(([i, status]) => ({ id: `M-${i}`, target: `C${i}`, file: 'src/a.cpp', line: 10 + i, patch: PATCH(i), status })),
@@ -278,7 +279,7 @@ test('W81: a profile.mutation with neither test nor tool is a failure and no mut
 test('W24: the mutation step runs once, in its own step after a clean round, never in a gates step', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
     mutation: step(),
   }, 2)
@@ -293,7 +294,7 @@ test('W24: the mutation step runs once, in its own step after a clean round, nev
 test('W25: survivors get a fix and one more round without the tool, past the planned rounds', async () => {
   const { result, calls } = await runCore({
     mutation: mutants(1),
-    'fix:r1': { applied: [{ id: 'M-1', what: 'w' }], rejected: [], committed: false, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'M-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
   }, 1)
   assert.ok(called(calls, 'review:r2:code'))
@@ -303,7 +304,7 @@ test('W25: survivors get a fix and one more round without the tool, past the pla
 })
 
 test('W26: a run that ends without a clean round still runs the step once, and every survivor is left over', async () => {
-  const keep = { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' }
+  const keep = { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], head: 'bbbb111' }
   const { result, calls } = await runCore({
     'review:r1:code': major, 'fix:r1': keep,
     mutation: step(mutant(1), mutant(2), mutant(3, 'killed')),
@@ -343,7 +344,7 @@ test('W09: an unmet requirement goes to fix as a major, unmet and unrowed ones e
   const { result, calls } = await runCore({
     research: Object.assign({}, base().research, { requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: [harness('R1'), harness('R2', 'review'), harness('R3', 'review')] }),
     'review:r1:checklist': clean([row('R1', { status: 'met' }), row('R2', { status: 'unmet', evidence: 'clause x fails' })]),
-    'fix:r1': { applied: [{ id: 'R1-R2', what: 'w' }], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-R2', what: 'w' }], rejected: [], head: 'bbbb111' },
   })
   assert.match(prompt(calls, 'fix:r1'), /R1-R2/)
   assert.equal(withIds(result.leftover_findings, 'R2')[0].status, 'unmet')
@@ -381,7 +382,7 @@ test('W18: a dead mutation step, one that did not run, a not_run mutant or a dea
 test('W19: id-only rejections and a gate red again with a new line each stay one finding', async () => {
   const { result } = await runCore({
     'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')),
-    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }, { id: 'Z1', argument: 'a' }, { id: 'Z2', argument: 'a' }], committed: false, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }, { id: 'Z1', argument: 'a' }, { id: 'Z2', argument: 'a' }], head: 'cccc222' },
     'gates:r1:recheck': gatesAt('cccc222', gate('tests', 'red', 'RED 2')),
     mutation: step(),
   })
@@ -394,15 +395,15 @@ test('W19: id-only rejections and a gate red again with a new line each stay one
 test('W22: a survivor the fix rejected without moving HEAD is not sent to fix again', async () => {
   const { calls } = await runCore({
     mutation: mutants(1),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' },
-    'fix:r2': { applied: [], rejected: [], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'a' }], head: 'bbbb111' },
+    'fix:r2': { applied: [], rejected: [], head: 'bbbb111' },
   })
   assert.ok(!called(calls, 'fix:r2'))
 })
 
 test('W23: a run reviews every round with both lenses', async () => {
   const major = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:1', 't')] }
-  const keep = { applied: [], rejected: [{ id: 'x', argument: 'a' }], committed: false, head: 'bbbb111', gate_output: '' }
+  const keep = { applied: [], rejected: [{ id: 'x', argument: 'a' }], head: 'bbbb111' }
   const { calls } = await runCore({
     'review:r1:code': major, 'fix:r1': keep,
     'review:r2:code': major, 'fix:r2': keep,
@@ -415,7 +416,7 @@ test('W23: a run reviews every round with both lenses', async () => {
 test('W28: with extra_rounds, a major fixed in the last planned round gets one more full round', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
     mutation: step(),
   }, 1, { extra_rounds: 1 })
@@ -428,10 +429,10 @@ test('W29: with extra_rounds, a major still found in the extra round is fixed an
   const again = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:2', 't')] }
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
     'review:r2:code': again,
-    'fix:r2': { applied: [{ id: 'R2-code-1', what: 'w' }], rejected: [], committed: true, head: 'dddd333', gate_output: '' },
+    'fix:r2': { applied: [{ id: 'R2-code-1', what: 'w' }], rejected: [], head: 'dddd333' },
     'gates:r2:recheck': gatesAt('dddd333'),
     mutation: step(),
   }, 1, { extra_rounds: 1 })
@@ -444,7 +445,7 @@ test('W30: minors go to one cheap fixer; applied ones leave advisory, rejected o
   const minors = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't1'), finding('minor', 'a:2', 't2')] }
   const { result, calls } = await runCore({
     'review:r1:code': minors,
-    'fix:minor': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [{ id: 'R1-code-2', argument: 'a' }], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:minor': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [{ id: 'R1-code-2', argument: 'a' }], head: 'cccc222' },
   })
   const call = calls.find(c => c.label === 'fix:minor')
   assert.equal(call.opts.model, 'sonnet')
@@ -469,9 +470,9 @@ test('W33: the last round\'s fix gets a fix-diff review; its major is fixed and 
   const late = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'b:1', 't')] }
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'review:fix:r1': late,
-    'fix:r1:review': { applied: [{ id: 'F1-1', what: 'w' }], rejected: [], committed: true, head: 'dddd333', gate_output: '' },
+    'fix:r1:review': { applied: [{ id: 'F1-1', what: 'w' }], rejected: [], head: 'dddd333' },
     'review:fix:r1:1': late,
     'gates:r1:recheck': gatesAt('dddd333'),
     mutation: step(),
@@ -562,7 +563,7 @@ test('W34: a minor fix that moves HEAD calls no fix-diff review', async () => {
   const minorOnly = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'c:1', '')] }
   const { result, calls } = await runCore({
     'review:r1:code': minorOnly,
-    'fix:minor': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'eeee444', gate_output: '' },
+    'fix:minor': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'eeee444' },
   })
   assert.ok(called(calls, 'fix:minor'))
   assert.ok(!calls.some(c => c.label.startsWith('review:fix')))
@@ -573,7 +574,7 @@ test('W34: a minor fix that moves HEAD calls no fix-diff review', async () => {
 test('W57: severity is major|minor, and no review prompt or round counter mentions blocker', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     mutation: mutants(1),
   })
   const reviews = calls.filter(c => c.label.startsWith('review:'))
@@ -586,7 +587,7 @@ test('W57: severity is major|minor, and no review prompt or round counter mentio
 test('W58: no rulings: a rejected finding reaches the next lens prompt in EARLIER FINDINGS with its argument', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'ARGUMENT-TEXT' }], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'ARGUMENT-TEXT' }], head: 'bbbb111' },
   }, 2)
   for (const l of ['review:r1:checklist', 'review:r1:code']) assert.ok(!('rulings' in calls.find(c => c.label === l).opts.schema.properties), l)
   const second = prompt(calls, 'review:r2:code')
@@ -600,7 +601,7 @@ test('W58: no rulings: a rejected finding reaches the next lens prompt in EARLIE
 test('W59: lenses and fix-diff reviews get the no-code preamble; the code lens may write proofs', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     mutation: mutants(1),
   })
   const pre = prompt(calls, 'research').split('\n\nSTAGE:')[0]
@@ -627,7 +628,7 @@ test('W61: a code-lens proof reaches the fix with its rules; a proof on a checkl
   const { result, calls } = await runCore({
     'review:r1:code': proven,
     'review:r1:checklist': { verdict: 'findings', checked: [row('R1', { status: 'met' })], findings: [Object.assign(finding('major', 'b:1', 't'), { proof: Object.assign({}, proof, { path: 'tests/other.js' }) })] },
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }, { id: 'R1-checklist-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'rewritten' }], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }, { id: 'R1-checklist-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'rewritten' }], head: 'cccc222' },
   })
   const call = calls.find(c => c.label === 'fix:r1')
   const sent = sentTo(calls, 'fix:r1')
@@ -644,7 +645,7 @@ test('W61: a code-lens proof reaches the fix with its rules; a proof on a checkl
 test('W63: the fix accounts for a proof by its id even when it spells the path differently', async () => {
   const { result } = await runCore({
     'review:r1:code': proven,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: `./${proof.path}`, outcome: 'deleted' }], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: `./${proof.path}`, outcome: 'deleted' }], head: 'cccc222' },
   })
   assert.deepEqual(result.stray_proofs, [])
   assert.equal(result.status, 'done')
@@ -654,7 +655,7 @@ test('W64: a proof on a minor goes to the minor fixer to delete; a stray from a 
   const minorProof = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', ''), { proof })] }
   const kept = await runCore({
     'review:r1:code': minorProof,
-    'fix:minor': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'deleted' }], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:minor': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'deleted' }], head: 'bbbb111' },
   })
   assert.match(prompt(kept.calls, 'fix:minor'), /Delete the file of every finding with a `proof`/)
   assert.deepEqual(kept.result.stray_proofs, [])
@@ -662,7 +663,7 @@ test('W64: a proof on a minor goes to the minor fixer to delete; a stray from a 
   const both = { verdict: 'findings', checked: [row('x')], findings: [Object.assign(finding('major', 'a:1', 't'), { proof }), finding('minor', 'b:1', '')] }
   const leaked = await runCore({
     'review:r1:code': both,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
   })
   assert.ok(called(leaked.calls, 'fix:minor'))
   assert.deepEqual(leaked.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
@@ -672,7 +673,7 @@ test('W64: a proof on a minor goes to the minor fixer to delete; a stray from a 
 test('W62: a proof the fix does not account for, or whose fix died, is a stray and a failure', async () => {
   const omitted = await runCore({
     'review:r1:code': proven,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
   })
   assert.deepEqual(omitted.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
   assert.equal(omitted.result.failures.filter(f => f.includes(proof.path)).length, 1)
@@ -821,7 +822,7 @@ test('W56: a gate named like an Object.prototype key still needs its own baselin
 test('W65: every review stage is read-only; the targeted run is every lens and the fix review; no empty or project text', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
-    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], committed: true, head: 'cccc222', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
     mutation: mutants(1),
   })
   for (const l of ['review:r1:checklist', 'review:r1:code', 'review:fix:r1']) assert.match(prompt(calls, l), /Read-only: change and commit nothing in \/r\./, l)
@@ -845,7 +846,7 @@ test('W67: the checklist lens takes the statement as each id\'s promise and need
 test('W68: an unmet row reaches the fix with its promise as the problem and its counterexample as the trigger', async () => {
   const { calls } = await runCore({
     'review:r1:checklist': clean([row('R1', { status: 'unmet', promise: 'PROMISE-SENT', counterexample: 'COUNTER-SENT', evidence: 'EVIDENCE-SENT' })]),
-    'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], committed: false, head: 'bbbb111', gate_output: '' },
+    'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], head: 'bbbb111' },
   })
   const sent = sentTo(calls, 'fix:r1').find(f => f.id === 'R1-R1')
   assert.equal(sent.trigger, 'COUNTER-SENT')
@@ -925,4 +926,70 @@ test('W76: implement commits its work as it stands, a red gate going to the fix;
   const one = await runCore({}, 1, { one_commit: true })
   assert.match(prompt(one.calls, 'implement'), /The implementation stage creates it/)
   assert.ok(!/leave it uncommitted/.test(prompt(one.calls, 'implement')))
+})
+
+test('W82: the fix schema holds only what the script reads: no committed, no gate_output', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major })
+  const s = calls.find(c => c.label === 'fix:r1').opts.schema
+  assert.deepEqual(Object.keys(s.properties), ['applied', 'rejected', 'proofs', 'head', 'mailbox'])
+  assert.deepEqual(s.required, ['applied', 'rejected', 'proofs', 'head'])
+})
+
+// The validator on every agent schema of the core: per schema a valid sample, and per keyword the schema uses an
+// invalid one. A schema's keywords are found by walking it, so a keyword without an invalid sample fails the test.
+const keywordsOf = s => [...new Set(Object.keys(s).concat(Object.values(s.properties || {}).flatMap(keywordsOf),
+  s.items ? keywordsOf(s.items) : [], (s.anyOf || []).flatMap(keywordsOf)))]
+const edit = (v, fn) => { const c = clone(v); fn(c); return c }
+const fullResearch = Object.assign({ questions: [] }, base().research)
+const lensClean = clean([row('R1', { status: 'met', promise: 'p', counterexample: 'c' })])
+const fixRes = { applied: [{ id: 'a', what: 'w' }], rejected: [], proofs: [], head: 'h' }
+const common = v => ({ type: 'x', properties: { mailbox: [{ id: 'm', status: 'applied', why: 7 }] }, required: {}, items: { mailbox: ['x'] }, enum: { mailbox: [{ id: 'm', status: 'odd', why: 'w' }] } })
+const SAMPLES = {
+  research: [fullResearch, {
+    pattern: edit(fullResearch, r => { r.requirements = ['one'] }),
+    anyOf: edit(fullResearch, r => { r.facts[0].where = 5 }),
+    minItems: edit(fullResearch, r => { r.facts[0].requirements = [] }),
+    maxLength: edit(fullResearch, r => { r.plan = ['x'.repeat(601)] }),
+    enum: edit(fullResearch, r => { r.facts[0].kind = 'guess' }),
+    required: edit(fullResearch, r => { delete r.test_harness }),
+  }],
+  plan: [{ cases: base().plan.cases, questions: [] }, { required: { cases: [] }, enum: { cases: [Object.assign({}, base().plan.cases[0], { requirement: 'R9' })], questions: [] } }],
+  implement: [base().implement, {
+    anyOf: edit(base().implement, r => { delete r.checks[0].test }),
+    enum: edit(base().implement, r => { r.checks[0].kind = 'other' }),
+    required: edit(base().implement, r => { delete r.head }),
+  }],
+  'gates:r1': [gatesAt('h'), { enum: gatesAt('h', gate('tests', 'amber', 'l')), required: { gates: [] } }],
+  'review:r1:checklist': [lensClean, { enum: clean([row('R1', { status: 'maybe', promise: 'p', counterexample: 'c' })]), required: clean([row('R1', { status: 'met' })]) }],
+  'review:r1:code': [clean([row('x')]), { enum: { verdict: 'dirty', findings: [], checked: [] }, required: { verdict: 'clean', findings: [] } }],
+  mutation: [step(mutant(1)), { enum: step(mutant(1, 'zombie')), required: { applies: true, mutants: [] } }],
+  'fix:r1': [fixRes, { enum: edit(fixRes, r => { r.proofs = [{ id: 'a', path: 'p', outcome: 'kept' }] }), required: { applied: [], rejected: [], proofs: [] } }],
+}
+
+test('V01: every agent schema of the core takes its valid sample and rejects an invalid one per keyword it uses', async () => {
+  const { calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
+  })
+  for (const [label, [valid, own]] of Object.entries(SAMPLES)) {
+    const schema = calls.find(c => c.label === label).opts.schema
+    assert.deepEqual(validate(schema, valid), [], label)
+    const invalid = Object.assign(common(valid), own)
+    for (const k of keywordsOf(schema)) {
+      assert.ok(k in invalid, `${label}: no invalid sample for ${k}`)
+      assert.notDeepEqual(validate(schema, invalid[k]), [], `${label}: ${k}`)
+    }
+  }
+})
+
+test('V02: the validator throws on a keyword it does not support, wherever it sits in the schema', () => {
+  assert.throws(() => validate({ type: 'string', format: 'date' }, 'x'), /unsupported schema keyword.*format/)
+  const deep = { type: 'object', properties: { a: { type: 'array', items: { type: 'string', minLength: 1 } } } }
+  assert.throws(() => validate(deep, {}), /unsupported schema keyword.*minLength/)
+})
+
+test('V03: the validator names the place of each error', () => {
+  const s = { type: 'object', properties: { a: { type: 'array', items: { type: 'string', enum: ['x'] } } }, required: ['a', 'b'] }
+  assert.deepEqual(validate(s, { a: ['x', 'y'] }), ['$: b missing', '$.a[1]: "y" not in ["x"]'])
+  assert.deepEqual(validate({ type: 'integer' }, 2.5), ['$: number, not integer'])
 })

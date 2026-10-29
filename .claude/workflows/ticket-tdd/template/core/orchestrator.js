@@ -31,6 +31,7 @@ const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.
 const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
 // @include shared text
+// @include shared validate
 // profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
 let GATES = P.gates || []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}

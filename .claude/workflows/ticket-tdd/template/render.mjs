@@ -13,17 +13,17 @@ const here = name => new URL(name, import.meta.url)
 // A core directory holds one <block>.js per block: a header, then parts, each opened by a `// @part <name>` line.
 // orchestrator.js's `main` part is the script; each of its `// @include <block> <part>` lines is replaced by that
 // part. Every part of every other block is included exactly once.
+const partsOf = (dir, block) => {
+  const [, ...namesAndTexts] = readFileSync(join(dir, `${block}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
+  const parts = {}
+  for (let i = 0; i < namesAndTexts.length; i += 2) parts[`${block} ${namesAndTexts[i]}`] = namesAndTexts[i + 1]
+  return parts
+}
 export function template(dir) {
-  const partsOf = block => {
-    const [, ...namesAndTexts] = readFileSync(join(dir, `${block}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
-    const parts = {}
-    for (let i = 0; i < namesAndTexts.length; i += 2) parts[`${block} ${namesAndTexts[i]}`] = namesAndTexts[i + 1]
-    return parts
-  }
   const blocks = readdirSync(dir).filter(f => f.endsWith('.js')).map(f => f.slice(0, -3)).filter(b => b !== 'orchestrator')
-  const unused = Object.assign({}, ...blocks.map(partsOf))
+  const unused = Object.assign({}, ...blocks.map(b => partsOf(dir, b)))
   const included = new Set()
-  const script = partsOf('orchestrator')['orchestrator main'].replace(/^\/\/ @include (\S+ \S+)\n/gm, (_, part) => {
+  const script = partsOf(dir, 'orchestrator')['orchestrator main'].replace(/^\/\/ @include (\S+ \S+)\n/gm, (_, part) => {
     if (included.has(part)) throw new Error(`part ${part} included twice`)
     if (!(part in unused)) throw new Error(`no part ${part}`)
     const text = unused[part]
@@ -34,7 +34,10 @@ export function template(dir) {
   if (Object.keys(unused).length) throw new Error(`parts never included: ${Object.keys(unused).join(', ')}`)
   return script
 }
-const TEMPLATE = template(fileURLToPath(here('core/')))
+const CORE_DIR = fileURLToPath(here('core/'))
+const TEMPLATE = template(CORE_DIR)
+// The core's own validator, the code the script runs, for the tests and the conformance check.
+export const validate = new Function(`${partsOf(CORE_DIR, 'shared')['shared validate']}\nreturn validate`)()
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 const LENSES = ['checklist', 'code']
 

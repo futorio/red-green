@@ -5,10 +5,8 @@ const FIX_SCHEMA = { type: 'object', properties: {
   applied: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, what: { type: 'string' } }, required: ['id', 'what'] } },
   rejected: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, argument: { type: 'string' } }, required: ['id', 'argument'] } },
   proofs: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' }, outcome: { type: 'string', enum: ['rewritten', 'deleted'] } }, required: ['id', 'path', 'outcome'] } },
-  committed: { type: 'boolean' },
   head: { type: 'string' },
-  gate_output: { type: 'string' },
-}, required: ['applied', 'rejected', 'proofs', 'committed', 'head', 'gate_output'] }
+}, required: ['applied', 'rejected', 'proofs', 'head'] }
 // @part run
 async function runFix(round, toFix, label) {
   phase('Fix')

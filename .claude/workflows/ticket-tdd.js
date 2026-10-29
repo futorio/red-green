@@ -29,6 +29,38 @@ const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
+// A JSON Schema validator for the keywords the core's schemas use; it throws on any other keyword anywhere in the
+// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid.
+const KEYWORDS = ['type', 'properties', 'required', 'items', 'enum', 'pattern', 'anyOf', 'minItems', 'maxLength']
+function validate(schema, value) {
+  const check = (s, at) => {
+    const bad = Object.keys(s).filter(k => !KEYWORDS.includes(k))
+    if (bad.length) throw new Error(`unsupported schema keyword at ${at}: ${bad.join(', ')}`)
+    Object.entries(s.properties || {}).forEach(([k, p]) => check(p, `${at}.${k}`))
+    if (s.items) check(s.items, `${at}[]`)
+    ;(s.anyOf || []).forEach((b, i) => check(b, `${at}|${i}`))
+  }
+  const errors = (s, v, at) => {
+    const kind = v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v
+    if (s.type && s.type !== kind && !(s.type === 'integer' && Number.isInteger(v))) return [`${at}: ${kind}, not ${s.type}`]
+    const out = []
+    if (s.enum && !s.enum.includes(v)) out.push(`${at}: ${JSON.stringify(v)} not in ${JSON.stringify(s.enum)}`)
+    if (typeof v === 'string' && s.pattern && !new RegExp(s.pattern).test(v)) out.push(`${at}: ${JSON.stringify(v)} does not match ${s.pattern}`)
+    if (typeof v === 'string' && v.length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
+    if (kind === 'array') {
+      if (v.length < s.minItems) out.push(`${at}: fewer than ${s.minItems} items`)
+      if (s.items) v.forEach((x, i) => out.push(...errors(s.items, x, `${at}[${i}]`)))
+    }
+    if (kind === 'object') {
+      ;(s.required || []).filter(k => v[k] === undefined).forEach(k => out.push(`${at}: ${k} missing`))
+      Object.entries(s.properties || {}).filter(([k]) => v[k] !== undefined).forEach(([k, p]) => out.push(...errors(p, v[k], `${at}.${k}`)))
+    }
+    if (s.anyOf && !s.anyOf.some(b => !errors(b, v, at).length)) out.push(`${at}: matches no anyOf branch`)
+    return out
+  }
+  check(schema, '$')
+  return errors(schema, value, '$')
+}
 // profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
 let GATES = P.gates || []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
@@ -203,10 +235,8 @@ const FIX_SCHEMA = { type: 'object', properties: {
   applied: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, what: { type: 'string' } }, required: ['id', 'what'] } },
   rejected: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, argument: { type: 'string' } }, required: ['id', 'argument'] } },
   proofs: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' }, outcome: { type: 'string', enum: ['rewritten', 'deleted'] } }, required: ['id', 'path', 'outcome'] } },
-  committed: { type: 'boolean' },
   head: { type: 'string' },
-  gate_output: { type: 'string' },
-}, required: ['applied', 'rejected', 'proofs', 'committed', 'head', 'gate_output'] }
+}, required: ['applied', 'rejected', 'proofs', 'head'] }
 // Only the code lens proves a finding. Each proof is a fix's to rewrite or delete; one no fix accounts for is a stray.
 const proofs = []
 const settled = new Set()

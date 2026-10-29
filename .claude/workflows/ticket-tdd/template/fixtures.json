@@ -1,7 +1,7 @@
 {
   "default": {
     "config": {},
-    "sha256": "5a18e7d9bb3e6f4afb5c9e5b413fa76d8576c75b63da9f5a38102c4bbf4a860f"
+    "sha256": "8d60c1313c348770a2754e31f528d6cd002230cd4ad449cd7fa825a92843b9ed"
   },
   "duties.order": {
     "config": {
@@ -9,7 +9,7 @@
         "order": true
       }
     },
-    "sha256": "5859fb6d108396b8e903d68dc0c45679d1737f194e84b372291224eb6f8166e6"
+    "sha256": "ac0076eddce53c49942fb35fd6f1e3849905d8a7ed73a98b8dc8373600da7bfb"
   },
   "duties.test_case_review": {
     "config": {
@@ -17,7 +17,7 @@
         "test_case_review": false
       }
     },
-    "sha256": "40045cbd392b5856025e630eb9b9496a12567a8b89500014f143b737e4f7577a"
+    "sha256": "db6a57ddb1bd392f852d99e131d606ec1b350b9ebe218662775e794343624fe0"
   },
   "duties.both": {
     "config": {
@@ -26,7 +26,7 @@
         "test_case_review": false
       }
     },
-    "sha256": "d393beab51674fe62776baf4b3134a4805ba5eebb16e8a10f3caad4731959d14"
+    "sha256": "653a4f3edc2cdf2fcd9987a719d475a6d82ad6b4e704f149b7b0581b4e7748d7"
   },
   "lenses.checklist": {
     "config": {
@@ -34,7 +34,7 @@
         "checklist"
       ]
     },
-    "sha256": "63fd5630919d4a8bf0862ef9e67f90daa9bfb90ed74d2f46be8579d50b542db5"
+    "sha256": "b2772fbe815b9d5bb753933896ef1885e38926c26248b6fc3b06845f7accc9cf"
   },
   "lenses.code": {
     "config": {
@@ -42,13 +42,13 @@
         "code"
       ]
     },
-    "sha256": "25c399e0e1a3668e5628031d1815cf43c3338cf61f23086c2aa278839234e582"
+    "sha256": "0d217efadc8fb6147ee97a099b8d0a63332b7be92dbac1a12c363e235cf8663c"
   },
   "lenses.none": {
     "config": {
       "lenses": []
     },
-    "sha256": "64974ec47fc6d675fdb0a80dc54f7a3c8f679111082ece69d1f838090f1e71e4"
+    "sha256": "b224cd1ca9f26ce91a8accabba39c6004758f2391295948ebf94d40c39886703"
   },
   "models.review": {
     "config": {
@@ -57,6 +57,6 @@
         "fix": "opus"
       }
     },
-    "sha256": "5a5c97a9ee66f4f76042c4af51dbca1f39566099e7534501bb3c6b9ddc096a73"
+    "sha256": "491e86f66d92b5f367940039e1f38e862dbad5bbad9ed9e2b8ea28b141f931c0"
   }
 }

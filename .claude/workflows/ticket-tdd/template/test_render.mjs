@@ -102,7 +102,7 @@ test('T12: a case whose profile declares no gates reaches the lenses through a s
   assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
 })
 
-// fixtures.json: the sha256 of the render of every slot variant, recorded before the template was split per block.
+// fixtures.json: the sha256 of the render of every slot variant; a change that alters the render re-records them.
 test('T13: every recorded slot variant renders byte for byte as recorded', () => {
   const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'))
   for (const [name, { config, sha256 }] of Object.entries(fixtures))
