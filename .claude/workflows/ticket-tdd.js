@@ -418,13 +418,14 @@ function proven(f) {
   if (f.proof) proofs.push(f)
   return f
 }
+// A fix accounts for each proof it was sent, by id or path, in its proofs; one it does not is a stray.
+const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
+  .forEach(f => res.proofs.some(p => p.id === f.id || p.path === f.proof.path) ? settled.add(f.id) : stray(f))
 // A finding a fix was sent, with what the fix did to it: fixed, or rejected with its argument (none given: rejected).
 const outcomeOf = (f, res) => {
   const r = res.rejected.find(x => x.id === f.id)
   return Object.assign({ id: f.id, where: f.where, problem: f.problem, outcome: res.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument })
 }
-const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
-  .forEach(f => res.proofs.some(p => p.id === f.id || p.path === f.proof.path) ? settled.add(f.id) : stray(f))
 
 
 phase('Research')

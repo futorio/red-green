@@ -100,24 +100,12 @@ function tidy(findings) {
   if (down || kept.length < out.length) log(`findings tidied: ${down} downgraded for no trigger, ${out.length - kept.length} minors dropped`)
   return kept
 }
-// Only the code lens proves a finding. Each proof is a fix's to rewrite or delete; one no fix accounts for is a stray.
-const proofs = []
-const settled = new Set()
-const strayProofs = []
-const stray = f => { settled.add(f.id); strayProofs.push({ id: f.id, path: f.proof.path }) }
-// A proof from another source is not sent to a fix, but its file may exist: it is a stray, never dropped silently.
-function proven(f) {
-  if (f.proof && f.source !== 'code') { stray(f); delete f.proof }
-  if (f.proof) proofs.push(f)
-  return f
-}
+// @include proofs track
 // A finding a fix was sent, with what the fix did to it: fixed, or rejected with its argument (none given: rejected).
 const outcomeOf = (f, res) => {
   const r = res.rejected.find(x => x.id === f.id)
   return Object.assign({ id: f.id, where: f.where, problem: f.problem, outcome: res.applied.some(a => a.id === f.id) ? 'fixed' : 'rejected' }, r && { argument: r.argument })
 }
-const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
-  .forEach(f => res.proofs.some(p => p.id === f.id || p.path === f.proof.path) ? settled.add(f.id) : stray(f))
 
 
 // @include research call
@@ -261,10 +249,7 @@ const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
 
 // @include minor-fix run
-// A proof no fix was sent (its fix died, the run stopped) is a stray too; strays count as failures only here, so
-// one never skips the minor fix.
-proofs.filter(f => !settled.has(f.id)).forEach(stray)
-strayProofs.forEach(s => failures.push(`stray proof ${s.id}: ${s.path}`))
+// @include proofs settle
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
 // Freeing the run directory is the main thread's step after acceptance (README § Shape).

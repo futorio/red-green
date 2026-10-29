@@ -613,7 +613,8 @@ change that alters the render re-records them.
 
 | File | Holds |
 | --- | --- |
-| `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
+| `orchestrator.js` | `meta`, the args, the round loop, findings, failures, the result |
+| `proofs.js` | the proofs and strays bookkeeping: `proven`, `reconcile`, the stray sweep at the end |
 | `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, `idOf` |
 | `mailbox.js` | the mailbox and `ask()` |
 | `registry.js` | the schema shorthands, `REGISTRY` and `INPUTS` assembled from the blocks' `inputs` parts with the paths several blocks share, `fill()` and `call()` |
