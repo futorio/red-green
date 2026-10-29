@@ -522,6 +522,15 @@ test('W36: a general fact is kept, a fact with no valid id is dropped and listed
   assert.equal(result.status, 'done')
 })
 
+test('W36b: a note shown by a command other than one repository search is dropped and listed', async () => {
+  const { result, calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'R2: two', 'R3: three'], test_harness: [harness('R1'), harness('R2', 'review'), harness('R3', 'review')],
+      facts: [fact('note', '$ git grep -n x', 'R1'), fact('note', '$ command -v uv', 'R2'), fact('note', '$ rg x; find / -name y', 'R3')] }),
+  })
+  assert.deepEqual(researchIn(prompt(calls, 'plan')).facts.map(f => f.fact), ['FACT-R1'])
+  assert.deepEqual(result.dropped_facts.map(f => f.fact), ['FACT-R2', 'FACT-R3'])
+})
+
 test('W37: test_harness keeps the first entry per requirement and drops unknown ids; gaps and repairs go to research_issues', async () => {
   const entry = (requirement, how, by) => ({ requirement, by: by || 'test', how })
   const { result, calls } = await runCore({

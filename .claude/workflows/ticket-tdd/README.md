@@ -181,7 +181,8 @@ checkpoints.
 
 **The research checks** are code in the script. The schema rejects a requirement line without an `R<n>: `
 prefix; lines with a repeated id are renumbered `R1..Rn`. Facts whose `requirements` name neither a listed
-id nor `general` are dropped (`dropped_facts` in the result); requirements no fact cites are listed in
+id nor `general` are dropped (`dropped_facts` in the result), and so is a `note` whose `$ command` is not one
+`rg`, `grep`, `git`, `find` or `ls` (`SEARCH`: no `;`, `&` or `|`); requirements no fact cites are listed in
 `unresearched_requirements`. `test_harness` keeps the first entry per requirement and drops entries naming
 an unknown id. Each repair, and each requirement with no `test_harness` entry, is reported in
 `research_issues`, not `failures`: the run goes on, and a requirement with no case still meets the coverage
