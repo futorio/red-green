@@ -1,6 +1,7 @@
 // Runs each mutant [{target, patch}] in a detached worktree of its own at HEAD, one at a time, and prints the list
-// with a status each: not_run (the patch does not apply), invalid (build non-zero), killed (test non-zero or past the
-// timeout), survived. Exit 0 a completed run, 2 did not run (stderr says why). README § profile.
+// with a status each: not_run (the patch does not apply), invalid (build non-zero or past the timeout), killed (test
+// non-zero or past the timeout), survived. Build and test each get the full timeout. Exit 0 a completed run, 2 did
+// not run (stderr says why). README § profile.
 //
 //     node mutate.mjs --mutants <file.json> --repo <repo> --head <sha> --dir <run dir> --test <cmd> [--build <cmd>] [--timeout <s>]
 import { readFileSync } from 'node:fs'
@@ -30,6 +31,8 @@ for (const [i, m] of mutants.entries()) {
   try {
     const applied = await new Promise(resolve => {
       const p = spawn('git', ['apply', '-'], { cwd: wt, stdio: ['pipe', 'ignore', 'ignore'] })
+      p.on('error', e => die(`git apply in ${wt}: ${e.message}`))
+      p.stdin.on('error', e => die(`git apply in ${wt}: ${e.message}`))
       p.on('exit', code => resolve(code === 0))
       p.stdin.end(m.patch)
     })
@@ -37,6 +40,6 @@ for (const [i, m] of mutants.entries()) {
       : o.build && await sh(o.build, wt, timeout) !== 0 ? 'invalid'
       : await sh(o.test, wt, timeout) !== 0 ? 'killed' : 'survived'
     out.push(Object.assign({}, m, { status }))
-  } finally { git('worktree', 'remove', '--force', wt) }
+  } finally { try { git('worktree', 'remove', '--force', wt) } catch (e) { die(`remove ${wt}: ${e.message}`) } }
 }
 process.stdout.write(JSON.stringify(out, null, 1) + '\n')

@@ -391,22 +391,28 @@ ${BG}`, { model: M.gates, effort: 'medium', schema: GATES_SCHEMA, phase: 'Gates'
 // The mutation step runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
 // Returns every survivor as a major for fix, which may reject it with an argument like any finding.
 let mutated = false
-// A mutant's place: the HEAD side of its patch's first hunk header.
-const placeOf = patch => ({ file: (/^--- (?:a\/)?(.+)$/m.exec(patch) || [, ''])[1].trim(), line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] })
+// A mutant's place: its file from the +++ side (the --- side for a deleted file), less any timestamp; its line from
+// the HEAD side of its first hunk header.
+const placeOf = patch => {
+  const to = (/^\+\+\+ (?:b\/)?([^\t\n]*)/m.exec(patch) || [, ''])[1].trim()
+  const from = (/^--- (?:a\/)?([^\t\n]*)/m.exec(patch) || [, ''])[1].trim()
+  return { file: to && to !== '/dev/null' ? to : from, line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] }
+}
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 async function runMutation() {
   mutated = true
   if (!P.mutation) { log('mutation: no profile.mutation, step skipped'); return [] }
   phase('Gates')
   const X = P.mutation
-  const how = X.tool ? `The project's mutation tool: ${X.tool} Run it once on this HEAD and report every mutant it ran: \`target\` the check ref or \`edge: <short phrase>\` it aims at, \`operator\` when it names none; \`patch\` a unified diff against HEAD; \`status\`.`
-    : `Read \`git diff ${BASE}..HEAD\` and ${TARGET}. For each check below write one mutant that breaks the behaviour its test claims to pin (\`target\` its ref), then at most five on edges the ticket does not state (\`target\` \`edge: <short phrase>\`). Each \`patch\` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to ${RUN}/mutants.json, then run once \`node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''}${X.timeout ? ` --timeout ${X.timeout}` : ''}\` and report its output list as \`mutants\`; exit 2 means it did not run.
+  if (!X.tool && !X.test) { failures.push('mutation: profile.mutation has neither test nor tool'); return [] }
+  const [covers, how] = X.tool ? ['files the tool covers', `The project's mutation tool: ${X.tool} Run it once on this HEAD and report every mutant it ran: \`target\` \`operator\`, or a check ref only when the tool names one; \`patch\` a unified diff against HEAD; \`status\`.`]
+    : ['production source', `Read \`git diff ${BASE}..HEAD\` and ${TARGET}. For each check below write one mutant that breaks the behaviour its test claims to pin (\`target\` its ref), then at most five on edges the ticket does not state (\`target\` \`edge: <short phrase>\`). Each \`patch\` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to ${RUN}/mutants.json, then run once \`node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''}${X.timeout ? ` --timeout ${X.timeout}` : ''}\` and report its output list as \`mutants\`; exit 2 means it did not run.
 ${BG}
 CHECKS:
-${JSON.stringify(impl.checks.filter(r => r.test))}`
+${JSON.stringify(impl.checks.filter(r => r.test && !r.unverified))}`]
   const res = await ask(`${NO_CODE_PRE}
 
-STAGE: mutation, HEAD ${headNow}. Change and commit nothing in ${REPO}. applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${X.tool ? 'files the tool covers' : 'production source'}. If it applies and did not run, ran is false and not_run the reason — never a pass. ${how}`, { model: M.mutation, effort: 'medium', schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
+STAGE: mutation, HEAD ${headNow}. Change and commit nothing in ${REPO}. applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}. If it applies and did not run, ran is false and not_run the reason — never a pass. ${how}`, { model: M.mutation, effort: 'medium', schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
   if (!res) { failures.push('mutation'); return [] }
   if (!res.applies) { log('mutation: no file it covers in the diff, step skipped'); return [] }
   if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)

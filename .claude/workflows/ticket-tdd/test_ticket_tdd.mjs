@@ -132,7 +132,7 @@ test('W05: a red gate is one major finding made by the script; on the recheck it
     'gates:r1:recheck': gatesAt('cccc222', gate('A', 'red', 'A-STILL-RED 1 of 3'), gate('B', 'green', 'B ok')),
     mutation: step(),
   }, 1, twoGates)
-  const sent = JSON.parse(prompt(calls, 'fix:r1').split('FINDINGS:\n')[1].split('\n\nRESEARCH:')[0])
+  const sent = sentTo(calls, 'fix:r1')
   assert.equal(sent.length, 1)
   assert.equal(sent[0].id, 'G1-A')
   assert.equal(sent[0].source, 'gates')
@@ -221,14 +221,14 @@ test('W16: a run with survivors makes no ruling call; the fix alone may reject o
 })
 
 test('W77: the generator gets the tested checks and the runner with the build, test and timeout; model models.mutation, haiku by default', async () => {
-  const implement = Object.assign({}, base().implement, { checks: [check('C1', { test: { file: 'TESTED-FILE', name: 'TESTED-NAME' } }), check('"UNTESTED PHRASE"', { kind: 'phrase', test: undefined, unverified: 'no tool' })] })
+  const implement = Object.assign({}, base().implement, { checks: [check('C1', { test: { file: 'TESTED-FILE', name: 'TESTED-NAME' } }), check('"UNTESTED PHRASE"', { kind: 'phrase', test: undefined, unverified: 'no tool' }), check('C2', { test: { file: 'FLAKY-FILE', name: 'n' }, unverified: 'flaky' })] })
   const { calls } = await runCore({ implement }, 1, { profile: { mutation: { build: "make 'b'", test: 'TEST-CMD', timeout: 7 }, gates: [{ name: 'tests', command: 'npm test' }] } })
   const call = calls.find(c => c.label === 'mutation')
   assert.equal(call.opts.model, 'haiku')
   assert.equal(call.opts.effort, 'medium')
   assert.ok(call.prompt.includes('node /t/.claude/workflows/ticket-tdd/skills/mutate.mjs --mutants /run/mutants.json --repo /r --head bbbb111 --dir /run --test \'TEST-CMD\' --build \'make \'\\\'\'b\'\\\'\'\' --timeout 7'))
   assert.match(call.prompt, /TESTED-FILE/)
-  assert.ok(!/UNTESTED PHRASE/.test(call.prompt))
+  assert.ok(!/UNTESTED PHRASE|FLAKY-FILE/.test(call.prompt))
   assert.match(call.prompt, /at most five/)
   assert.match(call.prompt, /git diff aaaa000\.\.HEAD/)
   assert.match(call.prompt, /\/t\.md/)
@@ -240,6 +240,7 @@ test('W78: the plug-in form puts the profile\'s tool text in the prompt and no r
   const p = prompt(calls, 'mutation')
   assert.match(p, /PLUGIN-TOOL-TEXT/)
   assert.match(p, /`operator`/)
+  assert.ok(!/`target` the check ref/.test(p))
   assert.ok(!/mutate\.mjs|CHECKS/.test(p))
 })
 
@@ -257,6 +258,21 @@ test('W79: the result\'s mutation holds every mutant with id, place, patch and s
   assert.ok(!called(none.calls, 'mutation'))
   assert.equal(none.result.mutation, null)
   assert.equal(none.result.status, 'done')
+})
+
+test('W80: a mutant\'s file is its patch\'s +++ side, the --- side when that is /dev/null, without a timestamp', async () => {
+  const at = (from, to, line) => ({ target: 'C1', patch: `--- ${from}\t2026-01-01 00:00:00\n+++ ${to}\t2026-01-02 00:00:00\n@@ -${line},1 +${line},1 @@\n-a\n+b\n`, status: 'killed' })
+  const { result } = await runCore({ mutation: step(at('a/old.cpp', 'b/new.cpp', 5), at('a/gone.cpp', '/dev/null', 1)) })
+  assert.deepEqual(result.mutation.mutants.map(m => [m.file, m.line]), [['new.cpp', 5], ['gone.cpp', 1]])
+})
+
+test('W81: a profile.mutation with neither test nor tool is a failure and no mutation call', async () => {
+  for (const mutation of ['TOOL', {}]) {
+    const { result, calls } = await runCore({}, 1, { profile: { mutation, gates: [{ name: 'tests', command: 'npm test' }] } })
+    assert.ok(!called(calls, 'mutation'))
+    assert.equal(result.status, 'done_with_failures')
+    assert.ok(result.failures.some(f => /profile\.mutation/.test(f)), JSON.stringify(result.failures))
+  }
 })
 
 test('W24: the mutation step runs once, in its own step after a clean round, never in a gates step', async () => {
@@ -355,7 +371,7 @@ test('W18: a dead mutation step, one that did not run, a not_run mutant or a dea
   assert.ok(notRun.result.failures.some(f => /NO-NODE/.test(f)))
   const bad = await runCore({ mutation: step(mutant(1, 'killed'), mutant(2, 'not_run')) })
   assert.equal(bad.result.status, 'done_with_failures')
-  assert.deepEqual(bad.result.failures.filter(f => /mutation/.test(f)).length, 1)
+  assert.equal(bad.result.failures.filter(f => /mutation/.test(f)).length, 1)
   assert.match(bad.result.failures.find(f => /mutation/.test(f)), /M-2/)
   assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.status, 'done')
   const noGates = await runCore({ 'gates:r1': null })
@@ -614,7 +630,7 @@ test('W61: a code-lens proof reaches the fix with its rules; a proof on a checkl
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }, { id: 'R1-checklist-1', what: 'w' }], rejected: [], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'rewritten' }], committed: true, head: 'cccc222', gate_output: '' },
   })
   const call = calls.find(c => c.label === 'fix:r1')
-  const sent = JSON.parse(call.prompt.split('FINDINGS:\n')[1].split('\n\nRESEARCH:')[0])
+  const sent = sentTo(calls, 'fix:r1')
   assert.deepEqual(sent.find(f => f.id === 'R1-code-1').proof, proof)
   assert.ok(!('proof' in sent.find(f => f.id === 'R1-checklist-1')))
   assert.match(call.prompt, /run its `command` first/)
@@ -831,7 +847,7 @@ test('W68: an unmet row reaches the fix with its promise as the problem and its 
     'review:r1:checklist': clean([row('R1', { status: 'unmet', promise: 'PROMISE-SENT', counterexample: 'COUNTER-SENT', evidence: 'EVIDENCE-SENT' })]),
     'fix:r1': { applied: [{ id: 'R1-R1', what: 'w' }], rejected: [], proofs: [], committed: false, head: 'bbbb111', gate_output: '' },
   })
-  const sent = JSON.parse(prompt(calls, 'fix:r1').split('FINDINGS:\n')[1].split('\n\n')[0].split('\nRESEARCH:')[0]).find(f => f.id === 'R1-R1')
+  const sent = sentTo(calls, 'fix:r1').find(f => f.id === 'R1-R1')
   assert.equal(sent.trigger, 'COUNTER-SENT')
   assert.match(sent.problem, /PROMISE-SENT.*EVIDENCE-SENT/)
   assert.ok(!/ticket/.test(sent.consequence))

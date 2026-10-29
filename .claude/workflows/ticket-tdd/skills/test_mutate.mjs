@@ -32,11 +32,13 @@ const MUTANTS = [
   { target: 'edge: loop', patch: patch('x => x + 1', 'x => { for (;;); }') },
   { target: 'C3', patch: 'diff --git a/a.js b/a.js\n--- a/a.js\n+++ b/a.js\n@@ -1 +1 @@\n-nothing here\n+x\n' },
 ]
-const run = (r, mutants) => {
+// cmds overrides the build and test commands.
+const run = (r, mutants, cmds) => {
+  const c = Object.assign({ build: 'node --check a.js', test: 'node -e "process.exit(require(\'./a.js\').inc(1) === 2 ? 0 : 1)"' }, cmds)
   const file = join(tmp, `in-${Math.random()}.json`)
   writeFileSync(file, JSON.stringify(mutants))
   return spawnSync('node', [RUNNER, '--mutants', file, '--repo', r, '--head', head, '--dir', join(tmp, 'run'),
-    '--build', 'node --check a.js', '--test', 'node -e "process.exit(require(\'./a.js\').inc(1) === 2 ? 0 : 1)"', '--timeout', '2'], { encoding: 'utf8' })
+    '--build', c.build, '--test', c.test, '--timeout', '2'], { encoding: 'utf8' })
 }
 
 test('M01: each mutant comes back with its status; the repository HEAD and tree are unchanged', () => {
@@ -53,4 +55,17 @@ test('M02: a missing repository is exit 2 with the reason on stderr', () => {
   assert.equal(res.status, 2)
   assert.match(res.stderr, /nope/)
   assert.equal(res.stdout, '')
+})
+
+test('M03: a build past the timeout is invalid; the test then never runs', () => {
+  const res = run(repo, MUTANTS.slice(0, 1), { build: 'node -e "for (;;);"', test: 'exit 0' })
+  assert.equal(res.status, 0, res.stderr)
+  assert.equal(JSON.parse(res.stdout)[0].status, 'invalid')
+})
+
+// Last: it leaves a locked worktree behind.
+test('M04: a worktree that cannot be removed is exit 2 with the reason on stderr', () => {
+  const res = run(repo, MUTANTS.slice(0, 1), { test: 'git worktree lock "$PWD"' })
+  assert.equal(res.status, 2)
+  assert.match(res.stderr, /^mutate: .*M-1/)
 })

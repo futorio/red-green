@@ -1,7 +1,8 @@
 # ticket-tdd — research → TDD → review loop
 
 A Workflow run that implements **one ticket or one spec** in any git repository. The script is
-`.claude/workflows/ticket-tdd.js`; this directory holds what its agents read (`skills/`) and
+`.claude/workflows/ticket-tdd.js`; this directory holds what its agents read and run (`skills/`, the mutant
+runner `mutate.mjs` among them) and
 `workflow-doctor.sh`. This repository is the one shared copy: projects run it in place, never copy it.
 The core knows nothing about any one project: what a project adds — its gates, its rules, the commands
 its mutants run under — arrives in `args.profile`, from a small profile workflow in the project that calls
@@ -66,7 +67,7 @@ Every field is optional; an absent one leaves the core's neutral wording.
 | `research` | string | research: where decisions live, which harnesses exist |
 | `runtime` | string | code lens: what the new code must execute in |
 | `code_rules` | string[] | implement, fix, code lens: hard code rules |
-| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line |
+| `mutation` | `{build?, test, timeout?}` or `{tool}` | mutation step: the commands generated mutants run under, or the project's own tool; absent: the step is skipped with a log line; neither `test` nor `tool`: a failure |
 
 **Mutants are aimed at the checks.** The step runs once per run, in its own `mutation` step, never in a
 gates step: after the first round that ends with no finding to fix, on that HEAD. Its survivors get a fix,
@@ -78,15 +79,16 @@ ticket and implement's `checks` rows that carry a test (not the unverified ones)
 row, one patch that breaks the behaviour its test claims to pin, plus at most five on edges the ticket does
 not state; each changes production source only, in one place, never a test, and applies to HEAD. It runs
 them through `skills/mutate.mjs` (node and git only): each mutant, one at a time, in a detached worktree at
-HEAD under the run directory, removed after; `build` must exit 0 or the mutant is `invalid`, a non-zero
-`test` or the per-mutant `timeout` (seconds, 300 when absent) kills it, a patch that does not apply is
-`not_run`, the rest `survived`. The plug-in form (`{tool}`) names the project's own tool in words: when it
+HEAD under the run directory, removed after. `build` and `test` each get the full `timeout` (seconds, 300
+when absent); a `build` that exits non-zero or runs past it makes the mutant `invalid`, a `test` that does
+kills it, a patch that does not apply is `not_run`, the rest `survived`. The plug-in form (`{tool}`) names the project's own tool in words: when it
 applies, its command, what it covers; it returns the same records.
 
 The contract, both forms: `{applies, ran, not_run?, mutants: [{target, patch, status}]}`, `status`
 `killed|survived|invalid|not_run`, `target` a check's `ref`, `edge: <short phrase>`, or `operator` for a tool
 that cannot name one, `patch` a unified diff against HEAD. The script derives each id (`M-<n>`), its
-`file:line` (the HEAD side of the patch's first hunk header) and the counts by status. `applies` false (no
+`file:line` (the file from the patch's `+++` side, its `---` side for a deleted file; the line from the HEAD
+side of its first hunk header) and the counts by status. `applies` false (no
 file the step covers in `BASE..HEAD`) skips the step with a log line; `ran` false and each `not_run` mutant
 land in `failures`; `invalid` ones are only counted. Every survivor is a `major` finding (`source:
 mutation`, its target in `problem`, its patch in `trigger`) that goes to fix, which makes the target's test
@@ -391,7 +393,8 @@ lens killed by an API error reads as `DIED` in `verdicts`, one that answered wit
 `ticket-tdd.js` as an async function with a stub `agent()` that returns recorded results keyed by label,
 and checks what the script does with them: `tidy`, mutation survivors, checklist statuses, the
 deduplicated leftover, the run status, and that the lenses start after the gates step and get its
-rows. A change to the core's control flow gets a case there.
+rows. A change to the core's control flow gets a case there. `skills/test_mutate.mjs` (`node --test
+skills/test_mutate.mjs`) runs the mutant runner on a throwaway git repository.
 
 ## Template
 
