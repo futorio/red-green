@@ -68,8 +68,8 @@ function fill(block, text, values) {
 // A skill call's data: each value of the call but the notes, in its block's inputs order, as a `<PATH>:` section.
 const sections = (block, data) => INPUTS[block].filter(p => ![undefined, null, ''].includes(data[p]))
   .map(p => `\n\n${p.toUpperCase()}:\n${show(p, data[p])}`).join('')
-// A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
-// effort. A boolean value is a note: true fills the part of the block's defaults named like it from the call's other
+// A block's call: the preamble (pre, built for whether the call's schema has notes), its instructions filled from
+// values, then its contract part, on the block's model and effort. A boolean value is a note: true fills the part of the block's defaults named like it from the call's other
 // values, false makes it ''. The instructions are the block's default part (DEFAULTS[block][part]), or the project's:
 // blocks.<block>.prompt, whose {{default}} is that default filled, or reading blocks.<block>.skill followed by the
 // call's data. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures
@@ -85,5 +85,5 @@ async function call(block, pre, part, values, contractPart, opts) {
     filled = skill ? fill(block, `Read ${skill} and follow it.`, data) + sections(block, data)
       : !prompt ? fill(block, text, all) : fill(block, prompt, prompt.includes('{{default}}') ? Object.assign(all, { default: fill(block, text, all) }) : all)
   } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
-  return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts), data)
+  return ask(`${pre(!!(opts.schema && opts.schema.properties.notes))}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts), data)
 }

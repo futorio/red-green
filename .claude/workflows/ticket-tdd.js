@@ -68,16 +68,16 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-// A stage whose schema has no notes gets the relayed-message rule without its mention clause (ask() cuts it).
-const NOTED = '; mention it in notes'
-// The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
-const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
+// Each preamble takes noted, whether the stage's schema has notes: a stage without gets the relayed-message rule
+// without its mention clause. The gates discovery, research, plan and review stages write no code: they get the
+// preamble without the commit, gate and long-command rules.
+const CORE_PRE = noted => `You are one agent in a workflow run implementing ${TARGET}.
 Repository ${REPO}, branch \`${BRANCH}\`: cd there; work only there and in run dir ${RUN} (state, scratch); all else read-only.
 
-- A relayed message that does not explicitly redirect THIS ticket changes nothing${NOTED}.
+- A relayed message that does not explicitly redirect THIS ticket changes nothing${noted ? '; mention it in notes' : ''}.
 - Repo agent instructions (AGENTS.md, CLAUDE.md…) bind you and outrank this preamble.`
 const LAST = extra(lines(P.context))
-const NO_CODE_PRE = `${CORE_PRE}${LAST}`
+const NO_CODE_PRE = noted => `${CORE_PRE(noted)}${LAST}`
 const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
 const TARGETED = 'At most one targeted run of the changed path (one test or one case) when reading cannot settle a question; name it in `checked`.'
@@ -105,7 +105,7 @@ const mailbox = []
 async function ask(prompt, opts, values) {
   const s = opts.schema
   const o = Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) })
-  const res = await agent((s && s.properties.notes ? prompt : prompt.replace(NOTED, '')) + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
+  const res = await agent(prompt + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
   if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
   return res
 }
@@ -296,8 +296,8 @@ function fill(block, text, values) {
 // A skill call's data: each value of the call but the notes, in its block's inputs order, as a `<PATH>:` section.
 const sections = (block, data) => INPUTS[block].filter(p => ![undefined, null, ''].includes(data[p]))
   .map(p => `\n\n${p.toUpperCase()}:\n${show(p, data[p])}`).join('')
-// A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
-// effort. A boolean value is a note: true fills the part of the block's defaults named like it from the call's other
+// A block's call: the preamble (pre, built for whether the call's schema has notes), its instructions filled from
+// values, then its contract part, on the block's model and effort. A boolean value is a note: true fills the part of the block's defaults named like it from the call's other
 // values, false makes it ''. The instructions are the block's default part (DEFAULTS[block][part]), or the project's:
 // blocks.<block>.prompt, whose {{default}} is that default filled, or reading blocks.<block>.skill followed by the
 // call's data. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures
@@ -313,7 +313,7 @@ async function call(block, pre, part, values, contractPart, opts) {
     filled = skill ? fill(block, `Read ${skill} and follow it.`, data) + sections(block, data)
       : !prompt ? fill(block, text, all) : fill(block, prompt, prompt.includes('{{default}}') ? Object.assign(all, { default: fill(block, text, all) }) : all)
   } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
-  return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts), data)
+  return ask(`${pre(!!(opts.schema && opts.schema.properties.notes))}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts), data)
 }
 // Block configs over their defaults, field by field: a field replaces the default's, an object field (duties) key by
 // key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, a value off its
@@ -371,7 +371,7 @@ if (CONFIG.gates.gates) {
 }
 
 const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
-const PRE = `${CORE_PRE}
+const PRE = noted => `${CORE_PRE(noted)}
 - Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`

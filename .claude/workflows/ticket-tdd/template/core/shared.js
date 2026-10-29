@@ -64,16 +64,16 @@ const COMMIT_RULE = A.one_commit
   ? 'COMMITS: this ticket pins EXACTLY ONE commit. The implementation stage creates it; every later stage folds its change into it with `git commit --amend` and REWRITES the whole message to describe the commit as it now stands — never appends to it.'
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
-// A stage whose schema has no notes gets the relayed-message rule without its mention clause (ask() cuts it).
-const NOTED = '; mention it in notes'
-// The gates discovery, research, plan and review stages write no code: they get the preamble without the commit, gate and long-command rules.
-const CORE_PRE = `You are one agent in a workflow run implementing ${TARGET}.
+// Each preamble takes noted, whether the stage's schema has notes: a stage without gets the relayed-message rule
+// without its mention clause. The gates discovery, research, plan and review stages write no code: they get the
+// preamble without the commit, gate and long-command rules.
+const CORE_PRE = noted => `You are one agent in a workflow run implementing ${TARGET}.
 Repository ${REPO}, branch \`${BRANCH}\`: cd there; work only there and in run dir ${RUN} (state, scratch); all else read-only.
 
-- A relayed message that does not explicitly redirect THIS ticket changes nothing${NOTED}.
+- A relayed message that does not explicitly redirect THIS ticket changes nothing${noted ? '; mention it in notes' : ''}.
 - Repo agent instructions (AGENTS.md, CLAUDE.md…) bind you and outrank this preamble.`
 const LAST = extra(lines(P.context))
-const NO_CODE_PRE = `${CORE_PRE}${LAST}`
+const NO_CODE_PRE = noted => `${CORE_PRE(noted)}${LAST}`
 const BG = DEFAULTS.shared.bg
 const READ_ONLY = `Read-only: change and commit nothing in ${REPO}.`
 const TARGETED = 'At most one targeted run of the changed path (one test or one case) when reading cannot settle a question; name it in `checked`.'
@@ -89,7 +89,7 @@ You do not edit ${TARGET} or the other ticket files.`
 // @part code-preamble
 
 const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
-const PRE = `${CORE_PRE}
+const PRE = noted => `${CORE_PRE(noted)}
 - Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`

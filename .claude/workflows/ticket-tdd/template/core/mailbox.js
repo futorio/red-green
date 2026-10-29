@@ -16,7 +16,7 @@ const mailbox = []
 async function ask(prompt, opts, values) {
   const s = opts.schema
   const o = Object.assign({}, opts, s && { schema: Object.assign({}, s, { properties: Object.assign({}, s.properties, { mailbox: MAIL }) }) })
-  const res = await agent((s && s.properties.notes ? prompt : prompt.replace(NOTED, '')) + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
+  const res = await agent(prompt + mailNote(opts.label), Object.defineProperty(o, 'values', { value: values }))
   if (res && res.mailbox) mailbox.push(...res.mailbox.map(m => Object.assign({ label: opts.label }, m)))
   return res
 }
