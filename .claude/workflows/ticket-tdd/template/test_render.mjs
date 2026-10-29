@@ -222,7 +222,7 @@ const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected:
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { test: 'TEST-CMD' } } } }, results: cleanRounds },
-    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: '88df35966d59d806', 'gates:r1': '0cc4614b3825b623', 'review:r1:checklist': 'e684b9a6afefd3d4',
+    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: '90654ca50caeaf91', 'gates:r1': '0cc4614b3825b623', 'review:r1:checklist': 'e684b9a6afefd3d4',
       'review:r1:code': '3030a3c16944a404', 'review:r2:checklist': '371d3731e8c2638c', 'review:r2:code': '61a9ccc87c363b5d', mutation: 'cc7bcf5d93e7e172' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, mutation: { build: 'B-CMD', test: 'TEST-CMD', timeout: 9 }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
@@ -230,15 +230,15 @@ const ACAE = {
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
     'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
-  { research: 'dfecb403802054b6', implement: 'ab79b46629fc8bdc', 'review:r1:code': '4d6992e8c4bbc426', 'fix:r1': '213fd3c8ef7850d5', 'gates:r2': '85f06a733be7ed6c',
+  { research: 'dfecb403802054b6', implement: '93e0fd9f36c57b6f', 'review:r1:code': '4d6992e8c4bbc426', 'fix:r1': '213fd3c8ef7850d5', 'gates:r2': '85f06a733be7ed6c',
     'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '66c5ed56c70934e7', 'fix:r2': 'af810dcd0e47594b', 'review:fix:r2': '04e8815ac3e1fc76',
-    'fix:r2:review': '3eb8625cb4a762ea', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: 'bcb5efae64a79923', 'fix:minor': 'eb3003f8624f888d' }],
+    'fix:r2:review': '3eb8625cb4a762ea', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: 'bcb5efae64a79923', 'fix:minor': '10f3638f69f8d3e8' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: '2e5cb623c17f1c06', 'implement:retry': '69317e27ce19df42', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': '6d031971cfbaa6f4' }],
+  { replan: '2e5cb623c17f1c06', 'implement:retry': 'c958b7421b42a292', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': '6d031971cfbaa6f4' }],
   discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
     { 'gates:discover': '444f52c2e1401992', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'efd58533adc558f4', mutation: '7eb79d9049fe8c09' }],
 }

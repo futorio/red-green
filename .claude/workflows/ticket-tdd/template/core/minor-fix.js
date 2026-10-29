@@ -7,7 +7,7 @@ const cheap = uniq(advisory)
 let minorFix = null
 if (cheap.length && !failures.length) {
   phase('Fix')
-  minorFix = await call('minor-fix', PRE, 'minor-fix', { IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: cheap }, fixContract('Commit only with no gate worse than before your edit.',
+  minorFix = await call('minor-fix', PRE, 'minor-fix', { IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: cheap }, fixContract('Commit only with no gate worse than before your edit. If one is, revert your edits and reject every finding.',
     cheap.some(f => f.proof) && 'Delete the file of every finding with a `proof`, applied or not, and report each in `proofs`.'), { schema: FIX_SCHEMA, phase: 'Fix', label: 'fix:minor' })
   if (!minorFix) failures.push('fix minor')
   else reconcile(cheap, minorFix)

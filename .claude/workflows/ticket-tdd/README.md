@@ -421,7 +421,7 @@ reruns the gates and reverts when one got worse than before its edit; no fix-dif
 | inputs | `IMPLEMENT_SKILL`, `code_rules`, `findings` |
 | defaults | `defaults/minor-fix.md`: `minor-fix` |
 | output | `FIX_SCHEMA` |
-| invariants | writer, commits only with no gate worse than before its edit; died (no answer): a failure |
+| invariants | writer, commits only with no gate worse than before its edit, else reverts its edits and rejects every finding; died (no answer): a failure |
 | config | `model` null (fix's), `effort` medium |
 
 ### Loop exit

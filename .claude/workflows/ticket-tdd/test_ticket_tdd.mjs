@@ -578,7 +578,8 @@ test('W34: a minor fix that moves HEAD calls no fix-diff review', async () => {
   })
   assert.ok(called(calls, 'fix:minor'))
   assert.ok(!calls.some(c => c.label.startsWith('review:fix')))
-  assert.match(prompt(calls, 'fix:minor'), /Re-run the gates; if any gate is worse than before your edit, revert/)
+  assert.match(prompt(calls, 'fix:minor'), /CONTRACT[^]*Commit only with no gate worse than before your edit\. If one is, revert your edits and reject every finding\./)
+  assert.equal(prompt(calls, 'fix:minor').split('worse than before your edit').length, 2, 'the gate bar has one source')
   assert.equal(result.status, 'done')
 })
 
@@ -928,6 +929,7 @@ test('W74: HEAD still at base gets one retry told no commit was made, even with 
 test('W75: the implement prompt asks for a question\'s requirement as its id', async () => {
   const { calls } = await runCore({})
   assert.match(prompt(calls, 'implement'), /questions \(requirement: its id;/)
+  assert.equal(prompt(calls, 'implement').split('contradicts the ticket').length, 2, 'the plan-question rule has one source')
 })
 
 test('W76: implement commits its work as it stands, a red gate going to the fix; fix keeps the green bar or commits nothing; the minor fix keeps the gates as it found them; one commit is created by implement', async () => {
