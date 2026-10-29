@@ -1,4 +1,7 @@
-// Block research: its schema, the call, and the checks that repair its output into the research value later stages get.
+// Block research: its schema, the call, the checks that repair its output into the research value later stages get,
+// and its inputs. Its only interface is the include order: it reads A.replay, TARGET, failures, NO_CODE_PRE, READ_ONLY,
+// call, contract, died, retryValues, validate, idOf, log, phase, and INPUTS; it declares RESEARCH_SCHEMA, research,
+// reqIds, researchIssues, droppedFacts, unresearched and researchQuestions for later parts.
 // @part schema
 
 const RESEARCH_SCHEMA = { type: 'object', properties: {

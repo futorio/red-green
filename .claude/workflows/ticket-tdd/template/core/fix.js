@@ -1,4 +1,6 @@
-// Block fix: its schema and runFix.
+// Block fix: its schema, runFix and fixContract, and its inputs. Its only interface is the include order: it reads
+// IMPLEMENT_SKILL, CODE_RULES, research, fixed, PRE, call, contract, writer, died, phase, and INPUTS, BLOCK_PATHS,
+// STRING, INTEGER; it declares FIX_SCHEMA, runFix and fixContract for later parts.
 // @part schema
 
 const FIX_SCHEMA = { type: 'object', properties: {

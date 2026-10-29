@@ -1,4 +1,7 @@
-// Block plan (and replan): the case and cases schemas, the plan call, the coverage and duplicate checks and the one replan.
+// Block plan (and replan): the case and cases schemas, the plan call, the coverage and duplicate checks, the one replan,
+// and its inputs. Its only interface is the include order: it reads research, reqIds, failures, NO_CODE_PRE, READ_ONLY,
+// call, contract, died, idOf, log, phase, and INPUTS, BLOCK_PATHS, STRING, LIST; it declares CASE, plan, testIds,
+// checkIds, cov, questions and cases for later parts.
 // @part schema
 
 const CASE = { type: 'object', properties: {

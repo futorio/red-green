@@ -1,5 +1,5 @@
 // The proofs and strays bookkeeping: each proof a code lens writes is a fix's to rewrite or delete; one no fix
-// accounts for is a stray, a failure of the run.
+// accounts for is a stray, a failure of the run. It reads failures (settle).
 // @part track
 // Only the code lens proves a finding. Each proof is a fix's to rewrite or delete; one no fix accounts for is a stray.
 const proofs = []

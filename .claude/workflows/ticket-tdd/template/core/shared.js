@@ -1,5 +1,5 @@
 // Shared helpers: text helpers, the validator, the block config merge, the preambles every stage prompt starts with and
-// the contract part, requirement ids.
+// the contract part, requirement ids. They read A, P, TARGET, REPO, BRANCH, RUN, DEFAULTS, GATES and BASELINE.
 // @part text
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''

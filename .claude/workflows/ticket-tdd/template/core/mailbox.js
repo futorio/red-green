@@ -1,5 +1,5 @@
 // The mailbox and ask(): every agent call goes through ask(), which adds the mailbox note and output field and keeps
-// what each agent handled. README § Mailbox.
+// what each agent handled. README § Mailbox. It reads RUN and agent.
 // @part ask
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md, under a header of rules it writes; see

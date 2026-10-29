@@ -1,4 +1,6 @@
-// Block fix review: fixReview, the review of the last round's fix diff.
+// Block fix review: fixReview, the review of the last round's fix diff, and its inputs. Its only interface is the
+// include order: it reads CONFIG, headNow, research, failures, verdicts, NO_CODE_PRE, READ_ONLY, TARGETED, SEVERITY,
+// CHECKED, REVIEW_SCHEMA, call, contract, silence, tidy, proven, phase, and INPUTS, BLOCK_PATHS, STRING.
 // @part run
 
 // The last round's fix, which no full round follows, is reviewed on its own diff: did it fix what it was given, did it break

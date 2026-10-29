@@ -1,6 +1,6 @@
-// The registry (every path a block's instructions may name, with its schema), assembled with each block's inputs
-// from the blocks' inputs parts, fill() and call().
-// README § Blocks.
+// The registry (every path a block's instructions may name, with its schema), assembled from the paths several blocks
+// share and the blocks' inputs parts, fill() and call(). README § Blocks. It reads RESEARCH_SCHEMA, FINDING, LENSES,
+// CONFIG, DEFAULTS, failures, validate and ask.
 // @part types
 
 // The registry: every variable a block's instructions may name as {{path}}, with its JSON Schema. Each block's inputs,

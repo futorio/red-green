@@ -1,4 +1,7 @@
-// Block implement: its schema, the prompt builder and the call with its one retry.
+// Block implement: its schema, the call with its one retry, and its inputs. Its only interface is the include order: it
+// reads BASE, IMPLEMENT_SKILL, CODE_RULES, research, reqIds, cases, failures, PRE, call, contract, writer, died,
+// retryValues, idOf, log, phase, and INPUTS, BLOCK_PATHS, CASE; it declares IMPL_SCHEMA, impl, same and
+// implementQuestions for later parts.
 // @part schema
 
 // A check row proves a case (ref: its id) or a boundary phrase of the ticket (ref: its words, quoted) by a test, or says why not.

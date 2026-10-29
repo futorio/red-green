@@ -1,4 +1,7 @@
-// Block gates (and discovery): the discovery call and its schema, the gates step schema and runGates.
+// Block gates (and discovery): the discovery call and its schema, the gates step schema and runGates, and its inputs.
+// Its only interface is the include order: it reads CONFIG, REPO, failures, NO_CODE_PRE, READ_ONLY, call, contract,
+// died, gateList, log, phase, and INPUTS; it sets GATES, BASELINE and gatesQuestions (discovery) and headNow
+// (runGates).
 // @part discover-schema
 
 const DISCOVER_SCHEMA = { type: 'object', properties: {

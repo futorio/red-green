@@ -1,4 +1,8 @@
-// Block review lenses (checklist, code): the review schemas and the lenses, the severity and checked rules, the duties and the lens call.
+// Block review lenses (checklist, code): the review schemas and the lenses, the severity and checked rules, the lens
+// call, and its inputs. Its only interface is the include order: it reads CONFIG, TARGET, BASE, IMPLEMENT_SKILL,
+// CODE_RULES, research, plan, impl, checkIds and, in the round loop, round, N, active, gated and history; NO_CODE_PRE,
+// READ_ONLY, TARGETED, call, contract, died, parallel, and INPUTS, BLOCK_PATHS, STRING, INTEGER, LIST. It declares
+// FINDING, REVIEW_SCHEMA, LENSES, SEVERITY, CHECKED and lensResults for later parts.
 // @part schema
 
 const FINDING = { type: 'object', properties: {

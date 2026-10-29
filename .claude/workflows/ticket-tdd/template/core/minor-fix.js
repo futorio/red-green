@@ -1,4 +1,6 @@
-// Block minor fix: the one cheap pass over minor findings after the rounds.
+// Block minor fix: the one cheap pass over minor findings after the rounds, and its inputs. Its only interface is the
+// include order: it reads IMPLEMENT_SKILL, CODE_RULES, advisory, failures, uniq, PRE, FIX_SCHEMA, call, fixContract,
+// reconcile, phase, and INPUTS; it declares minorFix for later parts.
 // @part run
 // Cheap minor findings get one pass of a cheaper fixer after the rounds; the ones it does not apply stay advisory.
 const cheap = uniq(advisory)

@@ -1,4 +1,7 @@
-// Block mutation: its schema and runMutation, generated mutants or the project's tool.
+// Block mutation: its schema and runMutation, generated mutants or the project's tool, and its inputs. Its only
+// interface is the include order: it reads CONFIG, REPO, BASE, TARGET, RUN, MUTATE, headNow, impl, failures,
+// NO_CODE_PRE, READ_ONLY, call, contract, died, log, phase, and INPUTS, BLOCK_PATHS, IMPL_SCHEMA; it sets mutation and
+// declares mutated and runMutation for later parts.
 // @part schema
 // One record per mutant, from the runner or a project's own tool; the script derives ids, places and counts.
 const MUTANT_STATUS = ['killed', 'survived', 'invalid', 'not_run']
