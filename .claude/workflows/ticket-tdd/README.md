@@ -484,7 +484,7 @@ Not both: a block given `prompt` and `skill` fails the run before any agent. The
 mailbox note stay the core's whatever the plug-in says, and so do the output schema and what the script does with the
 output. The approach fields (§ `profile`) pick a procedure where a block has more than one.
 
-**The registry** (`template/core/shared.js`, `REGISTRY`) lists every path with its JSON Schema:
+**The registry** (`template/core/registry.js`, `REGISTRY`) lists every path with its JSON Schema:
 
 | kind | paths |
 |---|---|
@@ -608,12 +608,14 @@ not render the core byte for byte, so a change to `ticket-tdd.js` is made in the
 `fixtures.json` holds the sha256 of the render of every config variant; `test_render.mjs` checks each, and a
 change that alters the render re-records them.
 
-`template/core/` holds one file per block and an orchestrator:
+`template/core/` holds one file per block, the files they share and an orchestrator:
 
 | File | Holds |
 | --- | --- |
 | `orchestrator.js` | `meta`, the args, the round loop, findings and proofs, failures, the result |
-| `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, the mailbox and `ask()`, `REGISTRY`, `INPUTS`, `fill()` and `call()`, `idOf` |
+| `shared.js` | text helpers, `validate`, `mergeBlocks`, the preambles and the contract part, `idOf` |
+| `mailbox.js` | the mailbox and `ask()` |
+| `registry.js` | `REGISTRY`, `INPUTS`, `fill()` and `call()` |
 | `gates.js` | gates discovery (schema, call), the gates step (schema, `runGates`) |
 | `research.js` | its schema, the call, the checks that build the `research` value |
 | `plan.js` | the case and cases schemas, the plan call, the coverage and duplicate checks, the replan |

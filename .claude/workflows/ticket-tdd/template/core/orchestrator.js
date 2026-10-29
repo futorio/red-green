@@ -34,7 +34,7 @@ const DEFAULTS = {{defaults}}
 let GATES = []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include shared preamble
-// @include shared ask
+// @include mailbox ask
 // @include gates discover-schema
 // @include research schema
 // @include plan schema
@@ -42,7 +42,8 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include review schema
 // @include mutation schema
 // @include fix schema
-// @include shared registry
+// @include registry registry
+// @include registry call
 // @include shared config
 // Each block's config: the render config's defaults, profile.blocks.<name> over them (README § Blocks).
 const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
