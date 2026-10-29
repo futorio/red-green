@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { render, DEFAULT } from './render.mjs'
+import { render, DEFAULT, template } from './render.mjs'
 
 const CORE = readFileSync(new URL('../../ticket-tdd.js', import.meta.url), 'utf8')
 const CLI = new URL('./render.mjs', import.meta.url).pathname
@@ -97,6 +97,11 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.ok('mailbox' in out.schema.properties)
 })
 
+test('T12: a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
+  const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
+  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
+})
+
 // fixtures.json: the sha256 of the render of every slot variant, recorded before the template was split per block.
 test('T13: every recorded slot variant renders byte for byte as recorded', () => {
   const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'))
@@ -104,7 +109,24 @@ test('T13: every recorded slot variant renders byte for byte as recorded', () =>
     assert.equal(createHash('sha256').update(render(config)).digest('hex'), sha256, name)
 })
 
-test('T12:a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
-  const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
-  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
+// A core directory of the given files, for the assembly errors.
+const coreDir = files => {
+  const dir = mkdtempSync(join(tmp, 'core-'))
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, `${name}.js`), text)
+  return dir
+}
+
+test('T14: an @include of a part no block defines is an error naming it', () => {
+  const dir = coreDir({ orchestrator: '// @part main\n// @include a missing\n', a: '// @part one\nx\n' })
+  assert.throws(() => template(dir), /no part a missing/)
+})
+
+test('T15: an @include of a part already included is an error naming it', () => {
+  const dir = coreDir({ orchestrator: '// @part main\n// @include a one\n// @include a one\n', a: '// @part one\nx\n' })
+  assert.throws(() => template(dir), /part a one included twice/)
+})
+
+test('T16: a part never included is an error naming it', () => {
+  const dir = coreDir({ orchestrator: '// @part main\n// @include a one\n', a: '// @part one\nx\n// @part two\ny\n' })
+  assert.throws(() => template(dir), /parts never included: a two/)
 })

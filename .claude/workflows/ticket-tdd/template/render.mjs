@@ -4,25 +4,37 @@
 //     node render.mjs [config.json]                                     the workflow script, on stdout
 //     node render.mjs [config.json] --case case.json --prompt <label>   the prompt the agent labelled <label> receives
 //     ... --prompt <label> --json                                       that prompt with its agent's schema, model and effort, as JSON
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = name => new URL(name, import.meta.url)
-// core/<file>.js: a header, then parts, each opened by a `// @part <name>` line. The orchestrator's `main` part is the
-// script; each of its `// @include <file> <part>` lines is replaced by that part. Every part is included exactly once.
-const BLOCKS = ['shared', 'gates', 'research', 'plan', 'implement', 'review', 'mutation', 'fix', 'fix-review', 'minor-fix']
-const partsOf = file => {
-  const [, ...xs] = readFileSync(here(`core/${file}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
-  return Object.fromEntries(xs.flatMap((x, i) => i % 2 ? [] : [[`${file} ${x}`, xs[i + 1]]]))
+
+// A core directory holds one <block>.js per block: a header, then parts, each opened by a `// @part <name>` line.
+// orchestrator.js's `main` part is the script; each of its `// @include <block> <part>` lines is replaced by that
+// part. Every part of every other block is included exactly once.
+export function template(dir) {
+  const partsOf = block => {
+    const [, ...namesAndTexts] = readFileSync(join(dir, `${block}.js`), 'utf8').split(/^\/\/ @part (\S+)\n/m)
+    const parts = {}
+    for (let i = 0; i < namesAndTexts.length; i += 2) parts[`${block} ${namesAndTexts[i]}`] = namesAndTexts[i + 1]
+    return parts
+  }
+  const blocks = readdirSync(dir).filter(f => f.endsWith('.js')).map(f => f.slice(0, -3)).filter(b => b !== 'orchestrator')
+  const unused = Object.assign({}, ...blocks.map(partsOf))
+  const included = new Set()
+  const script = partsOf('orchestrator')['orchestrator main'].replace(/^\/\/ @include (\S+ \S+)\n/gm, (_, part) => {
+    if (included.has(part)) throw new Error(`part ${part} included twice`)
+    if (!(part in unused)) throw new Error(`no part ${part}`)
+    const text = unused[part]
+    delete unused[part]
+    included.add(part)
+    return text
+  })
+  if (Object.keys(unused).length) throw new Error(`parts never included: ${Object.keys(unused).join(', ')}`)
+  return script
 }
-const PARTS = Object.assign({}, ...BLOCKS.map(partsOf))
-const TEMPLATE = partsOf('orchestrator')['orchestrator main'].replace(/^\/\/ @include (\S+ \S+)\n/gm, (_, k) => {
-  if (!(k in PARTS)) throw new Error(`no part ${k}, or included twice`)
-  const text = PARTS[k]
-  delete PARTS[k]
-  return text
-})
-if (Object.keys(PARTS).length) throw new Error(`parts never included: ${Object.keys(PARTS).join(', ')}`)
+const TEMPLATE = template(fileURLToPath(here('core/')))
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 const LENSES = ['checklist', 'code']
 

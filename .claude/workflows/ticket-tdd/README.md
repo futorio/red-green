@@ -425,6 +425,10 @@ next. The orchestrator's `main` part is the script: render replaces each of its
 never or twice, is an error. The parts sit where the single script needs them, so a block's schema
 and its call can be far apart in the render.
 
+Adding a block takes a new `template/core/<block>.js`, an `// @include <block> <part>` line in
+`orchestrator.js` for each of its parts, and its row in the table above. Render reads every file in
+`template/core/` but the orchestrator as a block, so no list in `render.mjs` changes.
+
 A config is JSON whose keys are the variant dimensions; it names only what it changes, each key merging
 over `default.json`:
 
@@ -452,8 +456,8 @@ gets, which the ablation suite (`ablation/README.md` in the wf-ablation repo) ha
 
 ### Adding a variant dimension
 
-1. Put a `{{name}}` slot in the `template/core/` file that holds the text, where the text varies, inside one line when it can,
-   so a key changes only the lines it controls.
+1. Put a `{{name}}` slot where the text varies, in the `template/core/` file that holds it. Keep the
+   slot inside one line when it can, so a key changes only the lines it controls.
 2. Add the key to `default.json` with the value that renders today's core; a new duty is off by default.
 3. Fill the slot in `render()`. Text that goes inside a prompt's template literal passes through
    `literal()`.
