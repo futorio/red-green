@@ -37,17 +37,19 @@ export function template(dir) {
 const CORE_DIR = fileURLToPath(here('core/'))
 const TEMPLATE = template(CORE_DIR)
 // Code of the core's own, the code the script runs: its validator, for the tests and the conformance check, and its
-// block config merge.
-const fromCore = (part, name) => new Function(`${partsOf(CORE_DIR, 'shared')[`shared ${part}`]}\nreturn ${name}`)()
-export const validate = fromCore('validate', 'validate')
-const mergeBlocks = fromCore('config', 'mergeBlocks')
+// block config merge with the registry it checks values against (and the schemas the registry is built from).
+const PARTS = Object.assign({}, ...readdirSync(CORE_DIR).map(f => partsOf(CORE_DIR, f.slice(0, -3))))
+const fromCore = (parts, name) => new Function(`${parts.map(p => PARTS[p]).join('\n')}\nreturn ${name}`)()
+export const validate = fromCore(['shared validate'], 'validate')
+const mergeBlocks = fromCore(['shared validate', 'shared config'], 'mergeBlocks')
+const REGISTRY = fromCore(['shared validate', 'research schema', 'plan schema', 'implement schema', 'review schema', 'shared registry'], 'REGISTRY')
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
 // The one render-time slot is {{blocks}}; every other {{path}} is a run-time template variable.
 export function render(config) {
   for (const k of Object.keys(config)) if (!(k in DEFAULT)) throw new Error(`unknown config key: ${k}`)
-  const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks)
+  const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks, REGISTRY)
   if (errors.length) throw new Error(errors.join('; '))
   return TEMPLATE.replace('{{blocks}}', JSON.stringify(merged))
 }

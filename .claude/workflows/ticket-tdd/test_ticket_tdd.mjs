@@ -942,6 +942,19 @@ test('W82: the fix schema holds only what the script reads: no committed, no gat
   assert.deepEqual(s.required, ['applied', 'rejected', 'proofs', 'head'])
 })
 
+test('W90: every fix output field is read by the script or reaches the result: emptying it changes the result', async () => {
+  const lens = { verdict: 'findings', checked: [row('x')], findings: proven.findings.concat(finding('major', 'b:1', 't')) }
+  const fix = { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [{ id: 'R1-code-2', argument: 'a' }], proofs: [{ id: 'R1-code-1', path: proof.path, outcome: 'deleted' }], head: 'cccc222' }
+  const run = res => runCore({ 'review:r1:code': lens, 'fix:r1': res })
+  const { result, calls } = await run(fix)
+  const fields = calls.find(c => c.label === 'fix:r1').opts.schema.properties
+  for (const k of Object.keys(fields).filter(k => k !== 'mailbox')) {
+    const empty = { array: [], string: 'bbbb111' }[fields[k].type]
+    const other = (await run(Object.assign({}, fix, { [k]: empty }))).result
+    assert.notDeepEqual(other, result, k)
+  }
+})
+
 test('W83: profile.blocks.<name>.model and effort override the defaults; a block with no model runs on the one it follows', async () => {
   const opts = (calls, l) => [calls.find(c => c.label === l).opts.model, calls.find(c => c.label === l).opts.effort]
   const minor = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't')] }
@@ -1104,7 +1117,25 @@ test('W88: a value an instruction names that is missing, or off its schema, fail
   assert.equal(missing.calls.length, 0)
   assert.equal(missing.result.stage, 'research')
   assert.deepEqual(missing.result.failures, ['research input: $: TARGET missing'])
-  const typed = await runCore({}, 1, withBlocks({ mutation: { edges: 'five' } }))
-  assert.ok(!called(typed.calls, 'mutation'))
-  assert.deepEqual(typed.result.failures, ['mutation input: $.config.edges: string, not integer', 'mutation'])
+  const swapped = SOURCE.replace("'config.edges': CONFIG.mutation.edges", "'config.edges': 'five'")
+  assert.notEqual(swapped, SOURCE)
+  core = coreOf(swapped)
+  try {
+    const typed = await runCore({})
+    assert.ok(!called(typed.calls, 'mutation'))
+    assert.deepEqual(typed.result.failures, ['mutation input: $.config.edges: string, not integer', 'mutation'])
+  } finally { core = coreOf(SOURCE) }
+})
+
+test('W89: a block config value off its registry schema fails the run before any agent, naming the field', async () => {
+  for (const [blocks, wrong] of [[{ review: { rounds: 'auto' } }, 'blocks.review.rounds'], [{ review: { rounds: '3' } }, 'blocks.review.rounds'],
+    [{ review: { minors: '2' } }, 'blocks.review.minors'], [{ mutation: { timeout: 'x' } }, 'blocks.mutation.timeout'],
+    [{ mutation: { edges: 'five' } }, 'blocks.mutation.edges'], [{ review: { lenses: 'code' } }, 'blocks.review.lenses'],
+    [{ review: { lenses: ['mechanics'] } }, 'blocks.review.lenses[0]'], [{ review: { duties: { order: 'yes' } } }, 'blocks.review.duties.order'],
+    [{ research: { model: 3 } }, 'blocks.research.model'], [{ gates: { effort: 2 } }, 'blocks.gates.effort']]) {
+    const { result, calls } = await runCore({}, 1, withBlocks(blocks))
+    assert.equal(calls.length, 0, JSON.stringify(blocks))
+    assert.equal(result.stage, 'config')
+    assert.ok(result.note.startsWith(`${wrong}:`), result.note)
+  }
 })

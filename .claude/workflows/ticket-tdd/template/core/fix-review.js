@@ -14,8 +14,7 @@ GIVEN:
 ${RESEARCH_PART}`, {
     HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': duty('test_case_review', TEST_CASE_REVIEW_FIX),
     given: given.map(f => ({ id: f.id, where: f.where, problem: f.problem })),
-  }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified'),
-    'No answer counts as died: what it was given is left over as unverified. No checked rows, or a verdict that disagrees with the findings, is a failure.'),
+  }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified')),
   { schema: REVIEW_SCHEMA, phase: 'Review', label })
   if (!res) { failures.push(`fix review ${label}`); return null }
   const quiet = silence(res)

@@ -17,11 +17,13 @@ FINDINGS:
 {{earlier_fixes}}
 ${RESEARCH_PART}`, {
     round, IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: toFix, research,
-    earlier_fixes: fixed.length ? `\nEARLIER FIXES:\n${JSON.stringify(fixed)}\n` : '',
-  }, contract(writer('Commit only with the gate at its baseline or better.'),
-    A.one_commit && 'Fold the change into the one commit with --amend, rewriting its message (create the commit if it does not exist yet and the gate is at baseline or better).',
+    earlier_fixes: fixed.length ? `\nEARLIER FIXES:\n${JSON.stringify(fixed, null, 1)}\n` : '',
+  }, fixContract(
     toFix.some(f => f.proof) && 'For a finding with a `proof`, run its `command` first: green on HEAD is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test. Never leave a proof as written: rewrite it into the suite in its style and commit it, or delete it; report each in `proofs`.',
-    fixed.length && 'A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".',
-    'Report head: `git rev-parse HEAD` after your last change.',
-    'No answer counts as died: a failure, and the rounds stop.'), { schema: FIX_SCHEMA, phase: 'Fix', label })
+    fixed.length && 'A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".'),
+  { schema: FIX_SCHEMA, phase: 'Fix', label })
 }
+// The contract part of fix and minor fix: a writer that keeps the bar (COMMIT_RULE folds into the one commit), the
+// block's rules, the head it reports.
+const fixContract = (...rules) => contract(writer('Commit only with the gate at its baseline or better.'), ...rules,
+  'Report head: `git rev-parse HEAD` after your last change.', died('Answer'))

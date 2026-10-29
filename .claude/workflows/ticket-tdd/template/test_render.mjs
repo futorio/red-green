@@ -66,9 +66,10 @@ test('T06: test-case review off changes only the block defaults line', () => {
   assert.match(out, /"duties":\{"test_case_review":false,"order":false\}/)
 })
 
-test('T07: an unknown config key or lens is an error, not a silent default', () => {
+test('T07: an unknown config key or lens, or a value off its schema, is an error, not a silent default', () => {
   assert.throws(() => render(variant({ lens: {} })), /unknown config key: lens/)
-  assert.throws(() => render(blocks({ review: { lenses: ['mechanics'] } })), /unknown lens: mechanics/)
+  assert.throws(() => render(blocks({ review: { lenses: ['mechanics'] } })), /blocks\.review\.lenses\[0\]: "mechanics" not in \["checklist","code"\]/)
+  assert.throws(() => render(blocks({ review: { rounds: 'auto' } })), /blocks\.review\.rounds: string, not integer/)
   for (const k of ['models', 'lenses', 'duties']) assert.throws(() => render({ [k]: {} }), new RegExp(`unknown config key: ${k}`))
 })
 

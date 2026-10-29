@@ -32,12 +32,12 @@ async function runMutation() {
 ${BG}
 CHECKS:
 {{tested_checks}}`, {
-      BASE, TARGET, RUN, 'config.edges': C.mutation.edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
-      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''} --timeout ${X.timeout || C.mutation.timeout}`,
+      BASE, TARGET, RUN, 'config.edges': CONFIG.mutation.edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
+      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(X.test)}${X.build ? ` --build ${sq(X.build)}` : ''} --timeout ${X.timeout || CONFIG.mutation.timeout}`,
     }]
   const res = await call('mutation', NO_CODE_PRE, `STAGE: mutation, HEAD {{HEAD}}. ${how}`, Object.assign({ HEAD: headNow }, values),
     contract(READ_ONLY, `applies: whether \`git diff --name-only ${BASE}..HEAD\` lists ${covers}. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
-      'No answer, ran false where it applies, or a not_run mutant is a failure of the run.'), { schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
+      died('Where it applies, run every mutant')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: 'mutation' })
   if (!res) { failures.push('mutation'); return [] }
   if (!res.applies) { log('mutation: no file it covers in the diff, step skipped'); return [] }
   if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)

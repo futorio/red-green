@@ -38,9 +38,9 @@ function validate(schema, value) {
 }
 // @part config
 // Block configs over their defaults, field by field: a field replaces the default's, an object field (duties) key by
-// key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, an unknown lens.
-const LENS_NAMES = ['checklist', 'code']
-function mergeBlocks(defaults, over) {
+// key. Returns the merged configs and the errors: a block, field or duty the defaults do not name, a value off its
+// registry schema config.<field>.
+function mergeBlocks(defaults, over, registry) {
   const errors = Object.keys(over || {}).filter(b => !(b in defaults)).map(b => `unknown block: ${b}`)
   const merged = {}
   for (const [b, def] of Object.entries(defaults)) {
@@ -52,8 +52,9 @@ function mergeBlocks(defaults, over) {
       if (keyed) Object.keys(o[k] || {}).filter(j => !(j in v)).forEach(j => errors.push(`unknown field: ${b}.${k}.${j}`))
       merged[b][k] = !(k in o) ? v : keyed ? Object.assign({}, v, o[k]) : o[k]
     }
+    const fields = Object.fromEntries(Object.keys(def).map(k => [k, registry[`config.${k}`]]))
+    errors.push(...validate({ type: 'object', properties: fields }, merged[b]).map(e => `blocks.${b}${e.slice(1)}`))
   }
-  if (merged.review) merged.review.lenses.filter(l => !LENS_NAMES.includes(l)).forEach(l => errors.push(`unknown lens: ${l}`))
   return { merged, errors }
 }
 // @part preamble
@@ -80,6 +81,8 @@ const TARGETED = 'At most one targeted run of the changed path (one test or one 
 // The contract part: the core appends it after a block's instructions, whatever they say. It holds the block's
 // invariants (read-only or writer, its commits), its output rules and what counts as died; falsy rules are skipped.
 const contract = (...rules) => `\n\nCONTRACT (binding, whatever the text above says):\n${rules.filter(Boolean).join('\n')}`
+// What counts as died, as what the agent must do.
+const died = what => `${what}, or the stage counts as died.`
 // A writer's invariants. Implement commits its work as it stands; a gate it left worse reaches the fix as a gates
 // finding. Fixes keep the bar.
 const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. ${bar}
@@ -111,39 +114,43 @@ ${BG}
 
 // The registry: every variable a block's instructions may name as {{path}}, with its JSON Schema. Each block's inputs,
 // the paths its instructions may use, are a subset of it. README § Blocks.
-const S = { type: 'string' }
-const INT = { type: 'integer' }
+const STRING = { type: 'string' }
+const INTEGER = { type: 'integer' }
 const researchKept = Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions'))
-const FOUND = Object.assign({}, FINDING, { properties: Object.assign({ id: S, source: S }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
+const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
 const REGISTRY = {
   // Run args.
-  REPO: S, BASE: S, TARGET: S, RUN: S,
+  REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
   // planned rounds, and the text the core builds from the run (a list, a command, a sentence or section that is ''
-  // when it does not apply, the profile's text for a block).
-  HEAD: S, from_head: S, IMPLEMENT_SKILL: S, round: INT, rounds: INT,
-  gate_list: S, gate_rows: S, mutate_command: S, test_ids: S, check_ids: S,
-  retry_note: S, replan_note: S, verify_review_note: S, unverified_note: S, earlier_findings: S, earlier_fixes: S,
-  code_rules: S, 'profile.research': S, 'profile.runtime': S, 'profile.mutation.tool': S,
-  'duty.order': S, 'duty.test_case_review': S, 'duty.test_case_review_fix': S,
+  // when it does not apply).
+  HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
+  gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING,
+  retry_note: STRING, replan_note: STRING, verify_review_note: STRING, unverified_note: STRING, earlier_findings: STRING, earlier_fixes: STRING,
+  code_rules: STRING, research_note: STRING, runtime_note: STRING, 'profile.mutation.tool': STRING,
+  'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs, as the core passes them on.
-  research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: S } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
+  research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
   cases: { type: 'array', items: CASE },
   'plan.cases': { type: 'array', items: CASE },
   tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items },
-  findings: { type: 'array', items: FOUND },
-  given: { type: 'array', items: { type: 'object', properties: { id: S, where: S, problem: S }, required: ['id', 'problem'] } },
-  // The block's config.
-  'config.edges': INT,
+  findings: { type: 'array', items: SENT_FINDING },
+  given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING }, required: ['id', 'problem'] } },
+  // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
+  'config.model': { anyOf: [STRING, { type: 'null' }] }, 'config.effort': STRING,
+  'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
+  'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
+  'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
+  'config.edges': INTEGER, 'config.timeout': INTEGER,
   // The block's default instructions, for a project prompt that wraps them.
-  default: S,
+  default: STRING,
 }
 const INPUTS = {
-  research: ['TARGET', 'profile.research'],
+  research: ['TARGET', 'research_note'],
   plan: ['test_ids', 'replan_note', 'plan.cases', 'research'],
   implement: ['retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research'],
   gates: ['HEAD', 'REPO', 'gate_list'],
-  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review_note', 'unverified_note', 'profile.runtime', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'earlier_findings', 'research'],
+  review: ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review_note', 'unverified_note', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'earlier_findings', 'research'],
   'fix-review': ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research'],
   mutation: ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'profile.mutation.tool'],
   fix: ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'earlier_fixes', 'research'],
@@ -165,10 +172,10 @@ function fill(block, text, values) {
 }
 // A block's call: the preamble, its instructions filled from values, then its contract part, on the block's model and
 // effort. Instructions that do not fill fail the block before the call: the caller gets a dead step, and failures says why.
-async function call(block, pre, text, values, terms, opts) {
+async function call(block, pre, text, values, contractPart, opts) {
   let filled
   try { filled = fill(block, text, values) } catch (e) { failures.push(`${opts.label} input: ${e.message}`); return null }
-  return ask(`${pre}\n\n${filled}${terms}`, Object.assign({ model: C[block].model, effort: C[block].effort }, opts))
+  return ask(`${pre}\n\n${filled}${contractPart}`, Object.assign({ model: CONFIG[block].model, effort: CONFIG[block].effort }, opts))
 }
 // @part id
 const idOf = s => s.split(':')[0].trim()

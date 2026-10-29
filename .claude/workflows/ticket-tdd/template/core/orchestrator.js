@@ -27,20 +27,6 @@ const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
 // @include shared text
 // @include shared validate
-// @include shared config
-// Each block's config: the render config's defaults, profile.blocks.<name> over them (README § Blocks).
-const { merged: C, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks)
-// A block with no model runs on the model of the block it follows.
-C.plan.model = C.plan.model || C.research.model
-C.fix.model = C.fix.model || C.implement.model
-C['fix-review'].model = C['fix-review'].model || C.review.model
-C['minor-fix'].model = C['minor-fix'].model || C.fix.model
-// These args moved into the block config; one still given fails the run instead of being ignored.
-const MOVED = { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }
-Object.keys(MOVED).filter(k => k in A).forEach(k => configErrors.push(`args.${k} moved to ${MOVED[k]}`))
-if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
-// Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
-let EXTRA = C.review.extra
 // profile.gates: [{name, command}]; args.baseline: {<gate name>: its summary line at base}.
 let GATES = P.gates || []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
@@ -54,6 +40,18 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include mutation schema
 // @include fix schema
 // @include shared registry
+// @include shared config
+// Each block's config: the render config's defaults, profile.blocks.<name> over them (README § Blocks).
+const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
+// A block with no model runs on the model of the block it follows.
+const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'minor-fix': 'fix' }
+Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
+// These args moved into the block config; one still given fails the run instead of being ignored.
+const MOVED = { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }
+Object.keys(MOVED).filter(k => k in A).forEach(k => configErrors.push(`args.${k} moved to ${MOVED[k]}`))
+if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
+// Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
+let EXTRA = CONFIG.review.extra
 const failures = []
 // Declared gates need a baseline each; with none declared, the discovery step finds them and measures the baseline.
 // Its questions go to the result alone.
@@ -74,7 +72,7 @@ function silence(res, ids) {
 function tidy(findings) {
   let minors = 0
   const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
-  const kept = out.filter(f => f.severity !== 'minor' || ++minors <= C.review.minors)
+  const kept = out.filter(f => f.severity !== 'minor' || ++minors <= CONFIG.review.minors)
   const down = out.filter(f => f.downgraded).length
   if (down || kept.length < out.length) log(`findings tidied: ${down} downgraded for no trigger, ${out.length - kept.length} minors dropped`)
   return kept
@@ -96,10 +94,10 @@ const reconcile = (sent, res) => sent.filter(f => f.proof && !settled.has(f.id))
 
 // @include research call
 // @include research checks
-let N = C.review.rounds
+let N = CONFIG.review.rounds
 // A run reviews review.min rounds in full even when the first is clean: round 2 catches majors round 1 missed.
-const MIN_ROUNDS = Math.min(N, C.review.min)
-const LENS_KEYS = C.review.lenses
+const MIN_ROUNDS = Math.min(N, CONFIG.review.min)
+const LENS_KEYS = CONFIG.review.lenses
 log(`research: ${research.requirements.length} requirements, ${droppedFacts.length} facts dropped, ${unresearched.length} unresearched -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 // @include plan call
 // @include plan replan
