@@ -1,6 +1,12 @@
 # Implement
 
-Where these rules come from: docs/ticket-tdd/stages.md.
+Where these rules come from: `mattpocock-skills` 1.2.3 `skills/engineering/implement/SKILL.md`, and the in-loop and
+fix rules of [ub-mode](https://github.com/unclebob/ub-mode) (Laziness Protocol, Boundary Discipline's entry check, Type
+System Discipline's compiler rule, Make Operations Idempotent, Fix Root Causes). The fix and the code lens cite
+§ Code rules. Not taken from ub-mode: architecture and design rules (they belong before implementation), Attack the
+Premise, its tools, Build the Lever, Outcome-Oriented Execution, Refactoring. `tdd/` is mattpocock's `tdd` with the
+seams taken from the cases, no `/codebase-design` pointer, and three ub-mode loop rules (red for the right reason,
+honest or unverified, a test fails when every function returns nothing).
 
 Implement the work described by the ticket, using the research output and the test cases the
 workflow hands you. Follow `tdd/SKILL.md` at the seams the test cases name.
