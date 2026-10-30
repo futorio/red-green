@@ -1,8 +1,8 @@
 # Blocks
 
 Every stage is a block: the inputs its instructions may name (its `INPUTS` entry in
-`.claude/workflows/ticket-tdd/template/core/shared.js`), an output schema, invariants and a config
-(`template/default.json`). The script alone decides what a run does with the output (`stages.md`).
+[`.claude/workflows/ticket-tdd/template/core/shared.js`](../../.claude/workflows/ticket-tdd/template/core/shared.js)), an output schema, invariants and a config
+([`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json)). The script alone decides what a run does with the output ([`stages.md`](stages.md)).
 
 ## Prompt assembly
 
@@ -19,7 +19,7 @@ A prompt is the preamble, the instructions, the contract part, then the mailbox 
 `<!-- @part <name> -->` line and kept verbatim, last newline dropped: the instructions of each call (`plan` and
 `replan`, `discover` and `run`, a lens by its key, a mutation approach), notes, and text other parts include with
 `{{> <block> <part>}}`. **A note** is a part named like the registry value it fills (`retry_note`, `duty.order`, ...):
-the core passes `true` when it applies, else it is `''`. Editing a default edits the prompt (`maintaining.md`).
+the core passes `true` when it applies, else it is `''`. Editing a default edits the prompt ([`maintaining.md`](maintaining.md)).
 
 ## Plug-ins
 
@@ -36,7 +36,7 @@ output schema stay the core's.
 
 ## Registry and validator
 
-`REGISTRY` lists every input path with its JSON Schema: `template/core/registry.js` holds the paths several blocks
+`REGISTRY` lists every input path with its JSON Schema: [`template/core/registry.js`](../../.claude/workflows/ticket-tdd/template/core/registry.js) holds the paths several blocks
 share, each block's `inputs` part in `template/core/<block>.js` those only it reads.
 
 The validator (`validate` in `shared.js`) supports `type`, `properties`, `required`, `items`, `enum`, `pattern`,
@@ -46,7 +46,7 @@ The validator (`validate` in `shared.js`) supports `type`, `properties`, `requir
 
 A block's config is `blocks.<name>`, in two layers:
 
-1. **Render time:** a render config (JSON, `{blocks: {...}}`) merged over `template/default.json`.
+1. **Render time:** a render config (JSON, `{blocks: {...}}`) merged over [`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json).
 2. **Run time:** `profile.blocks.<name>` merged over the rendered defaults.
 
 Both merge field by field: an object field such as `duties` key by key, a list replaces. A key, block, field, duty or
@@ -62,7 +62,7 @@ Runs a plug-in's real output through the core offline, before a paid run:
 node template/render.mjs [config.json] [--case case.json] --conform <label> <output.json>
 ```
 
-`<output.json>` is what the agent labelled `<label>` returned. The run is the `--prompt` one (`maintaining.md`):
+`<output.json>` is what the agent labelled `<label>` returned. The run is the `--prompt` one ([`maintaining.md`](maintaining.md)):
 research, plan and implement answer from stubs or the case, every other block answers clean. The JSON report holds
 `schema_errors`, `findings` (each with `sent_to`) and the run's `status`, `failures`, `verdicts` and leftovers. An
 unreadable output is a `crash` naming the script line. Exit 1 on a schema error, a failure or a crash.

@@ -2,7 +2,7 @@
 
 What the script enforces and decides at each stage. What an agent is told to do is in the block's default,
 `.claude/workflows/ticket-tdd/template/defaults/<block>.md`. A block's inputs are its `INPUTS` entry in
-`template/core/shared.js`; its config defaults are `template/default.json` (`blocks.md`).
+[`template/core/shared.js`](../../.claude/workflows/ticket-tdd/template/core/shared.js); its config defaults are [`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json) ([`blocks.md`](blocks.md)).
 
 "Died" is a call with no answer; it lands in `failures`. Each stage's questions go to the result as
 `<stage>_questions`, not to later prompts; one naming no known requirement, gate or listed case is dropped.
@@ -50,7 +50,7 @@ uncovered ids and duplicates; what is still uncovered goes to the result.
 
 ## 3. Implementation
 
-Follows `skills/implement.md`, `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
+Follows [`skills/implement.md`](../../.claude/workflows/ticket-tdd/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
 than baseline (the gates step turns it into a finding). `head` still at `base`: one more run, then `failed`.
 
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason (schema). The
@@ -99,7 +99,7 @@ Once per run, after the first round that ends with no finding to fix (see Loop e
 more review round without the step, even past the planned rounds.
 
 The generated form writes one patch per `checks` row with a test, plus at most `blocks.mutation.edges` (5);
-`skills/mutate.mjs` runs each: a failing or timed-out `build` makes it `invalid`, a failing `test` kills it, a patch
+[`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skills/mutate.mjs) runs each: a failing or timed-out `build` makes it `invalid`, a failing `test` kills it, a patch
 that does not apply is `not_run`, the rest `survived`. The `{tool}` form returns the same records; the script derives
 ids (`M-<n>`), `file:line` and counts.
 

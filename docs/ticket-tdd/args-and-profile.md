@@ -36,7 +36,7 @@ Every field is optional.
 | `commit` | string | every agent: commit-message rule appended to the core's |
 | `context` | string[] | every agent: extra preamble lines |
 | `code_rules` | string[] | implement, fix, code lens: code rules |
-| `blocks` | `{<block>: {<field>: value}}` | each block's config over the defaults (`blocks.md`): model, knobs, approach, instructions. An unknown block, field, duty or lens, or a value off its schema (`rounds: 'auto'`), fails the run before any agent |
+| `blocks` | `{<block>: {<field>: value}}` | each block's config over the defaults ([`blocks.md`](blocks.md)): model, knobs, approach, instructions. An unknown block, field, duty or lens, or a value off its schema (`rounds: 'auto'`), fails the run before any agent |
 
 Approach fields, for a block with more than one way to work:
 

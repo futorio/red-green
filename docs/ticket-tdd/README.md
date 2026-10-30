@@ -2,7 +2,7 @@
 
 A Workflow run that implements one ticket or one spec in any git repository. The script is
 `.claude/workflows/ticket-tdd.js`; `.claude/workflows/ticket-tdd/` holds what its agents read and run (`skills/`,
-the mutant runner `skills/mutate.mjs`) and `workflow-doctor.sh`. This repository is the one shared copy: projects run
+the mutant runner [`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skills/mutate.mjs)) and `workflow-doctor.sh`. This repository is the one shared copy: projects run
 it in place, never copy it.
 
 The core knows nothing about any one project. What a project adds (gates, rules, mutant commands) arrives in
@@ -33,14 +33,14 @@ this repository's absolute path.
    fast-forward the branch; free the run directory (`git worktree prune`, then delete every directory under `run`,
    keeping its top-level files); remove the worktree.
 
-A clarification mid-run goes in `<run>/mailbox.md`, started with the header in `mailbox.md`, verbatim.
+A clarification mid-run goes in `<run>/mailbox.md`, started with the header in [`mailbox.md`](mailbox.md), verbatim.
 
 ## Chapters
 
-- `args-and-profile.md`: `args`, `profile`, model presets.
-- `stages.md`: what the script does with each stage's output.
-- `blocks.md`: block contract, plug-ins, conformance check.
-- `mailbox.md`: clarifying a live run.
-- `result.md`: the result's fields.
-- `tracing.md`: `trace.mjs`.
-- `maintaining.md`: tests, template, new blocks and fields, prompts.
+- [`args-and-profile.md`](args-and-profile.md): `args`, `profile`, model presets.
+- [`stages.md`](stages.md): what the script does with each stage's output.
+- [`blocks.md`](blocks.md): block contract, plug-ins, conformance check.
+- [`mailbox.md`](mailbox.md): clarifying a live run.
+- [`result.md`](result.md): the result's fields.
+- [`tracing.md`](tracing.md): `trace.mjs`.
+- [`maintaining.md`](maintaining.md): tests, template, new blocks and fields, prompts.

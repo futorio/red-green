@@ -7,7 +7,7 @@ Paths are under `.claude/workflows/ticket-tdd/`.
 `node --test` on `test_ticket_tdd.mjs`, `template/test_render.mjs`, `skills/test_mutate.mjs`, `test_trace.mjs`.
 `test_ticket_tdd.mjs` runs `ticket-tdd.js` with a stub `agent()` returning recorded results by label; a change to the
 core's control flow gets a case there. `test_render.mjs` fails when the default config does not render
-`ticket-tdd.js` byte for byte, and checks the sha256 of every variant in `template/fixtures.json`; a change that
+`ticket-tdd.js` byte for byte, and checks the sha256 of every variant in [`template/fixtures.json`](../../.claude/workflows/ticket-tdd/template/fixtures.json); a change that
 alters the render re-records them.
 
 ## Template
@@ -37,19 +37,19 @@ before the label is an error naming its stage and failures. `--json` prints `{ p
 2. Its `inputs` part: `INPUTS.<block>`, every path a `REGISTRY` path (a new path only it reads goes in `BLOCK_PATHS`,
    one several blocks read in `registry.js`), and `template/defaults/<block>.md`, a part per call.
 3. A `blocks.<name>` entry in `default.json` with at least `model` and `effort`; a `null` model also needs `FOLLOWS`.
-4. Its row in `stages.md`.
+4. Its row in [`stages.md`](stages.md).
 
 ### Adding a config field
 
 1. Add it to its block in `default.json` with the value that renders today's behaviour (a new duty: off).
 2. Give it a schema in the registry as `config.<field>`, and read it as `CONFIG.<block>.<field>`. A value an
    instruction names also goes in the block's `INPUTS` entry; a duty's sentence is a note `duty.<name>` in
-   `template/defaults/review.md`.
+   [`template/defaults/review.md`](../../.claude/workflows/ticket-tdd/template/defaults/review.md).
 3. Add a stub test that the field moves the behaviour and a render test beside T03-T06; record a fixture variant when
    the ablation study varies it.
 
-A new lens is its entry in `LENSES` (`template/core/review.js`) and a part of that key's name in
-`template/defaults/review.md`.
+A new lens is its entry in `LENSES` ([`template/core/review.js`](../../.claude/workflows/ticket-tdd/template/core/review.js)) and a part of that key's name in
+[`template/defaults/review.md`](../../.claude/workflows/ticket-tdd/template/defaults/review.md).
 
 ## Changing the prompts
 
