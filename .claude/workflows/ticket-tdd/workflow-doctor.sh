@@ -13,7 +13,7 @@ Checked here:
 
 Not checkable from a shell — confirm by hand:
   Workflow tool   gated per account; the project profile runs the core by scriptPath.
-  models          stages ask for opus and sonnet; args.models changes them.'
+  models          stages ask for opus, sonnet and haiku; profile.blocks.<name>.model changes them.'
 
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { printf '%s\n' "$HELP"; exit 0; }
 
