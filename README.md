@@ -49,10 +49,18 @@ drop a requirement or finish with red gates.
 
 ## Shape
 
-Numbered as in [`stages.md`](docs/ticket-tdd/stages.md): 0 gates discovery (no declared gates), 1 research, 2
-planning, 3 implementation, then rounds of 4 gates, 5 review and 6 fix, the last round's fix reviewed once more when it
-moved HEAD. 6a mutation runs inside the loop, after the first clean round at or past `blocks.review.min`; survivors get
-one more round (a loop that ran out of rounds runs it after the loop). 6b minor fix comes last.
+In the order a run takes them ([`stages.md`](docs/ticket-tdd/stages.md) has each in detail):
+
+1. **Gates discovery**, only when the profile declares no gates.
+2. **Research**: the ticket's requirements and the facts of the code.
+3. **Planning**: test cases for each requirement, then the coverage check.
+4. **Implementation**, test-first.
+5. **Review rounds**, `blocks.review.rounds` of them (2 by default). Each round: gates (when HEAD changed), both review
+   lenses, then a fix.
+   - **Mutation** runs after the first clean round at or past `blocks.review.min`; its survivors get one more round. A
+     run that ran out of rounds first does it after the loop.
+   - The last round's fix gets a review of its own diff, when it moved HEAD.
+6. **Minor fix**.
 
 ## Docs
 
