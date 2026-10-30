@@ -1,10 +1,8 @@
 # Mailbox
 
-The main thread can clarify a running ticket without stopping it. `<run>/mailbox.md` is written by the
-main thread only, append-only while the run is live. Each agent's prompt carries one line: its label, when to read
-the file (at start and before returning; implement and the fixes also before each long run or commit), to follow its
-header, never to edit it, and to list what it handles in its result's `mailbox` field. The rules live in the file:
-whoever creates `mailbox.md` starts it with this header, verbatim:
+The main thread clarifies a running ticket through `<run>/mailbox.md`, which only it writes. Each agent's prompt says
+when to read it (at start and before returning; implement and the fixes also before each long run or commit). Whoever
+creates `mailbox.md` starts it with this header, verbatim:
 
 ```
 # Mailbox
@@ -17,27 +15,13 @@ Rules for every agent of this run:
 - For each entry you handle, append one line `<id> <your label> applied|rejected <why>` to `mailbox-acks.md` and list it in your result's `mailbox`.
 ```
 
-Then the entries:
+`to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`.
 
-```
-## m3
-to: review:*:code
-round: 2
-until: fix
-supersedes: m1
-The 16-fixture sweep must include 8 jobs.
-```
+## The main thread
 
-- `to:` is `all`, a stage (`research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`), an exact
-  label (`review:r2:code`), or a label pattern where `*` matches one segment.
-- `until:` (a stage or round) expires an entry; `supersedes: <id>` kills an older one. Agents skip
-  expired and superseded entries.
-- An agent never edits `mailbox.md` (parallel lenses would race). Its receipt is one line in
-  `<run>/mailbox-acks.md`, `<id> <label> applied|rejected <why>`, and the entry `{id, status, why}` in its result's
-  `mailbox` field (the script adds the label). An entry for one exact label is closed by that label's receipt;
-  entries for `all`, a stage or a pattern stay open until the main thread closes them.
-- Cleanup is the main thread's: it moves closed, expired and superseded entries to
-  `<run>/mailbox-archive.md`, so `mailbox.md` holds only the header and live entries, and archives everything when
-  the run ends. A new run's directory starts with no mailbox.
-- An entry for a stage that has already run is not seen; post it again to the stage that comes next.
-- Entries clarify the ticket; they never widen it. A change of scope is a new ticket.
+- An entry for a stage that already ran is not seen: post it to the next one. A change of scope is a new ticket.
+- An entry for one exact label is closed by that label's receipt (`mailbox-acks.md`, and `{id, status, why}` in the
+  result's `mailbox`, to which the script adds the label); entries for `all`, a stage or a pattern stay open until you
+  close them.
+- Cleanup: move closed, expired and superseded entries to `<run>/mailbox-archive.md`, so `mailbox.md` holds only the
+  header and live entries; archive everything when the run ends. A new run starts with no mailbox.
