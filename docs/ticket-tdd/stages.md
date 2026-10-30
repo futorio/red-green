@@ -1,23 +1,24 @@
 # Stages
 
 What the script enforces and decides at each stage. What an agent is told to do is in the block's default,
-`.claude/workflows/ticket-tdd/template/defaults/<block>.md`. A block's inputs are its `INPUTS` entry in
-[`template/core/shared.js`](../../.claude/workflows/ticket-tdd/template/core/shared.js); its config defaults are [`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json) ([`blocks.md`](blocks.md)).
+`.claude/workflows/ticket-tdd/template/defaults/<block>.md`; a block's inputs and config are in [`blocks.md`](blocks.md).
+The output schemas are in `template/core/<block>.js`.
 
-"Died" is a call with no answer; it lands in `failures`. Each stage's questions go to the result as
-`<stage>_questions`, not to later prompts; one naming no known requirement, gate or listed case is dropped.
+"Died" is a call with no answer. It lands in `failures`, or ends the run (`status: failed`) where the table says so.
+Each stage's questions go to the result as `<stage>_questions`, not to later prompts; one naming no known requirement,
+gate or listed case is dropped.
 
-| block | labels | output | invariants |
-|---|---|---|---|
-| `gates` | `gates:discover`, `gates:r<n>`, `gates:r<n>:recheck` | `DISCOVER_SCHEMA`, `GATES_SCHEMA` | read-only; discovery dead or empty: the run fails |
-| `research` | `research`, `research:retry` | `RESEARCH_SCHEMA` | read-only; died: the run fails |
-| `plan` | `plan`, `replan` | `casesSchema` | read-only; died: the run fails (replan: the previous cases stand) |
-| `implement` | `implement`, `implement:retry` | `IMPL_SCHEMA` | writer; died: one retry, then the run fails |
-| `review` | `review:r<n>:checklist`, `review:r<n>:code` | `reviewSchema` | read-only (the code lens may write uncommitted proofs) |
-| `fix` | `fix:r<n>`, `fix:r<n>:review` | `FIX_SCHEMA` | writer; commits only with every gate at baseline or better; died: the rounds stop |
-| `fix-review` | `review:fix:r<n>[:<pass>]` | `REVIEW_SCHEMA` | read-only; died: its findings stay `unverified` |
-| `mutation` | `mutation` | `MUTATION_SCHEMA` | read-only |
-| `minor-fix` | `fix:minor` | `FIX_SCHEMA` | writer; reverts when a gate got worse than before its edit |
+| block | labels | invariants |
+|---|---|---|
+| `gates` | `gates:discover`, `gates:r<n>`, `gates:r<n>:recheck` | read-only; discovery dead or empty: the run fails |
+| `research` | `research`, `research:retry` | read-only; died: the run fails |
+| `plan` | `plan`, `replan` | read-only; died: the run fails (replan: the previous cases stand) |
+| `implement` | `implement`, `implement:retry` | writer; died: one retry, then the run fails |
+| `review` | `review:r<n>:checklist`, `review:r<n>:code` | read-only (the code lens may write uncommitted proofs) |
+| `fix` | `fix:r<n>`, `fix:r<n>:review` | writer; commits only with every gate at baseline or better; died: the rounds stop |
+| `fix-review` | `review:fix:r<n>[:<pass>]` | read-only; died: a failure, and the findings the fix was given stay `unverified` |
+| `mutation` | `mutation` | read-only |
+| `minor-fix` | `fix:minor` | writer; reverts when a gate got worse than before its edit |
 
 ## 0. Gates discovery
 
@@ -32,11 +33,10 @@ The agent returns schema-forced JSON: `requirements`, `facts`, `plan`, `test_har
 - A plan step over 600 characters gets one `research:retry` with the errors; a failed retry fails the run.
 - Facts naming neither a listed id nor `general` are dropped (`dropped_facts`), and so is a `note` whose `$ command` is
   not one `rg`, `grep`, `git`, `find` or `ls` (`SEARCH`: no `;`, `&` or `|`).
-- Requirements no fact cites go to `unresearched_requirements`; `test_harness` keeps the first entry per requirement.
+- Requirements no fact cites go to `unresearched_requirements`; `test_harness` keeps the first entry per requirement and drops one naming an unknown id.
 - Repairs, and a requirement without a `test_harness` entry, go to `research_issues`, not `failures`.
 
-The checked JSON is pasted into every later prompt, without the `R<n>: ` pattern and the 600-character limit; no stage
-edits it.
+The checked JSON is pasted into every later prompt.
 
 ## 2. Planning and the coverage check
 
@@ -53,9 +53,8 @@ uncovered ids and duplicates; what is still uncovered goes to the result.
 Follows [`skills/implement.md`](../../.claude/workflows/ticket-tdd/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
 than baseline (the gates step turns it into a finding). `head` still at `base`: one more run, then `failed`.
 
-- **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason (schema). The
-  script adds `case <id>: no check reported` per case without a row, and `<ref>: <reason>` per `unverified` row, to
-  `unverified`; the checklist lens decides whether every phrase has a row.
+- **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason. The script adds
+  `case <id>: no check reported` per case without a row and `<ref>: <reason>` per `unverified` row to `unverified`.
 
 ## 4. Gates
 
@@ -90,18 +89,17 @@ committed, or deleted, and reported in `proofs`. A stray is a proof on any other
 reports by neither id nor path, or one no fix was sent (its fix died, the run stopped): a row in `stray_proofs` and one
 `failures` entry each at the end. A stray never skips the minor fix.
 
-**Fix-diff review.** The last round's fix gets one reviewer on its own diff; what it still finds after one more fix is
-left over as `unverified`. `blocks.review.extra` adds full rounds instead.
+**Fix-diff review.** When the last round's fix moved HEAD, one reviewer reads its diff; otherwise the fix's rejections go
+straight to `leftover_findings`. What the reviewer still finds after one more fix is left over as `unverified`. `blocks.review.extra` adds full rounds instead.
 
 ## 6a. Mutation
 
-Once per run, after the first round that ends with no finding to fix (see Loop exit). Survivors get a fix, then one
-more review round without the step, even past the planned rounds.
+Once per run, after the first round at or past `blocks.review.min` that ends with no finding to fix and every lens
+answered. Survivors get a fix, then one more review round without the step, even past the planned rounds.
 
 The generated form writes one patch per `checks` row with a test, plus at most `blocks.mutation.edges` (5);
-[`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skills/mutate.mjs) runs each: a failing or timed-out `build` makes it `invalid`, a failing `test` kills it, a patch
-that does not apply is `not_run`, the rest `survived`. The `{tool}` form returns the same records; the script derives
-ids (`M-<n>`), `file:line` and counts.
+[`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skills/mutate.mjs) runs them. The `{tool}` form returns the
+same records; the script derives ids (`M-<n>`), `file:line` and counts.
 
 - `applies` false: the step is skipped with a log line.
 - `ran` false where it applies, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
@@ -109,24 +107,14 @@ ids (`M-<n>`), `file:line` and counts.
 
 ## 6b. Minor fix
 
-After the rounds and the mutation step; skipped with no minor finding or after a failed stage. It applies the cheap
+After the rounds and the mutation step; skipped with no minor finding or when `failures` is not empty (strays are added
+later and do not count). It applies the cheap
 advisory findings and rejects the rest (`minor_fixes`); no fix-diff review follows.
 
 ## Loop exit
 
-```
-loop:
-  round += 1
-  gates, if HEAD changed; then the lenses in parallel, given its rows
-  findings = gates findings + review findings, minors set aside
-  if no findings and every lens answered and round >= min(n, review.min):
-    if the mutation step ran: break
-    mutation step; no survivor: break
-    findings = survivors; if round == n: n += 1
-  if findings and round == n and review.extra rounds left: n += 1
-  if findings: fix; a sent proof it does not report is a stray
-  if round == n: fix-diff review of the fix (majors: one more fix and review, then leftover);
-    gates once more if the fix moved HEAD (its red gates are leftover); break
-after the loop: the mutation step once if it has not run (unless a fix died); survivors are leftover;
-minor fix (deletes the proofs on minors); every proof no fix was sent is a stray; strays become failures
-```
+The loop ends after round `n`, or earlier on a clean round (no finding to fix, every lens answered, round at or past
+`blocks.review.min`) after which the mutation step leaves no survivor. `n` grows by one when mutation survivors land in the last round,
+or when findings remain in the last round and `blocks.review.extra` has rounds left. After the loop come the
+mutation step if it has not run (unless a fix died; survivors are leftover), the minor fix, and the strays as
+`failures`: [`template/core/orchestrator.js`](../../.claude/workflows/ticket-tdd/template/core/orchestrator.js).

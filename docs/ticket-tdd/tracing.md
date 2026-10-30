@@ -14,6 +14,7 @@ span is:
 The core and its prompts know nothing of tracing.
 
 ```
+cd .claude/workflows/ticket-tdd
 node trace.mjs <wf dir> [--project NAME]               # spans as JSONL
 node trace.mjs <wf dir> [--project NAME] --table       # calls, tokens, seconds per block and round
 node trace.mjs <wf dir> [--project NAME] --chrome      # a timeline: open it in ui.perfetto.dev

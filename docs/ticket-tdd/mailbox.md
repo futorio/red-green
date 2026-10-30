@@ -1,8 +1,7 @@
 # Mailbox
 
-The main thread clarifies a running ticket through `<run>/mailbox.md`, which only it writes. Each agent's prompt says
-when to read it (at start and before returning; implement and the fixes also before each long run or commit). Whoever
-creates `mailbox.md` starts it with this header, verbatim:
+The main thread clarifies a running ticket through `<run>/mailbox.md`, which only it writes, append-only while the run is
+live except the cleanup moves below. Whoever creates it starts it with this header, verbatim:
 
 ```
 # Mailbox
@@ -15,7 +14,8 @@ Rules for every agent of this run:
 - For each entry you handle, append one line `<id> <your label> applied|rejected <why>` to `mailbox-acks.md` and list it in your result's `mailbox`.
 ```
 
-`to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`.
+`to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`. `review` also reaches the
+fix-diff review (`review:fix:r<n>`); `fix` also reaches the minor fix (`fix:minor`) and `fix:r<n>:review`.
 
 An entry:
 
@@ -30,9 +30,8 @@ An empty input list is valid: it returns an empty result, not an error.
 
 ## The main thread
 
-- An entry for a stage that already ran is not seen: post it to the next one. A change of scope is a new ticket.
-- An entry for one exact label is closed by that label's receipt (`mailbox-acks.md`, and `{id, status, why}` in the
-  result's `mailbox`, to which the script adds the label); entries for `all`, a stage or a pattern stay open until you
-  close them.
-- Cleanup: move closed, expired and superseded entries to `<run>/mailbox-archive.md`, so `mailbox.md` holds only the
-  header and live entries; archive everything when the run ends. A new run starts with no mailbox.
+- Post an entry for a stage that already ran to the next one; a change of scope is a new ticket.
+- A label's receipt (`mailbox-acks.md`, and `{id, status, why}` with the label in the result's `mailbox`) closes an entry
+  for that exact label; entries for `all`, a stage or a pattern stay open until you close them.
+- Cleanup: move closed, expired and superseded entries to `<run>/mailbox-archive.md`; archive everything when the run
+  ends.
