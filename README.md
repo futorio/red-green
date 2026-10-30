@@ -13,6 +13,38 @@ The core knows nothing about any one project. What a project adds (gates, rules,
 - the project's profile workflow, which holds only the profile and calls
   `workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`.
 
+## Install
+
+1. Clone this repository anywhere; its absolute path is `<core>`. Nothing is copied into a project.
+2. Run `<core>/.claude/workflows/ticket-tdd/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
+   by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
+3. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
+   check it.
+
+## Getting started
+
+1. Write the ticket or spec in the project, a markdown file; its path is `args.target`.
+2. Optional, once per project: a profile workflow `.claude/workflows/ticket-tdd-<project>.js` with the project's
+   gates and rules ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)):
+
+   ```js
+   export const meta = {
+     name: 'ticket-tdd-<project>',
+     description: 'ticket-tdd with this repository\'s profile',
+     whenToUse: 'Implement a ticket or spec of this repository',
+   }
+   const PROFILE = {
+     commit: 'follow docs/agents/commits.md',
+     blocks: { gates: { gates: [{ name: 'tests', command: 'npm test' }] } },
+   }
+   // scriptPath, not a call by name: the core is read from disk, not from the session-start snapshot.
+   return await workflow({ scriptPath: args.tools + '/.claude/workflows/ticket-tdd.js' }, { ...args, profile: PROFILE })
+   ```
+
+   Without it, the main thread passes `profile` in the args itself, and a run with no declared gates discovers them.
+3. Ask the main thread in the project's chat to run the ticket per [How to launch](#how-to-launch), naming `<core>`
+   and the ticket path.
+
 ## Shape
 
 Numbered as in [`stages.md`](docs/ticket-tdd/stages.md): 0 gates discovery (no declared gates), 1 research, 2
