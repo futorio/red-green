@@ -4,7 +4,7 @@
 export const meta = {
   name: 'ticket-tdd',
   description: 'Implement one ticket: research, TDD with coverage-checked test cases, review/fix loop',
-  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See docs/ticket-tdd/README.md',
+  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See README.md of the ticket-tdd repository',
   phases: [
     { title: 'Research' },
     { title: 'Plan' },
@@ -252,7 +252,7 @@ const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').
 // @include proofs settle
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
-// Freeing the run directory is the main thread's step after acceptance (docs/ticket-tdd/README.md).
+// Freeing the run directory is the main thread's step after acceptance (README.md).
 return {
   status: failures.length ? 'done_with_failures' : impl.unverified.length ? 'done_unverified' : 'done',
   rounds_planned: N,
