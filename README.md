@@ -43,8 +43,9 @@ drop a requirement or finish with red gates.
    ```
 
    Without it, the main thread passes `profile` in the args itself, and a run with no declared gates discovers them.
-3. Ask the main thread in the project's chat to run the ticket per [How to launch](#how-to-launch), naming `<core>`
-   and the ticket path.
+3. In the project's Claude Code chat, ask: "run ticket-tdd from `<core>` on `<ticket path>`". The agent does the
+   rest ([`launch.md`](docs/ticket-tdd/launch.md)): a worktree, the gates' baseline, the run, its checks, the branch
+   fast-forward. You read what it reports: the commits and any finding left over.
 
 ## Shape
 
@@ -53,28 +54,9 @@ planning, 3 implementation, then rounds of 4 gates, 5 review and 6 fix, the last
 moved HEAD. 6a mutation runs inside the loop, after the first clean round at or past `blocks.review.min`; survivors get
 one more round (a loop that ran out of rounds runs it after the loop). 6b minor fix comes last.
 
-## How to launch
-
-1. **Worktree**: `git worktree add ../wt-<name> -b wf/<name> <branch>`, when another session may commit to the branch.
-2. **Baseline**: run each gate of `profile.blocks.gates.gates` in the worktree; its summary line, and any failure
-   already there with its cause, becomes `args.baseline[<its name>]`. Without declared gates the run discovers them and
-   the baseline; copy the result's `gates` into the profile.
-3. **Run**, with the args ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)), by one of two callers:
-   - the main thread, from the chat: `Workflow({scriptPath: '<core>/.claude/workflows/ticket-tdd.js', args})`;
-   - the project's profile workflow, which holds only the profile and calls
-     `workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`.
-
-   A launch by `name` runs the scripts as they were at session start.
-4. **After**: save the spans, `node <core>/.claude/workflows/ticket-tdd/trace.mjs <wf dir> > <run>/trace.jsonl`
-   ([`tracing.md`](docs/ticket-tdd/tracing.md)); `verdicts` holds no `DIED` or `SILENT` and `failures` is empty; read
-   `leftover_findings` and `verify_launch`, then the commits; re-run the gates; fast-forward `<branch>` to `wf/<name>`;
-   free the run directory (`git worktree prune`, then delete every directory under `run`, keeping its top-level files);
-   remove the worktree.
-
-Clarifications: [`mailbox.md`](docs/ticket-tdd/mailbox.md).
-
 ## Docs
 
+- [`launch.md`](docs/ticket-tdd/launch.md): the agent's steps around a run.
 - [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md): `args`, `profile`, model presets.
 - [`stages.md`](docs/ticket-tdd/stages.md): what the script does with each stage's output.
 - [`blocks.md`](docs/ticket-tdd/blocks.md): block contract, plug-ins, conformance check.
