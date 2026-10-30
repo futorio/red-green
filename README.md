@@ -20,19 +20,15 @@ drop a requirement or finish with red gates.
    by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
 3. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
    check it.
+4. Make the start skill visible in every project: `ln -s <core>/skills/ticket-tdd-start ~/.claude/skills/`.
 
 ## Getting started
 
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Open Claude Code in the project and say:
-
-   ```
-   Run the ticket-tdd workflow from <core> on <ticket path>; follow <core>/docs/ticket-tdd/launch.md.
-   ```
-
-   The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
+2. Open Claude Code in the project and run `/ticket-tdd-start <ticket path>`
+   ([`SKILL.md`](skills/ticket-tdd-start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
    it runs: tell the agent, it passes it on ([`mailbox.md`](docs/ticket-tdd/mailbox.md)).
 3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
    (launching the app, say). It fast-forwards your branch once its own checks pass; anything you do not like, ask it
@@ -59,7 +55,6 @@ In the order a run takes them ([`stages.md`](docs/ticket-tdd/stages.md) has each
 
 ## Docs
 
-- [`launch.md`](docs/ticket-tdd/launch.md): the agent's steps around a run.
 - [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md): `args`, `profile`, model presets.
 - [`stages.md`](docs/ticket-tdd/stages.md): what the script does with each stage's output.
 - [`blocks.md`](docs/ticket-tdd/blocks.md): block contract, plug-ins, conformance check.
