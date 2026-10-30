@@ -8,8 +8,9 @@ drop a requirement or finish with red gates.
   a requirement no case covers sends the plan back, then shows up in the result instead of vanishing.
 - **Reviewed until clean.** Two review lenses, one against the ticket and one on the code, run for at least two rounds;
   a fix agent answers every finding, and mutation testing checks the new tests actually catch broken code.
-- **Any project, one shared copy.** Your gates, rules and models come in a profile; nothing is copied into the project,
-  and every run can leave a trace of time and tokens per stage.
+- **Configurable down to each prompt.** Every stage is a block you tune (model, rounds, gates, mutation tool) or replace
+  with your own prompt or skill, or start from a ready preset: `standard`, `hard`, `cheap`. Nothing is copied into the
+  project, and every run can leave a trace of time and tokens per stage.
 
 ## Install
 
