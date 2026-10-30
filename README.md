@@ -1,21 +1,20 @@
 # ticket-tdd: research, TDD, review loop
 
-A Workflow run that implements one ticket or one spec in any git repository. The script is
-`.claude/workflows/ticket-tdd.js`; `.claude/workflows/ticket-tdd/` holds what its agents read and run (`skills/`,
-the mutant runner [`skills/mutate.mjs`](.claude/workflows/ticket-tdd/skills/mutate.mjs)) and `workflow-doctor.sh`.
-This repository is the one shared copy: projects run it in place, never copy it. Pin a version by checking out a tag or
-commit; a project's `docs/agents/ticket-workflow.md` records the commit its profile was rendered against.
+A Claude Code Workflow that takes one ticket or spec and hands back commits on a branch: implemented test-first,
+reviewed and fixed. Each step is a separate agent whose output the script checks, so a run cannot quietly skip tests,
+drop a requirement or finish with red gates.
 
-The core knows nothing about any one project. What a project adds (gates, rules, mutant commands) arrives in
-`args.profile`. Two callers, `<core>` being this repository's absolute path:
-
-- the main thread, from the chat: `Workflow({scriptPath: '<core>/.claude/workflows/ticket-tdd.js', args})`;
-- the project's profile workflow, which holds only the profile and calls
-  `workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`.
+- **Tests planned before code.** Research lists the ticket's requirements; the planner turns each into test cases, and
+  a requirement no case covers sends the plan back, then shows up in the result instead of vanishing.
+- **Reviewed until clean.** Two review lenses, one against the ticket and one on the code, run for at least two rounds;
+  a fix agent answers every finding, and mutation testing checks the new tests actually catch broken code.
+- **Any project, one shared copy.** Your gates, rules and models come in a profile; nothing is copied into the project,
+  and every run can leave a trace of time and tokens per stage.
 
 ## Install
 
-1. Clone this repository anywhere; its absolute path is `<core>`. Nothing is copied into a project.
+1. Clone this repository anywhere; its absolute path is `<core>`. Nothing is copied into a project. Pin a version by
+   checking out a tag or commit.
 2. Run `<core>/.claude/workflows/ticket-tdd/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
    by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
 3. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
@@ -60,8 +59,12 @@ one more round (a loop that ran out of rounds runs it after the loop). 6b minor 
 2. **Baseline**: run each gate of `profile.blocks.gates.gates` in the worktree; its summary line, and any failure
    already there with its cause, becomes `args.baseline[<its name>]`. Without declared gates the run discovers them and
    the baseline; copy the result's `gates` into the profile.
-3. **Run**: by either caller above, with the args ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)). A
-   launch by `name` runs the scripts as they were at session start.
+3. **Run**, with the args ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)), by one of two callers:
+   - the main thread, from the chat: `Workflow({scriptPath: '<core>/.claude/workflows/ticket-tdd.js', args})`;
+   - the project's profile workflow, which holds only the profile and calls
+     `workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`.
+
+   A launch by `name` runs the scripts as they were at session start.
 4. **After**: save the spans, `node <core>/.claude/workflows/ticket-tdd/trace.mjs <wf dir> > <run>/trace.jsonl`
    ([`tracing.md`](docs/ticket-tdd/tracing.md)); `verdicts` holds no `DIED` or `SILENT` and `failures` is empty; read
    `leftover_findings` and `verify_launch`, then the commits; re-run the gates; fast-forward `<branch>` to `wf/<name>`;
