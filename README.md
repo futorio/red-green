@@ -25,24 +25,10 @@ drop a requirement or finish with red gates.
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Optional, once per project: a profile workflow `.claude/workflows/ticket-tdd-<project>.js` with the project's
-   gates and rules ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)):
-
-   ```js
-   export const meta = {
-     name: 'ticket-tdd-<project>',
-     description: 'ticket-tdd with this repository\'s profile',
-     whenToUse: 'Implement a ticket or spec of this repository',
-   }
-   const PROFILE = {
-     commit: 'follow docs/agents/commits.md',
-     blocks: { gates: { gates: [{ name: 'tests', command: 'npm test' }] } },
-   }
-   // scriptPath, not a call by name: the core is read from disk, not from the session-start snapshot.
-   return await workflow({ scriptPath: args.tools + '/.claude/workflows/ticket-tdd.js' }, { ...args, profile: PROFILE })
-   ```
-
-   Without it, the main thread passes `profile` in the args itself, and a run with no declared gates discovers them.
+2. Optional: fit it to the project. Every stage is configurable (its model, rounds, gates, mutation tool, or your own
+   prompt or skill in place of the default), and a model preset picks the models for a kind of ticket:
+   [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md), [`blocks.md`](docs/ticket-tdd/blocks.md). With no
+   profile the run discovers the project's gates itself.
 3. In the project's Claude Code chat, ask: "run ticket-tdd from `<core>` on `<ticket path>`". The agent does the
    rest ([`launch.md`](docs/ticket-tdd/launch.md)): a worktree, the gates' baseline, the run, its checks, the branch
    fast-forward. You read what it reports: the commits and any finding left over.
