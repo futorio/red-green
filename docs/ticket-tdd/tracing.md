@@ -11,8 +11,6 @@ span is:
   a call's model spans add up to its tokens.
 - `core`: the run's time between calls, when the script alone works.
 
-The core and its prompts know nothing of tracing.
-
 ```
 cd .claude/workflows/ticket-tdd
 node trace.mjs <wf dir> [--project NAME]               # spans as JSONL
@@ -21,10 +19,8 @@ node trace.mjs <wf dir> [--project NAME] --chrome      # a timeline: open it in 
 node trace.mjs <wf dir> [--project NAME] --speedscope  # a flame chart and graph: open it in speedscope.app
 ```
 
-A block's seconds add its calls' durations, so parallel lenses can sum past the run; the total is wall time. The
-speedscope file has three profiles weighted by seconds, input tokens (`in` + `cache_read` + `cache_write`) and output
-tokens, stacked block > call > `model`, a tool or `core`. Nothing is uploaded.
+A block's seconds sum its calls' durations, so parallel lenses can exceed wall time.
 
 The one adapter reads a Claude Code Workflow run (`harness` `claude-code-workflow`) from
 `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`; `project` is the launch directory unless
-`--project` names it. Another runtime needs its own adapter.
+`--project` names it.

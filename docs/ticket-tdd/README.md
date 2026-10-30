@@ -29,7 +29,7 @@ round (a loop that ran out of rounds runs it after the loop). 6b minor fix comes
    `verify_launch`, then the commits; re-run the gates; fast-forward `<branch>` to `wf/<name>`; free the run directory
    (`git worktree prune`, then delete every directory under `run`, keeping its top-level files); remove the worktree.
 
-A clarification mid-run goes in `<run>/mailbox.md`, started with the header in [`mailbox.md`](mailbox.md), verbatim.
+Clarifications: [`mailbox.md`](mailbox.md).
 
 ## Chapters
 
