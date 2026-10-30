@@ -26,13 +26,21 @@ drop a requirement or finish with red gates.
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Optional: fit it to the project. Every stage is configurable (its model, rounds, gates, mutation tool, or your own
-   prompt or skill in place of the default), and a model preset picks the models for a kind of ticket:
-   [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md), [`blocks.md`](docs/ticket-tdd/blocks.md). With no
-   profile the run discovers the project's gates itself.
-3. In the project's Claude Code chat, ask: "run ticket-tdd from `<core>` on `<ticket path>`". The agent does the
-   rest ([`launch.md`](docs/ticket-tdd/launch.md)): a worktree, the gates' baseline, the run, its checks, the branch
-   fast-forward. You read what it reports: the commits and any finding left over.
+2. Open Claude Code in the project and say:
+
+   ```
+   Run the ticket-tdd workflow from <core> on <ticket path>; follow <core>/docs/ticket-tdd/launch.md.
+   ```
+
+   The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
+   it runs: tell the agent, it passes it on ([`mailbox.md`](docs/ticket-tdd/mailbox.md)).
+3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
+   (launching the app, say). It fast-forwards your branch once its own checks pass; anything you do not like, ask it
+   to fix in the same chat.
+
+To fit the run to the project, configure its stages (model, rounds, gates, mutation tool, your own prompt or skill)
+or pick a model preset: [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md),
+[`blocks.md`](docs/ticket-tdd/blocks.md). Without any of it the run discovers the project's gates itself.
 
 ## Shape
 
