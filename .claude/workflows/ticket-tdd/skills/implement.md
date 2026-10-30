@@ -1,6 +1,6 @@
 # Implement
 
-Where these rules come from: README § Stages › Implementation.
+Where these rules come from: docs/ticket-tdd/stages.md.
 
 Implement the work described by the ticket, using the research output and the test cases the
 workflow hands you. Follow `tdd/SKILL.md` at the seams the test cases name.

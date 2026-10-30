@@ -1,5 +1,5 @@
 // Renders the ticket-tdd core from core/*.js and a config, or one stage prompt of that render for a case.
-// README § Template.
+// docs/ticket-tdd/maintaining.md.
 //
 //     node render.mjs [config.json]                                     the workflow script, on stdout
 //     node render.mjs [config.json] --case case.json --prompt <label>   the prompt the agent labelled <label> receives

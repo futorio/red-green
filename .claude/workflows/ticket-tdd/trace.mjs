@@ -1,5 +1,5 @@
 // Spans of a workflow run in a shape no runtime owns: agent calls, the tool calls and model time inside each, and the
-// core's time between calls. README § Tracing.
+// core's time between calls. docs/ticket-tdd/tracing.md.
 //
 //     node trace.mjs <wf dir> [--project NAME]                  spans as JSONL
 //     node trace.mjs <wf dir> [--project NAME] --table          the table per block and round

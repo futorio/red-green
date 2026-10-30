@@ -1,6 +1,6 @@
 # ticket-tdd
 
-The ticket-tdd Workflow core: `.claude/workflows/ticket-tdd/README.md`, the workflow script and its template.
+The ticket-tdd Workflow core: `docs/ticket-tdd/README.md`, the workflow script and its template.
 
 A project's profile workflow loads the core from this checkout by absolute path (`args.core`), so a project needs the
 checkout to run the workflow. Pin a version by checking out a tag or commit; a project's `docs/agents/ticket-workflow.md`

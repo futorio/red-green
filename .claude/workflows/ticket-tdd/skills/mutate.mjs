@@ -1,7 +1,7 @@
 // Runs each mutant [{target, patch}] in a detached worktree of its own at HEAD, one at a time, and prints the list
 // with a status each: not_run (the patch does not apply), invalid (build non-zero or past the timeout), killed (test
 // non-zero or past the timeout), survived. Build and test each get the full timeout. Exit 0 a completed run, 2 did
-// not run (stderr says why). README § profile.
+// not run (stderr says why). docs/ticket-tdd/stages.md.
 //
 //     node mutate.mjs --mutants <file.json> --repo <repo> --head <sha> --dir <run dir> --test <cmd> [--build <cmd>] [--timeout <s>]
 import { readFileSync } from 'node:fs'

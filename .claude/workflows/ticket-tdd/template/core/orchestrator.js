@@ -1,10 +1,10 @@
 // The orchestrator: args, the round loop, findings, failures and the result. render.mjs replaces each @include line
-// with that part of a block file. README § Template.
+// with that part of a block file. docs/ticket-tdd/maintaining.md.
 // @part main
 export const meta = {
   name: 'ticket-tdd',
   description: 'Implement one ticket: research, TDD with coverage-checked test cases, review/fix loop',
-  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See .claude/workflows/ticket-tdd/README.md',
+  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. See docs/ticket-tdd/README.md',
   phases: [
     { title: 'Research' },
     { title: 'Plan' },
@@ -25,7 +25,7 @@ const TARGET = A.target
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
 const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
 const P = A.profile || {}
-// Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (README § Blocks).
+// Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/ticket-tdd/blocks.md).
 const DEFAULTS = {{defaults}}
 // @include shared text
 // @include shared validate
@@ -55,7 +55,7 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include registry registry
 // @include registry call
 // @include shared config
-// Each block's config: the render config's defaults, profile.blocks.<name> over them (README § Blocks).
+// Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/ticket-tdd/blocks.md).
 const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
 const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'minor-fix': 'fix' }
@@ -252,7 +252,7 @@ const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').
 // @include proofs settle
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
-// Freeing the run directory is the main thread's step after acceptance (README § Shape).
+// Freeing the run directory is the main thread's step after acceptance (docs/ticket-tdd/README.md).
 return {
   status: failures.length ? 'done_with_failures' : impl.unverified.length ? 'done_unverified' : 'done',
   rounds_planned: N,
