@@ -23,7 +23,9 @@ The core knows nothing about any one project. What a project adds (gates, rules,
 
 ## Getting started
 
-1. Write the ticket or spec in the project, a markdown file; its path is `args.target`.
+1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
+   from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
+   Any other task statement works too.
 2. Optional, once per project: a profile workflow `.claude/workflows/ticket-tdd-<project>.js` with the project's
    gates and rules ([`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md)):
 
