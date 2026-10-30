@@ -6,9 +6,11 @@ the mutant runner [`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skill
 it in place, never copy it.
 
 The core knows nothing about any one project. What a project adds (gates, rules, mutant commands) arrives in
-`args.profile`. The project's profile workflow is the only caller: it holds `args.profile` and nothing else, and calls
-`workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`, `<core>`
-being this repository's absolute path.
+`args.profile`. Two callers, `<core>` being this repository's absolute path:
+
+- the main thread, from the chat: `Workflow({scriptPath: '<core>/.claude/workflows/ticket-tdd.js', args})`;
+- the project's profile workflow, which holds only the profile and calls
+  `workflow({ scriptPath: '<core>/.claude/workflows/ticket-tdd.js' }, {...args, tools: '<core>', profile})`.
 
 ## Shape
 
@@ -23,9 +25,10 @@ round (a loop that ran out of rounds runs it after the loop). 6b minor fix comes
 2. **Baseline**: run each gate of `profile.blocks.gates.gates` in the worktree; its summary line, and any failure
    already there with its cause, becomes `args.baseline[<its name>]`. Without declared gates the run discovers them and
    the baseline; copy the result's `gates` into the profile.
-3. **Run**: start the profile workflow with the args ([`args-and-profile.md`](args-and-profile.md)). A launch by `name`
+3. **Run**: by either caller above, with the args ([`args-and-profile.md`](args-and-profile.md)). A launch by `name`
    runs the scripts as they were at session start.
-4. **After**: `verdicts` holds no `DIED` or `SILENT` and `failures` is empty; read `leftover_findings` and
+4. **After**: save the spans, `node <core>/.claude/workflows/ticket-tdd/trace.mjs <wf dir> > <run>/trace.jsonl`
+   ([`tracing.md`](tracing.md)); `verdicts` holds no `DIED` or `SILENT` and `failures` is empty; read `leftover_findings` and
    `verify_launch`, then the commits; re-run the gates; fast-forward `<branch>` to `wf/<name>`; free the run directory
    (`git worktree prune`, then delete every directory under `run`, keeping its top-level files); remove the worktree.
 
