@@ -17,6 +17,17 @@ Rules for every agent of this run:
 
 `to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`.
 
+An entry:
+
+```
+## m3
+to: review:*:code
+round: 2
+until: fix
+supersedes: m1
+An empty input list is valid: it returns an empty result, not an error.
+```
+
 ## The main thread
 
 - An entry for a stage that already ran is not seen: post it to the next one. A change of scope is a new ticket.

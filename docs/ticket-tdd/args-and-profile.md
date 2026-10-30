@@ -19,13 +19,13 @@ and `profile.research` fail the run before any agent (`stage: config`); the note
 
 ## Model presets
 
-Values for `profile.blocks`, from the wf-ablation stage tournament. Unmeasured: a lighter research model, fix on haiku.
+Values for `profile.blocks`.
 
-| preset | for | `profile.blocks` | why |
-|---|---|---|---|
-| standard | most | `{"implement": {"model": "haiku"}, "fix": {"model": "sonnet"}}` | models tie on implement; haiku is cheapest |
-| hard | concurrency, determinism, cross-cutting | `{}` (sonnet implement and fix) | insurance |
-| cheap | docs, config, small edits | `{"research": {"model": "sonnet"}, "plan": {"model": "opus"}, "implement": {"model": "haiku"}, "fix": {"model": "haiku"}}` | research costs most (opus ~$4.3, sonnet ~$1.2 a case); sonnet unmeasured |
+| preset | for | `profile.blocks` |
+|---|---|---|
+| standard | most | `{"implement": {"model": "haiku"}, "fix": {"model": "sonnet"}}` |
+| hard | concurrency, determinism, cross-cutting | `{}` (sonnet implement and fix) |
+| cheap | docs, config, small edits | `{"research": {"model": "sonnet"}, "plan": {"model": "opus"}, "implement": {"model": "haiku"}, "fix": {"model": "haiku"}}` |
 
 ## `profile`
 
