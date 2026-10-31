@@ -29,6 +29,7 @@ Values for `profile.blocks`.
 
 ## `profile`
 
+A project keeps its profile in `.claude/red-green/profile.json`; `/red-green:start` passes it as `args.profile`.
 Every field is optional.
 
 | field | type | where it lands |

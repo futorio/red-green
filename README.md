@@ -35,7 +35,8 @@ drop a requirement or finish with red gates.
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
 2. Open Claude Code in the project and run `/red-green:start <ticket path>`
-   ([`SKILL.md`](skills/start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
+   ([`SKILL.md`](skills/start/SKILL.md)). The agent checks the profile file, makes a worktree, measures the project's
+   gates and their seconds, starts the run and waits for it. Something to add while
    it runs: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
 3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
    (launching the app, say). It fast-forwards your branch once its own checks pass; anything you do not like, ask it
