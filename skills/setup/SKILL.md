@@ -1,6 +1,7 @@
 ---
 name: setup
-description: Write or update the current project's red-green profile file (gates, code rules, model preset, block prompts) from its CI, build and rule files. Use when the user asks to set up, configure or re-configure red-green in a project.
+description: Set this project up for red-green, or change its setup: profile file (gates, code rules, models, block prompts) and the agent instructions section.
+disable-model-invocation: true
 ---
 
 # Set a project up for red-green
@@ -8,8 +9,8 @@ description: Write or update the current project's red-green profile file (gates
 You write the project's profile file, `.claude/red-green/profile.json`, from what the project's own files say and what
 the user picks. The profile's shape is `${CLAUDE_PLUGIN_ROOT}/docs/red-green/args-and-profile.md`; read it first.
 
-This is a read-only survey: every candidate command stays unrun, so the table holds only what the files and CI history
-say. The user's picks alone decide the gates.
+Every candidate command stays unrun, so the table holds only what the files and CI history say. The user's picks
+alone decide the gates.
 
 ## 1. Machine
 
@@ -40,14 +41,14 @@ Build one table, a row per candidate:
 |---|---|---|---|
 | the command as the project runs it | file and line | lint, type check, test or build | recent duration, or `-` |
 
-A command that needs the project root as its working directory names it as `{{repo}}` (`cd {{repo}} && npm test`); a
-current gate the profile already declares joins the table with `profile` as its source.
+A current gate the profile already declares joins the table with `profile` as its source.
 
 Done when every CI step and build-file target that checks code has a row, and every row has all four columns.
 
 ## 4. Rule candidates
 
-Read the rule files: `AGENTS.md`, `CLAUDE.md`, contributing and style guides, linter and formatter configs, leaving out the `## red-green` section step 8 writes. Draft:
+Read the rule files: `AGENTS.md`, `CLAUDE.md`, contributing and style guides, linter and formatter configs, leaving
+out the `## red-green` section step 8 writes. Draft:
 
 - `code_rules`: one line per convention the code must follow that no gate in the table already enforces.
 - `commit`: the commit-message rule, when a file states one.
@@ -58,7 +59,8 @@ Done when every rule file is read and each draft names the file it came from.
 
 ## 5. Picks
 
-Show the user the table and the drafts, then ask for:
+Show the user the table and the drafts, then ask one question at a time, in this order, each led by your recommended
+answer:
 
 1. The gates: which rows, and a short unique `name` for each.
 2. The code rules and the commit rule to keep.
@@ -74,8 +76,7 @@ Start from the current profile and set only what the user decided in step 5:
 
 - `blocks.gates.gates`: the picked gates as `{name, command}`.
 - `code_rules`, `commit`: the kept rules.
-- A preset: `research`, `plan`, `implement` and `fix` each take the preset's `model`, or lose the `model` key where
-  the preset gives none.
+- A preset: set each `model` its row gives, and remove `model` from every other block that any preset row names.
 - A block's `prompt` or `skill`: set it, and remove the other of the two on that block.
 
 Every other key, block and field stays exactly as it was. Write the result to `.claude/red-green/profile.json` as
@@ -101,8 +102,8 @@ Give it this section, replacing an existing `## red-green` section in place:
 ```markdown
 ## red-green
 
-To implement a ticket or spec, run `/red-green:start <path>`. Its profile is `.claude/red-green/profile.json`;
-`/red-green:setup` changes it.
+To implement a ticket or spec, offer the user `/red-green:start <path>`. Gates, rules and models live in
+`.claude/red-green/profile.json`; `/red-green:setup` changes them.
 ```
 
 Done when the file has exactly one `## red-green` section with this text and the rest of the file is unchanged.

@@ -1,14 +1,14 @@
 ---
 name: start
-description: Run the red-green workflow on a ticket or spec file of the current project, from worktree to fast-forward. Use when the user asks to implement, run or start a ticket or spec with red-green.
+description: Run red-green on one ticket or spec of this project, from worktree to fast-forward.
+disable-model-invocation: true
 ---
 
 # Start a red-green run
 
 You are the main thread: you prepare the run, launch it, accept it and report. The user names only the ticket.
 
-`<tools>` is `${CLAUDE_PLUGIN_ROOT}`, the core's checkout. The core's docs are `<tools>/docs/red-green/`; read a
-chapter when a step names it.
+`<tools>` is `${CLAUDE_PLUGIN_ROOT}`, the core's checkout.
 
 ## 1. Inputs
 
@@ -31,14 +31,15 @@ value or a step below that gives it.
 `git worktree add ../wt-<name> -b wf/<name> <branch>`. `repo` is its absolute path, `branch` is `wf/<name>`. Copy or
 symlink into it any gitignored file the project's gates need.
 
-Done when `repo` has `wf/<name>` checked out at `base`.
+Done when `repo` has `wf/<name>` checked out at `base` and every gitignored file the gates read is in it.
 
 ## 3. Baseline
 
 Run each declared gate (`profile.blocks.gates.gates`) in the worktree, its command's placeholders filled from the args
 ([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)), and time it. Its summary line, and any failure
 already there with its cause, becomes `args.baseline[<gate name>]`. Write `<run>/gates.json` as
-`{<gate name>: {seconds, line}}` and give the user a line per gate: name, seconds, summary line. No declared gates: skip; the run discovers them and their baseline.
+`{<gate name>: {seconds, line}}` and give the user a line per gate: name, seconds, summary line. No declared gates:
+skip; the run discovers them and their baseline.
 
 Done when `baseline` and `gates.json` have an entry per declared gate, each with its seconds in the report.
 
@@ -61,10 +62,10 @@ Done when the run's result is in.
 2. Read the result ([`result.md`](../../docs/red-green/result.md)): `verdicts` holds no `DIED` or `SILENT`, and
    `failures` is empty.
 3. Read every commit on `wf/<name>` and re-run the gates in the worktree.
-4. Green, and the user did not ask to hold: fast-forward `<branch>` to `wf/<name>`. Otherwise leave both branches and
-   say why.
-5. Free the run directory (`git worktree prune`, then delete every directory under `run`, keeping its top-level files,
-   `trace.jsonl` and `gates.json` among them) and remove the worktree.
+4. Green (2 and 3 pass), and the user did not ask to hold: fast-forward `<branch>` to `wf/<name>`. Otherwise leave
+   both branches and say why.
+5. Remove the worktree (`git worktree remove <repo>`), delete every directory under `run` (keeping its top-level files,
+   `trace.jsonl` and `gates.json` among them), then `git worktree prune`.
 
 Done when `trace.jsonl` and `gates.json` are in `run`, `run` holds no directory, the worktree is removed, and the
 branch is fast-forwarded or the reason it is not is in the report.
