@@ -34,10 +34,13 @@ drop a requirement or finish with red gates.
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Open Claude Code in the project and run `/red-green:start <ticket path>`
+2. Once per project, run `/red-green:setup` ([`SKILL.md`](skills/setup/SKILL.md)): it reads the project's CI, build
+   and rule files, lets you pick the gates, code rules and model preset, and writes `.claude/red-green/profile.json`.
+   It runs none of the project's commands; run it again to change the profile.
+3. Open Claude Code in the project and run `/red-green:start <ticket path>`
    ([`SKILL.md`](skills/start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
    it runs: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
-3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
+4. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
    (launching the app, say). It fast-forwards your branch once its own checks pass; anything you do not like, ask it
    to fix in the same chat.
 
