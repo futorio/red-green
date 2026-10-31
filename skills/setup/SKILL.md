@@ -13,8 +13,7 @@ say. The user's picks alone decide the gates.
 
 ## 1. Current profile
 
-Read `.claude/red-green/profile.json` when it exists. Its keys are the user's: the merge in step 5 replaces only the
-keys the user decides in step 4.
+Read `.claude/red-green/profile.json` when it exists; step 5 merges into it.
 
 Done when you hold the current profile, or know the file is new.
 
@@ -91,3 +90,5 @@ Done when the check exits 0.
 
 Tell the user the file's path, what changed in it, that it is meant to be committed, and that
 `/red-green:start <ticket path>` now runs with it.
+
+Done when the user has all four.

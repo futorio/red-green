@@ -50,7 +50,7 @@ start):
 `Workflow({scriptPath: '<tools>/.claude/workflows/red-green.js', args: {target, repo, branch, tools: '<tools>', run, base, baseline, profile}})`
 
 The run goes on in the background. A detail the user adds meanwhile goes to the run's mailbox
-([`mailbox.md`](../../docs/red-green/mailbox.md)); the run is never stopped to add one.
+([`mailbox.md`](../../docs/red-green/mailbox.md)), and the run keeps going.
 
 Done when the run's result is in.
 
@@ -66,7 +66,8 @@ Done when the run's result is in.
 5. Free the run directory (`git worktree prune`, then delete every directory under `run`, keeping its top-level files,
    `trace.jsonl` and `gates.json` among them) and remove the worktree.
 
-Done when the branch is fast-forwarded or the reason it is not is in the report.
+Done when `trace.jsonl` and `gates.json` are in `run`, `run` holds no directory, the worktree is removed, and the
+branch is fast-forwarded or the reason it is not is in the report.
 
 ## 6. Report
 
