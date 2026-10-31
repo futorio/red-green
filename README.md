@@ -21,16 +21,27 @@ drop a requirement or finish with red gates.
 
 ## Install
 
-1. In the project, add this repository as a marketplace and install the plugin with project scope:
+1. In the project, add this repository as a marketplace (a catalog the plugin is installed from), then install the
+   plugin with project scope. Both land in the project's `.claude/settings.json`.
+
+   Local, from a checkout on this machine; the plugin loads in place, so edits to the checkout apply at once. The
+   path is committed with the settings and means nothing on another machine, so this is for yourself:
 
    ```sh
-   claude plugin marketplace add --scope project <core>
+   claude plugin marketplace add --scope project /path/to/red-green
    claude plugin install --scope project red-green@red-green
    ```
 
-   `<core>` is a local path, which loads the plugin in place, or the git remote; pin a version as
-   `<remote>#<tag or branch>`. The project's sessions then have the workflow `/red-green:red-green-workflow` and the
-   skills `/red-green:setup` and `/red-green:start`.
+   Remote, from the git repository; Claude Code clones it, and collaborators get the same plugin. Pin a version with
+   `#<tag or branch>`:
+
+   ```sh
+   claude plugin marketplace add --scope project <git url or owner/repo>#<tag or branch>
+   claude plugin install --scope project red-green@red-green
+   ```
+
+   The project's sessions then have the workflow `/red-green:red-green-workflow` and the skills `/red-green:setup`
+   and `/red-green:start`.
 2. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout (the local path, or
    `~/.claude/plugins/marketplaces/red-green/` for a git remote): it checks `claude`, `git` and `node`, and lists the
    rest to confirm by hand.
