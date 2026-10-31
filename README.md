@@ -14,20 +14,27 @@ drop a requirement or finish with red gates.
 
 ## Install
 
-1. Clone this repository anywhere; its absolute path is `<core>`. Nothing is copied into a project. Pin a version by
-   checking out a tag or commit.
-2. Run `<core>/.claude/workflows/red-green/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
+1. Clone this repository anywhere; its absolute path is `<core>`. The repository is a plugin marketplace, and the
+   plugin loads in place from it. Pin a version by checking out a tag or commit.
+2. In the project, add the marketplace and install the plugin with project scope:
+
+   ```sh
+   claude plugin marketplace add --scope project <core>
+   claude plugin install --scope project red-green@red-green
+   ```
+
+   The project's sessions then have the workflow `/red-green:red-green` and the skill `/red-green:start`.
+3. Run `<core>/.claude/workflows/red-green/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
    by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
-3. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
+4. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
    check it.
-4. Make the start skill visible in every project: `ln -s <core>/skills/start ~/.claude/skills/`.
 
 ## Getting started
 
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Open Claude Code in the project and run `/start <ticket path>`
+2. Open Claude Code in the project and run `/red-green:start <ticket path>`
    ([`SKILL.md`](skills/start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
    it runs: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
 3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make

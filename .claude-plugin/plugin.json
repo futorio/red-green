@@ -1,0 +1,6 @@
+{
+  "name": "red-green",
+  "description": "Implement one ticket or spec: research, test-first implementation, review and fix loop",
+  "author": { "name": "Futorio" },
+  "workflows": "./.claude/workflows/"
+}
