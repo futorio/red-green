@@ -21,6 +21,7 @@ the copy:
 node template/render.mjs > ../red-green.js
 node template/render.mjs | diff - ../red-green.js
 node template/render.mjs [config.json] --case case.json --prompt <label> [--json]  # one stage's prompt
+node template/render.mjs [config.json] --check profile.json  # a profile through the config stage
 ```
 
 The `// @part` and `// @include` mechanics are in [`render.mjs`](../../.claude/workflows/red-green/template/render.mjs); a missing part, or one included never or twice, is an error.

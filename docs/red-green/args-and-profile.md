@@ -68,8 +68,7 @@ the note naming where it is: `profile.code_rules[0]: unknown placeholder {{nope}
 ## Profile check
 
 ```
-cd .claude/workflows/red-green
-node template/render.mjs [config.json] --check profile.json
+node ${CLAUDE_PLUGIN_ROOT}/.claude/workflows/red-green/template/render.mjs --check .claude/red-green/profile.json
 ```
 
 Runs a profile through the run's own placeholder check, merge and validator, with no agent and no cost. It exits 0 when

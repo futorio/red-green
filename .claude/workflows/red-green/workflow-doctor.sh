@@ -9,10 +9,9 @@ Exit 0: every checkable dependency is present. Exit 1: something is missing.
 Checked here:
   claude     Claude Code CLI.
   git        the run works in a worktree of its own and commits there.
-  No plugin is used.
 
 Not checkable from a shell — confirm by hand:
-  Workflow tool   gated per account; the project profile runs the core by scriptPath.
+  Workflow tool   gated per account; the red-green plugin provides the workflow.
   models          stages ask for opus, sonnet and haiku; profile.blocks.<name>.model changes them.'
 
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { printf '%s\n' "$HELP"; exit 0; }

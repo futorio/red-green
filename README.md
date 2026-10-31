@@ -14,8 +14,8 @@ drop a requirement or finish with red gates.
 
 ## Install
 
-1. Clone this repository anywhere; its absolute path is `<core>`. The repository is a plugin marketplace, and the
-   plugin loads in place from it. Pin a version by checking out a tag or commit.
+1. This repository is a plugin marketplace. Add it from a local path or its git remote; `<core>` below is either one.
+   A local-path marketplace loads the plugin in place. Pin a version by marketplace ref: `<remote>#<tag or commit>`.
 2. In the project, add the marketplace and install the plugin with project scope:
 
    ```sh
@@ -24,7 +24,7 @@ drop a requirement or finish with red gates.
    ```
 
    The project's sessions then have the workflow `/red-green:red-green` and the skills `/red-green:setup` and `/red-green:start`.
-3. Run `<core>/.claude/workflows/red-green/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
+3. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout: it checks `claude` and `git`, and lists what to confirm
    by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
 4. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
    check it.
@@ -75,4 +75,4 @@ In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each 
 - [`maintaining.md`](docs/red-green/maintaining.md): tests, template, new blocks and fields, prompts.
 
 The workflow is measured in the separate `~/projects/wf-ablation` repository, which runs against this checkout through
-`TICKET_TDD_CORE`.
+`TICKET_TDD_CORE`. It still builds the old `ticket-tdd` paths from it and has to be adapted in its own repository.

@@ -24,4 +24,4 @@ A block's seconds sum its calls' durations, so parallel lenses can exceed wall t
 The one adapter reads a Claude Code Workflow run (`harness` `claude-code-workflow`) from
 `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`; `project` is the launch directory unless
 `--project` names it. Claude Code deletes those files after a while, so the main thread saves the spans to
-`<run>/trace.jsonl` right after the run ([`red-green-start`](../../skills/start/SKILL.md), step 5).
+`<run>/trace.jsonl` right after the run ([`/red-green:start`](../../skills/start/SKILL.md), step 5).
