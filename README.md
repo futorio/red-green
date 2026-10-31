@@ -19,32 +19,31 @@ drop a requirement or finish with red gates.
 - `node`: setup and start check the profile, a run mutates code, start saves the trace.
 - Optional: `gh`, for the recent GitHub Actions durations setup shows.
 
+`/red-green:setup` checks the tools with `workflow-doctor.sh` and lists the rest to confirm by hand.
+
 ## Install
 
-1. In the project, add this repository as a marketplace (a catalog the plugin is installed from), then install the
-   plugin with project scope. Both land in the project's `.claude/settings.json`.
+In the project, add this repository as a marketplace (a catalog the plugin is installed from), then install the
+plugin with project scope. Both land in the project's `.claude/settings.json`.
 
-   Local, from a checkout on this machine; the plugin loads in place, so edits to the checkout apply at once. The
-   path is committed with the settings and means nothing on another machine, so this is for yourself:
+Local, from a checkout on this machine; the plugin loads in place, so edits to the checkout apply at once. The
+path is committed with the settings and means nothing on another machine, so this is for yourself:
 
-   ```sh
-   claude plugin marketplace add --scope project /path/to/red-green
-   claude plugin install --scope project red-green@red-green
-   ```
+```sh
+claude plugin marketplace add --scope project /path/to/red-green
+claude plugin install --scope project red-green@red-green
+```
 
-   Remote, from the git repository; Claude Code clones it, and collaborators get the same plugin. Pin a version with
-   `#<tag or branch>`:
+Remote, from the git repository; Claude Code clones it, and collaborators get the same plugin. Pin a version with
+`#<tag or branch>`:
 
-   ```sh
-   claude plugin marketplace add --scope project <git url or owner/repo>#<tag or branch>
-   claude plugin install --scope project red-green@red-green
-   ```
+```sh
+claude plugin marketplace add --scope project <git url or owner/repo>#<tag or branch>
+claude plugin install --scope project red-green@red-green
+```
 
-   The project's sessions then have the workflow `/red-green:red-green-workflow` and the skills `/red-green:setup`
-   and `/red-green:start`.
-2. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout (the local path, or
-   `~/.claude/plugins/marketplaces/red-green/` for a git remote): it checks `claude`, `git` and `node`, and lists the
-   rest to confirm by hand.
+The project's sessions then have the workflow `/red-green:red-green-workflow` and the skills `/red-green:setup`
+and `/red-green:start`.
 
 ## Getting started
 
@@ -53,7 +52,8 @@ drop a requirement or finish with red gates.
    Any other task statement works too.
 2. Once per project, run `/red-green:setup` ([`SKILL.md`](skills/setup/SKILL.md)): it reads the project's CI, build
    and rule files, lets you pick the gates, code rules and model preset, and writes `.claude/red-green/profile.json`.
-   It runs none of the project's commands; run it again to change the profile.
+   It also adds a `## red-green` section to `CLAUDE.md` or `AGENTS.md`, so the project's sessions know to run
+   `/red-green:start`. It runs none of the project's commands; run it again to change the profile.
 3. Open Claude Code in the project and run `/red-green:start <ticket path>`
    ([`SKILL.md`](skills/start/SKILL.md)). The agent checks the profile file, makes a worktree, measures the project's
    gates and their seconds, starts the run and waits for it. Something to add while
