@@ -1,5 +1,5 @@
 {
-  "name": "ticket-tdd",
+  "name": "red-green",
   "description": "The red-green workflow and its skills",
   "owner": { "name": "Futorio" },
   "plugins": [

@@ -20,7 +20,7 @@ drop a requirement or finish with red gates.
 
    ```sh
    claude plugin marketplace add --scope project <core>
-   claude plugin install --scope project red-green@ticket-tdd
+   claude plugin install --scope project red-green@red-green
    ```
 
    The project's sessions then have the workflow `/red-green:red-green` and the skill `/red-green:start`.
