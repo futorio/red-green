@@ -4,6 +4,7 @@
 //     node render.mjs [config.json]                                     the workflow script, on stdout
 //     node render.mjs [config.json] --case case.json --prompt <label>   the prompt the agent labelled <label> receives
 //     ... --prompt <label> --json                                       that prompt with its agent's schema, model and effort, as JSON
+//     node render.mjs [config.json] --check profile.json                exit 1 with the run's config error on stderr, else 0
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -149,9 +150,21 @@ export async function conform(source, kase, label, output) {
   return report
 }
 
+// The profile check: the run's own config stage on a profile, with a baseline for each gate it declares. Resolves to
+// the run's `stage: config` note, or null once the run reaches its first agent.
+export function check(source, profile) {
+  const gates = ((profile.blocks || {}).gates || {}).gates
+  const baseline = Object.fromEntries((Array.isArray(gates) ? gates : []).map(g => [(g || {}).name, 'BASELINE']))
+  return new Promise((resolve, reject) => {
+    drive(source, { args: { profile, baseline } }, () => (resolve(null), true))
+      .then(r => resolve(r && r.status === 'failed' && r.stage === 'config' ? r.note : null), reject)
+  })
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2)
   const flag = name => { const i = argv.indexOf(name); return i < 0 ? null : argv.splice(i, 2)[1] }
+  const profilePath = flag('--check')
   const casePath = flag('--case')
   const label = flag('--prompt')
   const at = argv.indexOf('--conform')
@@ -160,7 +173,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const source = render(argv[0] ? JSON.parse(readFileSync(argv[0], 'utf8')) : DEFAULT)
   const kase = casePath ? JSON.parse(readFileSync(casePath, 'utf8')) : {}
   const fail = e => { console.error(e.message); process.exit(1) }
-  if (checked) conform(source, kase, checked, JSON.parse(readFileSync(outputPath, 'utf8')))
+  if (profilePath) check(source, JSON.parse(readFileSync(profilePath, 'utf8'))).then(note => note && fail(new Error(note)), fail)
+  else if (checked) conform(source, kase, checked, JSON.parse(readFileSync(outputPath, 'utf8')))
     .then(r => { process.stdout.write(`${JSON.stringify(r, null, 1)}\n`); process.exitCode = r.passed ? 0 : 1 }, fail)
   else if (!label) process.stdout.write(source)
   else stageCall(source, kase, label).then(c => process.stdout.write(json ? JSON.stringify(c) : c.prompt), fail)

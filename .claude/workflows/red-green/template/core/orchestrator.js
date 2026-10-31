@@ -24,7 +24,14 @@ const BASE = A.base
 const TARGET = A.target
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/red-green/skills/implement.md`
 const MUTATE = `${TOOLS}/.claude/workflows/red-green/skills/mutate.mjs`
-const P = A.profile || {}
+// The profile, its strings' {{base}}, {{run}}, {{repo}} and {{tools}} filled from args; any other {{...}} stays as
+// given and is listed in UNFILLED as [where, placeholder, name] for the config check (docs/red-green/args-and-profile.md).
+const RUN_VALUES = { base: BASE, run: RUN, repo: REPO, tools: TOOLS }
+const UNFILLED = []
+const fillRun = (v, at) => typeof v === 'string' ? v.replace(/\{\{([^{}]*)\}\}/g, (m, p) => Object.hasOwn(RUN_VALUES, p) ? RUN_VALUES[p] : (UNFILLED.push([at, m, p]), m))
+  : Array.isArray(v) ? v.map((x, i) => fillRun(x, `${at}[${i}]`))
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillRun(x, `${at}.${k}`)])) : v
+const P = fillRun(A.profile || {}, 'profile')
 // Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/red-green/blocks.md).
 const DEFAULTS = {{defaults}}
 // @include shared text
@@ -64,6 +71,9 @@ Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].m
 const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
   [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
+// A block prompt keeps its registry paths ({{default}} among them) for the call to fill; any other placeholder is an error.
+UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)))
+  .forEach(([at, m]) => configErrors.push(`${at}: unknown placeholder ${m}`))
 Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => configErrors.push(`blocks.${b}: prompt or skill, not both`))
 // Mutation runs on a test or a tool; with no blocks.mutation given the step is skipped.
 if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')

@@ -48,3 +48,28 @@ Approach fields, for a block with more than one way to work:
 
 Without `profile.blocks.mutation` the step is skipped with a log line. A `mutation` with neither `test` nor `tool`, or
 `build` without `test`, is a config error.
+
+## Placeholders
+
+Any string in `profile` may name a run value; the core fills it in from `args` before the config merge:
+
+| placeholder | filled with |
+|---|---|
+| `{{base}}` | `args.base` |
+| `{{run}}` | `args.run` |
+| `{{repo}}` | `args.repo` |
+| `{{tools}}` | `args.tools` |
+
+`"make -C {{repo}} lint"` as a gate command runs in the worktree. A `blocks.<name>.prompt` also keeps its registry paths,
+`{{default}}` among them ([`blocks.md`](blocks.md)). Any other `{{...}}` fails the run before any agent (`stage: config`,
+the note naming where it is: `profile.code_rules[0]: unknown placeholder {{nope}}`).
+
+## Profile check
+
+```
+cd .claude/workflows/red-green
+node template/render.mjs [config.json] --check profile.json
+```
+
+Runs a profile through the run's own placeholder check, merge and validator, with no agent and no cost. It exits 0 when
+the run would get past `stage: config`; otherwise it exits 1 and prints that stage's note on stderr.

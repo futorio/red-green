@@ -263,6 +263,18 @@ test('T25: a replay takes a recorded research plan step over 600 characters as g
   assert.ok((await stageCall(render(DEFAULT), { results: { research } }, 'review:r1:code')).prompt.includes(JSON.stringify(step)))
 })
 
+test('T26: --check exits 0 on a valid profile, and non-zero with the run\'s own config note on an invalid one', async () => {
+  const run = (...a) => { try { execFileSync('node', [CLI, ...a], { stdio: 'pipe' }); return { code: 0 } } catch (e) { return { code: e.status, err: e.stderr.toString() } } }
+  const valid = { code_rules: ['diff against {{base}}'], blocks: { gates: { gates: [{ name: 'lint', command: 'make -C {{repo}} lint' }] }, research: { prompt: '{{default}}\nMore.' } } }
+  assert.deepEqual(run('--check', file('valid.json', valid)), { code: 0 })
+  for (const [name, profile] of [['field', { blocks: { plan: { nope: 1 } } }], ['placeholder', { context: ['{{nope}}'] }]]) {
+    const note = await new Promise(resolve => stageCall(render(DEFAULT), { args: { profile } }, 'research').catch(e => resolve(e.message)))
+    const { code, err } = run('--check', file(`${name}.json`, profile))
+    assert.notEqual(code, 0, name)
+    assert.equal(`stage research not reached: run failed at config: ${err.trim()}`, note, name)
+  }
+})
+
 test('T24: the research input takes what research\'s own checks limit: a plan step over 600 characters, a requirement without the space', () => {
   const recorded = { requirements: ['R1:one'], facts: [], plan: ['x'.repeat(900)], test_harness: [], files: [] }
   assert.deepEqual(validate(REGISTRY.research, recorded), [])

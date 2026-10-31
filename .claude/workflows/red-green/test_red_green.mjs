@@ -1172,8 +1172,9 @@ test('W91: a project prompt replaces a block\'s instructions, filled from its in
   assert.ok(p.startsWith('You are one agent in a workflow run implementing /t.md.'))
   assert.match(p, /\n\nCONTRACT \(binding, whatever the text above says\):\nRead-only/)
   const wrong = await runCore({}, 1, withBlocks({ research: { prompt: 'Read {{TARGET}} and {{nope}}.' } }))
-  assert.ok(!called(wrong.calls, 'research'))
-  assert.deepEqual(wrong.result.failures, ['research input: unknown {{nope}}'])
+  assert.equal(wrong.calls.length, 0)
+  assert.equal(wrong.result.stage, 'config')
+  assert.equal(wrong.result.note, 'profile.blocks.research.prompt: unknown placeholder {{nope}}')
 })
 
 test('W92: {{default}} in a project prompt inlines the default instructions of each call of the block', async () => {
@@ -1326,4 +1327,32 @@ test('W105: a non-string value fills in as compact JSON', async () => {
   const fix = prompt(calls, 'fix:r1')
   assert.ok(fix.includes(`FINDINGS:\n${JSON.stringify(sentTo(calls, 'fix:r1'))}\n`))
   assert.ok(fix.includes(`RESEARCH:\n${JSON.stringify(Object.assign({}, base().research, { files: ['src/a.cpp'] }))}\n`))
+})
+
+test('W106: a profile string\'s {{base}}, {{run}}, {{repo}} and {{tools}} reach the agents filled in from args', async () => {
+  const { calls } = await runCore({}, 1, withProfile({
+    gates: [{ name: 'tests', command: 'make -C {{repo}} test' }], mutation: { test: 'T {{run}}/m' },
+    code_rules: ['diff against {{base}}'], context: ['notes in {{run}}/notes'],
+    blocks: { research: { prompt: '{{default}}\nSee {{tools}}/docs.' } } }))
+  assert.ok(prompt(calls, 'implement').includes('tests: `make -C /r test`'))
+  assert.ok(prompt(calls, 'implement').includes('- diff against aaaa000'))
+  assert.ok(prompt(calls, 'mutation').includes("--test 'T /run/m'"))
+  assert.ok(prompt(calls, 'research').includes('\nSee /t/docs.'))
+  for (const c of calls) {
+    assert.ok(c.prompt.includes('- notes in /run/notes'), c.label)
+    assert.ok(!/\{\{(base|run|repo|tools)\}\}/.test(c.prompt), c.label)
+  }
+})
+
+test('W107: any other {{...}} in a profile string fails the run before any agent, naming it and where; {{default}} only in a block prompt', async () => {
+  for (const [over, named] of [[{ code_rules: ['x {{nope}}'] }, /profile\.code_rules\[0\]: unknown placeholder \{\{nope\}\}/],
+    [{ gates: [{ name: 'tests', command: 'make {{BASE}}' }] }, /profile\.blocks\.gates\.gates\[0\]\.command: unknown placeholder \{\{BASE\}\}/],
+    [{ blocks: { research: { prompt: '{{default}} {{bogus}}' } } }, /profile\.blocks\.research\.prompt: unknown placeholder \{\{bogus\}\}/],
+    [{ context: ['{{default}}'] }, /profile\.context\[0\]: unknown placeholder \{\{default\}\}/]]) {
+    const { result, calls } = await runCore({}, 1, withProfile(over))
+    assert.equal(calls.length, 0, JSON.stringify(over))
+    assert.equal(result.status, 'failed')
+    assert.equal(result.stage, 'config')
+    assert.match(result.note, named)
+  }
 })
