@@ -15,7 +15,7 @@ drop a requirement or finish with red gates.
 ## Install
 
 1. This repository is a plugin marketplace. Add it from a local path or its git remote; `<core>` below is either one.
-   A local-path marketplace loads the plugin in place. Pin a version by marketplace ref: `<remote>#<tag or commit>`.
+   A local-path marketplace loads the plugin in place. Pin a version by marketplace ref: `<remote>#<tag or branch>`.
 2. In the project, add the marketplace and install the plugin with project scope:
 
    ```sh
