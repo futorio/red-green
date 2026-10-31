@@ -1,7 +1,7 @@
 # Stages
 
 What the script enforces and decides at each stage. What an agent is told to do is in the block's default,
-`.claude/workflows/ticket-tdd/template/defaults/<block>.md`; a block's inputs and config are in [`blocks.md`](blocks.md).
+`.claude/workflows/red-green/template/defaults/<block>.md`; a block's inputs and config are in [`blocks.md`](blocks.md).
 The output schemas are in `template/core/<block>.js`.
 
 "Died" is a call with no answer. It lands in `failures`, or ends the run (`status: failed`) where the table says so.
@@ -50,7 +50,7 @@ uncovered ids and duplicates; what is still uncovered goes to the result.
 
 ## 3. Implementation
 
-Follows [`skills/implement.md`](../../.claude/workflows/ticket-tdd/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
+Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
 than baseline (the gates step turns it into a finding). `head` still at `base`: one more run, then `failed`.
 
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason. The script adds
@@ -98,7 +98,7 @@ Once per run, after the first round at or past `blocks.review.min` that ends wit
 answered. Survivors get a fix, then one more review round without the step, even past the planned rounds.
 
 The generated form writes one patch per `checks` row with a test, plus at most `blocks.mutation.edges` (5);
-[`skills/mutate.mjs`](../../.claude/workflows/ticket-tdd/skills/mutate.mjs) runs them. The `{tool}` form returns the
+[`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs) runs them. The `{tool}` form returns the
 same records; the script derives ids (`M-<n>`), `file:line` and counts.
 
 - `applies` false: the step is skipped with a log line.
@@ -117,4 +117,4 @@ The loop ends after round `n`, or earlier on a clean round (no finding to fix, e
 `blocks.review.min`) after which the mutation step leaves no survivor. `n` grows by one when mutation survivors land in the last round,
 or when findings remain in the last round and `blocks.review.extra` has rounds left. After the loop come the
 mutation step if it has not run (unless a fix died; survivors are leftover), the minor fix, and the strays as
-`failures`: [`template/core/orchestrator.js`](../../.claude/workflows/ticket-tdd/template/core/orchestrator.js).
+`failures`: [`template/core/orchestrator.js`](../../.claude/workflows/red-green/template/core/orchestrator.js).

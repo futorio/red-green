@@ -1,6 +1,6 @@
 # Tracing
 
-`.claude/workflows/ticket-tdd/trace.mjs` turns a finished run into spans in a shape no runtime owns: `{label, model,
+`.claude/workflows/red-green/trace.mjs` turns a finished run into spans in a shape no runtime owns: `{label, model,
 harness, project?, parent?, start, end, tokens: {in, out, cache_read, cache_write}, attrs}`. `attrs.kind` says what a
 span is:
 
@@ -12,7 +12,7 @@ span is:
 - `core`: the run's time between calls, when the script alone works.
 
 ```
-cd .claude/workflows/ticket-tdd
+cd .claude/workflows/red-green
 node trace.mjs <wf dir> [--project NAME]               # spans as JSONL
 node trace.mjs <wf dir> [--project NAME] --table       # calls, tokens, seconds per block and round
 node trace.mjs <wf dir> [--project NAME] --chrome      # a timeline: open it in ui.perfetto.dev
@@ -24,4 +24,4 @@ A block's seconds sum its calls' durations, so parallel lenses can exceed wall t
 The one adapter reads a Claude Code Workflow run (`harness` `claude-code-workflow`) from
 `~/.claude/projects/<project>/<session>/subagents/workflows/wf_<id>/`; `project` is the launch directory unless
 `--project` names it. Claude Code deletes those files after a while, so the main thread saves the spans to
-`<run>/trace.jsonl` right after the run ([`ticket-tdd-start`](../../skills/ticket-tdd-start/SKILL.md), step 5).
+`<run>/trace.jsonl` right after the run ([`red-green-start`](../../skills/start/SKILL.md), step 5).

@@ -1,10 +1,10 @@
 // The registry (every path a block's instructions may name, with its schema), assembled from the paths several blocks
-// share and the blocks' inputs parts, fill() and call(). docs/ticket-tdd/blocks.md. It reads RESEARCH_SCHEMA, FINDING, LENSES,
+// share and the blocks' inputs parts, fill() and call(). docs/red-green/blocks.md. It reads RESEARCH_SCHEMA, FINDING, LENSES,
 // CONFIG, DEFAULTS, failures, validate and ask.
 // @part types
 
 // The registry: every variable a block's instructions may name as {{path}}, with its JSON Schema. Each block's inputs,
-// the paths its instructions may use, are a subset of it. docs/ticket-tdd/blocks.md. A block's inputs part sets INPUTS.<block>
+// the paths its instructions may use, are a subset of it. docs/red-green/blocks.md. A block's inputs part sets INPUTS.<block>
 // and adds to BLOCK_PATHS the paths only that block reads; the registry part adds the paths several blocks share.
 const STRING = { type: 'string' }
 const INTEGER = { type: 'integer' }
@@ -26,7 +26,7 @@ const REGISTRY = Object.assign({
   gate_list: STRING, gate_rows: STRING, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
   // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
   previous_notes: STRING,
-  // Notes: a part of the block's defaults (docs/ticket-tdd/blocks.md), filled from the same values when it applies, else ''.
+  // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
   earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,

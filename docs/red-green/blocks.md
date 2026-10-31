@@ -1,9 +1,9 @@
 # Blocks
 
 Every stage is a block: the inputs its instructions may name (its `INPUTS.<block>` line in the `inputs` part of
-`.claude/workflows/ticket-tdd/template/core/<block>.js`, with `INPUTS` declared in
-[`registry.js`](../../.claude/workflows/ticket-tdd/template/core/registry.js)), an output schema, invariants and a config
-([`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json)). The script alone decides what a run does with the output ([`stages.md`](stages.md)).
+`.claude/workflows/red-green/template/core/<block>.js`, with `INPUTS` declared in
+[`registry.js`](../../.claude/workflows/red-green/template/core/registry.js)), an output schema, invariants and a config
+([`template/default.json`](../../.claude/workflows/red-green/template/default.json)). The script alone decides what a run does with the output ([`stages.md`](stages.md)).
 
 ## Prompt assembly
 
@@ -40,16 +40,16 @@ output schema stay the core's.
 
 ## Registry and validator
 
-`REGISTRY` lists every input path with its JSON Schema: [`template/core/registry.js`](../../.claude/workflows/ticket-tdd/template/core/registry.js) holds the paths several blocks
+`REGISTRY` lists every input path with its JSON Schema: [`template/core/registry.js`](../../.claude/workflows/red-green/template/core/registry.js) holds the paths several blocks
 share, each block's `inputs` part in `template/core/<block>.js` those only it reads.
 
-The validator (`validate` in [`shared.js`](../../.claude/workflows/ticket-tdd/template/core/shared.js)) throws on a schema keyword it does not handle.
+The validator (`validate` in [`shared.js`](../../.claude/workflows/red-green/template/core/shared.js)) throws on a schema keyword it does not handle.
 
 ## Config
 
 A block's config is `blocks.<name>`, in two layers:
 
-1. **Render time:** a render config (JSON, `{blocks: {...}}`) merged over [`template/default.json`](../../.claude/workflows/ticket-tdd/template/default.json).
+1. **Render time:** a render config (JSON, `{blocks: {...}}`) merged over [`template/default.json`](../../.claude/workflows/red-green/template/default.json).
 2. **Run time:** `profile.blocks.<name>` merged over the rendered defaults.
 
 Both merge field by field: an object field such as `duties` key by key, a list replaces. A key, block, field, duty or
@@ -66,7 +66,7 @@ test is a finding) and `order` (off, an experiment: check the result of state ch
 Runs a plug-in's real output through the core offline, before a paid run:
 
 ```
-cd .claude/workflows/ticket-tdd
+cd .claude/workflows/red-green
 node template/render.mjs [config.json] [--case case.json] --conform <label> <output.json>
 ```
 

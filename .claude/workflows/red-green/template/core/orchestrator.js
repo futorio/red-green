@@ -1,10 +1,10 @@
 // The orchestrator: args, the round loop, findings, failures and the result. render.mjs replaces each @include line
-// with that part of a block file. docs/ticket-tdd/maintaining.md.
+// with that part of a block file. docs/red-green/maintaining.md.
 // @part main
 export const meta = {
-  name: 'ticket-tdd',
+  name: 'red-green',
   description: 'Implement one ticket: research, TDD with coverage-checked test cases, review/fix loop',
-  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. Launch with the ticket-tdd-start skill (skills/ticket-tdd-start/SKILL.md of the ticket-tdd repository)',
+  whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. Launch with the start skill (skills/start/SKILL.md of the red-green repository)',
   phases: [
     { title: 'Research' },
     { title: 'Plan' },
@@ -22,10 +22,10 @@ const TOOLS = A.tools
 const RUN = A.run
 const BASE = A.base
 const TARGET = A.target
-const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/ticket-tdd/skills/implement.md`
-const MUTATE = `${TOOLS}/.claude/workflows/ticket-tdd/skills/mutate.mjs`
+const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/red-green/skills/implement.md`
+const MUTATE = `${TOOLS}/.claude/workflows/red-green/skills/mutate.mjs`
 const P = A.profile || {}
-// Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/ticket-tdd/blocks.md).
+// Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/red-green/blocks.md).
 const DEFAULTS = {{defaults}}
 // @include shared text
 // @include shared validate
@@ -55,7 +55,7 @@ let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include registry registry
 // @include registry call
 // @include shared config
-// Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/ticket-tdd/blocks.md).
+// Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/red-green/blocks.md).
 const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
 const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'minor-fix': 'fix' }
@@ -252,7 +252,7 @@ const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').
 // @include proofs settle
 const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
-// Freeing the run directory is the main thread's step after acceptance (skills/ticket-tdd-start/SKILL.md).
+// Freeing the run directory is the main thread's step after acceptance (skills/start/SKILL.md).
 return {
   status: failures.length ? 'done_with_failures' : impl.unverified.length ? 'done_unverified' : 'done',
   rounds_planned: N,

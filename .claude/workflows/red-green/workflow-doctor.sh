@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-HELP='workflow-doctor.sh — checks what the ticket-tdd workflow itself needs on this machine.
+HELP='workflow-doctor.sh — checks what the red-green workflow itself needs on this machine.
 
 Usage: workflow-doctor.sh [--help]
 Exit 0: every checkable dependency is present. Exit 1: something is missing.

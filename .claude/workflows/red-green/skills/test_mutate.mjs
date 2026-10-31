@@ -1,6 +1,6 @@
 // Runs mutate.mjs on a throwaway git repository with a tiny build and test command.
 //
-//     node --test .claude/workflows/ticket-tdd/skills/test_mutate.mjs
+//     node --test .claude/workflows/red-green/skills/test_mutate.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'

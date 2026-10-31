@@ -1,14 +1,14 @@
-// Runs the ticket-tdd core (.claude/workflows/ticket-tdd.js) with a stub agent() that returns recorded
+// Runs the red-green core (.claude/workflows/red-green.js) with a stub agent() that returns recorded
 // results keyed by the call's label, and checks what the script does with them.
 //
-//     node --test .claude/workflows/ticket-tdd/test_ticket_tdd.mjs
+//     node --test .claude/workflows/red-green/test_red_green.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { validate } from './template/render.mjs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-const SOURCE = readFileSync(new URL('../ticket-tdd.js', import.meta.url), 'utf8').replace('export const meta', 'const meta')
+const SOURCE = readFileSync(new URL('../red-green.js', import.meta.url), 'utf8').replace('export const meta', 'const meta')
 const coreOf = source => new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', source)
 let core = coreOf(SOURCE)
 
@@ -238,7 +238,7 @@ test('W77: the generator gets the tested checks and the runner with the build, t
   const call = calls.find(c => c.label === 'mutation')
   assert.equal(call.opts.model, 'haiku')
   assert.equal(call.opts.effort, 'medium')
-  assert.ok(call.prompt.includes('node /t/.claude/workflows/ticket-tdd/skills/mutate.mjs --mutants /run/mutants.json --repo /r --head bbbb111 --dir /run --test \'TEST-CMD\' --build \'make \'\\\'\'b\'\\\'\'\' --timeout 7'))
+  assert.ok(call.prompt.includes('node /t/.claude/workflows/red-green/skills/mutate.mjs --mutants /run/mutants.json --repo /r --head bbbb111 --dir /run --test \'TEST-CMD\' --build \'make \'\\\'\'b\'\\\'\'\' --timeout 7'))
   assert.match(call.prompt, /TESTED-FILE/)
   assert.ok(!/UNTESTED PHRASE|FLAKY-FILE/.test(call.prompt))
   assert.match(call.prompt, /at most 5 on edges/)
@@ -1191,7 +1191,7 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
   const plain = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } })
   const fix = prompt(calls, 'fix:r1')
   const data = name => JSON.stringify(JSON.parse(prompt(plain.calls, 'fix:r1').split(`\n${name}:\n`)[1].split('\n\n')[0]))
-  assert.equal(instructions(fix), `Read /p/fix.md and follow it.\n\nROUND:\n1\n\nIMPLEMENT_SKILL:\n/t/.claude/workflows/ticket-tdd/skills/implement.md\n\nFINDINGS:\n${data('FINDINGS')}\n\nFIXED:\n[]\n\nRESEARCH:\n${data('RESEARCH')}`)
+  assert.equal(instructions(fix), `Read /p/fix.md and follow it.\n\nROUND:\n1\n\nIMPLEMENT_SKILL:\n/t/.claude/workflows/red-green/skills/implement.md\n\nFINDINGS:\n${data('FINDINGS')}\n\nFIXED:\n[]\n\nRESEARCH:\n${data('RESEARCH')}`)
   assert.match(fix, /CONTRACT[^]*COMMITS: /)
   assert.ok(!/verify before you agree|Start from the change-site facts/.test(fix))
   const both = await runCore({}, 1, withBlocks({ implement: { skill: '/p/impl.md', prompt: 'x' } }))

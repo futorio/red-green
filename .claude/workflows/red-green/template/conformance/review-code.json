@@ -62,7 +62,7 @@
   },
   {
    "item": "Blast radius of the default binary and build-arch.sh wording",
-   "evidence": "rg --hidden 'build-arch.sh|modern-linux/th08-modern|i386 toolchain' finds only data-setup.md:57 (step 1 builds at f55441a, whose build-arch.sh is the old i386 one, so it is still true), mutation-testing.md:20 (still true) and .claude/workflows/ticket-tdd-th08.js:11 (owned by ticket 03)."
+   "evidence": "rg --hidden 'build-arch.sh|modern-linux/th08-modern|i386 toolchain' finds only data-setup.md:57 (step 1 builds at f55441a, whose build-arch.sh is the old i386 one, so it is still true), mutation-testing.md:20 (still true) and .claude/workflows/red-green-th08.js:11 (owned by ticket 03)."
   },
   {
    "item": "No production-source run was needed",
@@ -70,5 +70,5 @@
   }
  ],
  "mailbox": [],
- "notes": "No mailbox.md existed, so no acks were written. /work/run/research.md does not exist and the research had no anchors, so nothing was appended. The workflow's gate text (.claude/workflows/ticket-tdd-th08.js:11, 'build-arch.sh builds the i386 binary') is out of date now that the bare command builds x86_64; ticket 03 owns that file, so I am reporting it, not editing it. Separately, research found an upstream native-layout bug that the full x86_64 corpus should surface: EclRunHigh.inl:569-572 copies 0x228 bytes of a 0x280-byte EnemyEclContext on the CALL_SUBROUTINE_SLOT push, which leaves a stale tail in each call-stack entry. Fixing it needs an agreed upstream edit, so it is not a co-op fix. The TH08_SLOW_TESTS=1 suite is still due at this HEAD."
+ "notes": "No mailbox.md existed, so no acks were written. /work/run/research.md does not exist and the research had no anchors, so nothing was appended. The workflow's gate text (.claude/workflows/red-green-th08.js:11, 'build-arch.sh builds the i386 binary') is out of date now that the bare command builds x86_64; ticket 03 owns that file, so I am reporting it, not editing it. Separately, research found an upstream native-layout bug that the full x86_64 corpus should surface: EclRunHigh.inl:569-572 copies 0x228 bytes of a 0x280-byte EnemyEclContext on the CALL_SUBROUTINE_SLOT push, which leaves a stale tail in each call-stack entry. Fixing it needs an agreed upstream edit, so it is not a co-op fix. The TH08_SLOW_TESTS=1 suite is still due at this HEAD."
 }

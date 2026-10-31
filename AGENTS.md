@@ -1,4 +1,4 @@
-# ticket-tdd agent rules
+# red-green agent rules
 
 ## Language
 

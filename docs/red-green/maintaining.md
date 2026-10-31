@@ -1,29 +1,29 @@
 # Maintaining the core
 
-Run commands from `.claude/workflows/ticket-tdd/`; the rendered script is `.claude/workflows/ticket-tdd.js`, one level up.
+Run commands from `.claude/workflows/red-green/`; the rendered script is `.claude/workflows/red-green.js`, one level up.
 
 ## Testing
 
 ```
-node --test test_ticket_tdd.mjs template/test_render.mjs skills/test_mutate.mjs test_trace.mjs
+node --test test_red_green.mjs template/test_render.mjs skills/test_mutate.mjs test_trace.mjs
 ```
 
-A change to the core's control flow gets a case in `test_ticket_tdd.mjs`. A change that alters the render re-records the
-sha256 values in [`template/fixtures.json`](../../.claude/workflows/ticket-tdd/template/fixtures.json) and the prompt hashes in `template/test_render.mjs`.
+A change to the core's control flow gets a case in `test_red_green.mjs`. A change that alters the render re-records the
+sha256 values in [`template/fixtures.json`](../../.claude/workflows/red-green/template/fixtures.json) and the prompt hashes in `template/test_render.mjs`.
 
 ## Template
 
 `template/` renders the core from `template/core/` (one file per block, shared files, an orchestrator), the defaults in
-`template/defaults/` and a config. `ticket-tdd.js` is the render's output: change the template, then re-render and check
+`template/defaults/` and a config. `red-green.js` is the render's output: change the template, then re-render and check
 the copy:
 
 ```
-node template/render.mjs > ../ticket-tdd.js
-node template/render.mjs | diff - ../ticket-tdd.js
+node template/render.mjs > ../red-green.js
+node template/render.mjs | diff - ../red-green.js
 node template/render.mjs [config.json] --case case.json --prompt <label> [--json]  # one stage's prompt
 ```
 
-The `// @part` and `// @include` mechanics are in [`render.mjs`](../../.claude/workflows/ticket-tdd/template/render.mjs); a missing part, or one included never or twice, is an error.
+The `// @part` and `// @include` mechanics are in [`render.mjs`](../../.claude/workflows/red-green/template/render.mjs); a missing part, or one included never or twice, is an error.
 
 `--prompt` runs the rendered script with stub agents and prints the prompt the agent labelled `<label>` receives. The
 case is `{ args, gate_lines, results }`: `results[label]` holds an earlier stage's recorded result, which a stage behind a
@@ -42,8 +42,8 @@ review round needs. `--json` prints `{ prompt, schema, model, effort }`.
 1. Add it to its block in `default.json` with the value that renders today's behaviour (a new duty: off).
 2. Give it a schema in the registry as `config.<field>`, and read it as `CONFIG.<block>.<field>`. A value an
    instruction names also goes in the block's `INPUTS` entry; a duty's sentence is a note part `duty.<name>` in
-   [`template/defaults/review.md`](../../.claude/workflows/ticket-tdd/template/defaults/review.md); a new lens is also
-   its entry in `LENSES` ([`template/core/review.js`](../../.claude/workflows/ticket-tdd/template/core/review.js)) and a part named by its key.
+   [`template/defaults/review.md`](../../.claude/workflows/red-green/template/defaults/review.md); a new lens is also
+   its entry in `LENSES` ([`template/core/review.js`](../../.claude/workflows/red-green/template/core/review.js)) and a part named by its key.
 3. Add a stub test that the field moves the behaviour and a render test beside T03-T06; record a fixture variant when
    the ablation study varies it.
 

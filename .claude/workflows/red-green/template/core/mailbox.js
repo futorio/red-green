@@ -1,9 +1,9 @@
 // The mailbox and ask(): every agent call goes through ask(), which adds the mailbox note and output field and keeps
-// what each agent handled. docs/ticket-tdd/mailbox.md. It reads RUN and agent.
+// what each agent handled. docs/red-green/mailbox.md. It reads RUN and agent.
 // @part ask
 
 // Mailbox: the main thread posts mid-run clarifications to <run>/mailbox.md, under a header of rules it writes; see
-// docs/ticket-tdd/mailbox.md.
+// docs/red-green/mailbox.md.
 const MAIL = { type: 'array', items: { type: 'object', properties: {
   id: { type: 'string' }, status: { type: 'string', enum: ['applied', 'rejected'] }, why: { type: 'string' } },
   required: ['id', 'status', 'why'] } }

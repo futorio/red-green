@@ -1,4 +1,4 @@
-# ticket-tdd: research, TDD, review loop
+# red-green: research, TDD, review loop
 
 A Claude Code Workflow that takes one ticket or spec and hands back commits on a branch: implemented test-first,
 reviewed and fixed. Each step is a separate agent whose output the script checks, so a run cannot quietly skip tests,
@@ -16,31 +16,31 @@ drop a requirement or finish with red gates.
 
 1. Clone this repository anywhere; its absolute path is `<core>`. Nothing is copied into a project. Pin a version by
    checking out a tag or commit.
-2. Run `<core>/.claude/workflows/ticket-tdd/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
+2. Run `<core>/.claude/workflows/red-green/workflow-doctor.sh`: it checks `claude` and `git`, and lists what to confirm
    by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
 3. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
    check it.
-4. Make the start skill visible in every project: `ln -s <core>/skills/ticket-tdd-start ~/.claude/skills/`.
+4. Make the start skill visible in every project: `ln -s <core>/skills/start ~/.claude/skills/`.
 
 ## Getting started
 
 1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
    from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
    Any other task statement works too.
-2. Open Claude Code in the project and run `/ticket-tdd-start <ticket path>`
-   ([`SKILL.md`](skills/ticket-tdd-start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
-   it runs: tell the agent, it passes it on ([`mailbox.md`](docs/ticket-tdd/mailbox.md)).
+2. Open Claude Code in the project and run `/start <ticket path>`
+   ([`SKILL.md`](skills/start/SKILL.md)). The agent makes a worktree, measures the project's gates, starts the run and waits for it. Something to add while
+   it runs: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
 3. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
    (launching the app, say). It fast-forwards your branch once its own checks pass; anything you do not like, ask it
    to fix in the same chat.
 
 To fit the run to the project, configure its stages (model, rounds, gates, mutation tool, your own prompt or skill)
-or pick a model preset: [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md),
-[`blocks.md`](docs/ticket-tdd/blocks.md). Without any of it the run discovers the project's gates itself.
+or pick a model preset: [`args-and-profile.md`](docs/red-green/args-and-profile.md),
+[`blocks.md`](docs/red-green/blocks.md). Without any of it the run discovers the project's gates itself.
 
 ## Shape
 
-In the order a run takes them ([`stages.md`](docs/ticket-tdd/stages.md) has each in detail):
+In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each in detail):
 
 1. **Gates discovery**, only when the profile declares no gates.
 2. **Research**: the ticket's requirements and the facts of the code.
@@ -55,13 +55,13 @@ In the order a run takes them ([`stages.md`](docs/ticket-tdd/stages.md) has each
 
 ## Docs
 
-- [`args-and-profile.md`](docs/ticket-tdd/args-and-profile.md): `args`, `profile`, model presets.
-- [`stages.md`](docs/ticket-tdd/stages.md): what the script does with each stage's output.
-- [`blocks.md`](docs/ticket-tdd/blocks.md): block contract, plug-ins, conformance check.
-- [`mailbox.md`](docs/ticket-tdd/mailbox.md): clarifying a live run.
-- [`result.md`](docs/ticket-tdd/result.md): the result's fields.
-- [`tracing.md`](docs/ticket-tdd/tracing.md): `trace.mjs`.
-- [`maintaining.md`](docs/ticket-tdd/maintaining.md): tests, template, new blocks and fields, prompts.
+- [`args-and-profile.md`](docs/red-green/args-and-profile.md): `args`, `profile`, model presets.
+- [`stages.md`](docs/red-green/stages.md): what the script does with each stage's output.
+- [`blocks.md`](docs/red-green/blocks.md): block contract, plug-ins, conformance check.
+- [`mailbox.md`](docs/red-green/mailbox.md): clarifying a live run.
+- [`result.md`](docs/red-green/result.md): the result's fields.
+- [`tracing.md`](docs/red-green/tracing.md): `trace.mjs`.
+- [`maintaining.md`](docs/red-green/maintaining.md): tests, template, new blocks and fields, prompts.
 
 The workflow is measured in the separate `~/projects/wf-ablation` repository, which runs against this checkout through
 `TICKET_TDD_CORE`.

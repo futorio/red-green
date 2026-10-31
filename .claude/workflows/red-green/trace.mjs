@@ -1,5 +1,5 @@
 // Spans of a workflow run in a shape no runtime owns: agent calls, the tool calls and model time inside each, and the
-// core's time between calls. docs/ticket-tdd/tracing.md.
+// core's time between calls. docs/red-green/tracing.md.
 //
 //     node trace.mjs <wf dir> [--project NAME]                  spans as JSONL
 //     node trace.mjs <wf dir> [--project NAME] --table          the table per block and round
@@ -146,7 +146,7 @@ export function speedscope(spans) {
     return { type: 'sampled', name, unit, startValue: 0, endValue: weights.reduce((n, w) => n + w, 0), samples, weights }
   }
   return {
-    $schema: 'https://www.speedscope.app/file-format-schema.json', exporter: 'ticket-tdd trace.mjs', shared: { frames },
+    $schema: 'https://www.speedscope.app/file-format-schema.json', exporter: 'red-green trace.mjs', shared: { frames },
     profiles: [profile('seconds', 'seconds', s => (t(s.end) - t(s.start)) / 1000),
       profile('input tokens', 'none', s => s.tokens.in + s.tokens.cache_read + s.tokens.cache_write),
       profile('output tokens', 'none', s => s.tokens.out)],
