@@ -1,0 +1,12 @@
+{
+  "name": "ticket-tdd",
+  "description": "The red-green workflow and its skills",
+  "owner": { "name": "Futorio" },
+  "plugins": [
+    {
+      "name": "red-green",
+      "source": "./",
+      "description": "Implement one ticket or spec: research, test-first implementation, review and fix loop"
+    }
+  ]
+}
