@@ -24,10 +24,9 @@ drop a requirement or finish with red gates.
    ```
 
    The project's sessions then have the workflow `/red-green:red-green` and the skills `/red-green:setup` and `/red-green:start`.
-3. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout: it checks `claude` and `git`, and lists what to confirm
-   by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
-4. Node runs the mutant runner `skills/mutate.mjs` during a run, and `trace.mjs` after one; the doctor does not
-   check it.
+3. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout (the local path, or
+   `~/.claude/plugins/marketplaces/red-green/` for a git remote): it checks `claude`, `git` and `node`, and lists what
+   to confirm by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
 
 ## Getting started
 

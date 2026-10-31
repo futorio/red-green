@@ -9,10 +9,16 @@ Exit 0: every checkable dependency is present. Exit 1: something is missing.
 Checked here:
   claude     Claude Code CLI.
   git        the run works in a worktree of its own and commits there.
+  node       setup and start check the profile (render.mjs --check); a run
+             mutates code (skills/mutate.mjs); start saves the spans (trace.mjs).
 
 Not checkable from a shell — confirm by hand:
   Workflow tool   gated per account; the red-green plugin provides the workflow.
-  models          stages ask for opus, sonnet and haiku; profile.blocks.<name>.model changes them.'
+  models          stages ask for opus, sonnet and haiku; profile.blocks.<name>.model changes them.
+
+Optional:
+  gh         setup reads recent GitHub Actions durations with it; without it the
+             candidate table shows none.'
 
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { printf '%s\n' "$HELP"; exit 0; }
 
@@ -21,7 +27,7 @@ bad=0
 ok() { printf 'ok       %-42s %s\n' "$1" "$2"; }
 miss() { printf 'MISSING  %-42s %s\n' "$1" "$2"; bad=1; }
 
-for tool in claude git; do
+for tool in claude git node; do
 	if command -v "$tool" >/dev/null 2>&1; then
 		ok "$tool" "$("$tool" --version 2>&1 | head -1)"
 	else
