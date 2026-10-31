@@ -12,21 +12,28 @@ drop a requirement or finish with red gates.
   with your own prompt or skill, or start from a ready preset: `standard`, `hard`, `cheap`. Nothing is copied into the
   project, and every run can leave a trace of time and tokens per stage.
 
+## Requirements
+
+- Claude Code with the Workflow tool on the account (it is gated per account) and the opus, sonnet and haiku models.
+- `git`: a run works and commits in a worktree of its own.
+- `node`: setup and start check the profile, a run mutates code, start saves the trace.
+- Optional: `gh`, for the recent GitHub Actions durations setup shows.
+
 ## Install
 
-1. This repository is a plugin marketplace. Add it from a local path or its git remote; `<core>` below is either one.
-   A local-path marketplace loads the plugin in place. Pin a version by marketplace ref: `<remote>#<tag or branch>`.
-2. In the project, add the marketplace and install the plugin with project scope:
+1. In the project, add this repository as a marketplace and install the plugin with project scope:
 
    ```sh
    claude plugin marketplace add --scope project <core>
    claude plugin install --scope project red-green@red-green
    ```
 
-   The project's sessions then have the workflow `/red-green:red-green` and the skills `/red-green:setup` and `/red-green:start`.
-3. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout (the local path, or
-   `~/.claude/plugins/marketplaces/red-green/` for a git remote): it checks `claude`, `git` and `node`, and lists what
-   to confirm by hand (the Workflow tool on the account, the opus, sonnet and haiku models).
+   `<core>` is a local path, which loads the plugin in place, or the git remote; pin a version as
+   `<remote>#<tag or branch>`. The project's sessions then have the workflow `/red-green:red-green-workflow` and the
+   skills `/red-green:setup` and `/red-green:start`.
+2. Run `.claude/workflows/red-green/workflow-doctor.sh` from the plugin's checkout (the local path, or
+   `~/.claude/plugins/marketplaces/red-green/` for a git remote): it checks `claude`, `git` and `node`, and lists the
+   rest to confirm by hand.
 
 ## Getting started
 

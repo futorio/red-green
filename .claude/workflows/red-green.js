@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'red-green',
+  name: 'red-green-workflow',
   description: 'Implement one ticket: research, TDD with coverage-checked test cases, review/fix loop',
   whenToUse: 'Implement per a ticket or spec path; project specifics come in args.profile. Launch with the start skill (skills/start/SKILL.md of the red-green repository)',
   phases: [
