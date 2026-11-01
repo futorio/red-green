@@ -5,7 +5,7 @@ Run commands from `.claude/workflows/red-green/`; the rendered script is `.claud
 ## Testing
 
 ```
-node --test test_red_green.mjs template/test_render.mjs skills/test_mutate.mjs test_trace.mjs
+node --test test_red_green.mjs template/test_render.mjs skills/test_mutate.mjs skills/test_run_gates.mjs test_trace.mjs
 ```
 
 A change to the core's control flow gets a case in `test_red_green.mjs`. A change that alters the render re-records the
