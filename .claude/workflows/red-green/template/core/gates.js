@@ -25,7 +25,7 @@ const GATES_SCHEMA = { type: 'object', properties: {
 
 // The gates step only runs the runner, whose rows hold the status; the script turns them into findings and failures. A
 // gate with no result gets one retry of the step, which picks up finished gates from the runner's cache.
-async function runGates(round, label, tag) {
+async function runGates(round, label) {
   phase('Gates')
   const step = at => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
     'head: `git rev-parse HEAD`. One row per gate; a row the script printed stays as printed.',
@@ -43,7 +43,7 @@ async function runGates(round, label, tag) {
   if (none.length) failures.push(`gates ${label}: no result for ${none.map(r => `${r.name}: ${r.line}`).join('; ')}`)
   const vs = r => `${r.line} (baseline: ${BASELINE[r.name].line})`
   return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'red').map(r => ({
-    id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
+    id: `G${round}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
     consequence: 'the gate fails', fix: 'make the gate pass' })) }
 }
 // @part inputs

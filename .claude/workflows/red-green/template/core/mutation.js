@@ -12,7 +12,7 @@ const MUTATION_SCHEMA = { type: 'object', properties: {
 }, required: ['applies', 'ran', 'mutants'] }
 // @part run
 
-// The mutation step runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
+// The mutation step runs once per run, after the first clean iteration at or past min, or else after the loop.
 // Returns every survivor as a major for fix, which may reject it with an argument like any finding.
 let mutated = false
 // A mutant's place: its file from the +++ side (the --- side for a deleted file), less any timestamp; its line from

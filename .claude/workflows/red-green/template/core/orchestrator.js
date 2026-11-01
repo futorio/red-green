@@ -56,21 +56,21 @@ const BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include implement inputs
 // @include gates inputs
 // @include review inputs
-// @include fix-review inputs
 // @include mutation inputs
 // @include fix inputs
-// @include minor-fix inputs
 // @include registry registry
 // @include registry call
 // @include shared config
 // Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/red-green/blocks.md).
 const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
-const FOLLOWS = { plan: 'research', 'fix-review': 'review', 'minor-fix': 'fix' }
+const FOLLOWS = { plan: 'research' }
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
 // These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
-const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
-  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
+const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.rounds', min_rounds: 'profile.blocks.review.min' }],
+  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }],
+  [Object(P.blocks), 'profile.blocks', { 'minor-fix': 'profile.blocks.fix: minors reach a fix with a major', 'fix-review': 'profile.blocks.review: the next iteration verifies each fix' }],
+  [Object(Object(P.blocks).review), 'profile.blocks.review', { extra: 'profile.blocks.review.rounds' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
 // A block prompt keeps its registry paths ({{default}} among them) for the call to fill; any other placeholder is an error.
 UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)))
@@ -80,12 +80,13 @@ Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => c
 if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')
 if (CONFIG.mutation.build && !CONFIG.mutation.test) configErrors.push('blocks.mutation: build without test')
 if (CONFIG.mutation.tool && (CONFIG.mutation.test || CONFIG.mutation.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
+if (CONFIG.review.rounds < 1) configErrors.push(`blocks.review.rounds: ${CONFIG.review.rounds} is below 1`)
+if (CONFIG.review.min < 1) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is below 1`)
+if (CONFIG.review.min > CONFIG.review.rounds) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is over rounds ${CONFIG.review.rounds}: set min too`)
 // @include gates config
 if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
 GATES = CONFIG.gates.gates
 STAGE_GATES = GATES.filter(g => g.tier !== 'acceptance')
-// Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
-let EXTRA = CONFIG.review.extra
 const failures = []
 // Each gate the stage runs needs a baseline.
 // @include gates baseline
@@ -121,9 +122,9 @@ const outcomeOf = (f, res) => {
 
 // @include research call
 // @include research checks
-let N = CONFIG.review.rounds
+const N = CONFIG.review.rounds
 // A run reviews review.min rounds in full even when the first is clean: round 2 catches majors round 1 missed.
-const MIN_ROUNDS = Math.min(N, CONFIG.review.min)
+const MIN_ROUNDS = CONFIG.review.min
 const LENS_KEYS = CONFIG.review.lenses
 log(`research: ${research.requirements.length} requirements, ${droppedFacts.length} facts dropped, ${unresearched.length} unresearched -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 // @include plan call
@@ -138,9 +139,7 @@ let gated = null
 // @include gates run
 // @include mutation run
 // @include fix run
-// @include fix-review run
 
-let rejections = []
 const advisory = []
 const fixed = []
 const history = []
@@ -148,21 +147,18 @@ const verdicts = []
 const rounds = []
 const status = {}
 let unfixed = []
+// The last fix's start and what it did to each finding, for the iteration after it.
+let lastFix = null
 let round = 0
 while (round < N) {
   round += 1
-  const fresh = !gated || !same(gated.head, headNow)
-  const gatesStep = async () => {
-    if (!fresh) return gated
-    return runGates(round, `gates:r${round}`)
-  }
+  if (!gated || !same(gated.head, headNow)) gated = await runGates(round, `gates:r${round}`)
   phase('Review')
-  let fromHead = headNow
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  gated = await gatesStep()
 // @include review call
+  lastFix = null
 
-  const found = fresh ? gated.found.slice() : []
+  const found = gated.found.slice()
   let reviewed = true
   lensResults.forEach((res, i) => {
     const l = active[i]
@@ -182,72 +178,34 @@ while (round < N) {
     found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })
   let toFix = found.filter(f => f.severity !== 'minor')
-  advisory.push(...found.filter(f => f.severity === 'minor'))
+  const minors = found.filter(f => f.severity === 'minor')
+  advisory.push(...minors)
   if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
   const bySeverity = s => found.filter(f => f.severity === s).length
   rounds.push({ round, major: bySeverity('major'), minor: bySeverity('minor'), gates: gated.gates })
   log(`round ${round}: ${toFix.length} to fix`)
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
-  if (!toFix.length && reviewed && round >= MIN_ROUNDS) {
-    if (mutated) break
+  if (!toFix.length && reviewed && round >= MIN_ROUNDS && !mutated) {
     toFix = await runMutation()
-    if (!toFix.length) break
-    // Survivors get a fix and one more review round, without the step.
-    log(`mutation: ${toFix.length} survivors to fix`)
-    if (round === N) N += 1
+    if (toFix.length) log(`mutation: ${toFix.length} survivors`)
   }
-  if (toFix.length && round === N && EXTRA > 0) {
-    EXTRA -= 1
-    N += 1
-    log(`round ${round}: ${toFix.length} to fix in the last round, one more round reviews the fix`)
-  }
-  let fix = null
-  if (toFix.length) {
-    fromHead = headNow
-    fix = await runFix(round, toFix, `fix:r${round}`)
-    if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
-    fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
-    rounds[rounds.length - 1].applied = fix.applied.length
-    rounds[rounds.length - 1].rejected = fix.rejected.length
-    rejections = fix.rejected.map(r => Object.assign({}, toFix.find(f => f.id === r.id) || { id: r.id }, { argument: r.argument }))
-    toFix.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
-    reconcile(toFix, fix)
-    headNow = fix.head || headNow
-  }
-  if (round === N) {
-    unfixed = rejections.slice()
-    // The last round's fix gets a fix-diff review; its majors get one more fix and review, then are left over.
-    if (toFix.length && !same(headNow, fromHead)) {
-      let from = fromHead
-      let given = toFix
-      let by = fix
-      for (let pass = 0; ; pass++) {
-        const late = await fixReview(from, given.map(f => outcomeOf(f, by)), `review:fix:r${round}${pass ? `:${pass}` : ''}`)
-        if (!late) {
-          unfixed.push(...given.map(f => Object.assign({}, f, { status: 'unverified', problem: `fixed in the last round, its review died: ${f.problem}` })))
-          break
-        }
-        advisory.push(...late.filter(f => f.severity === 'minor'))
-        const majors = late.filter(f => f.severity !== 'minor')
-        if (!majors.length) break
-        if (pass >= 1) { unfixed.push(...majors.map(f => Object.assign({}, f, { status: 'unverified' }))); break }
-        from = headNow
-        const again = await runFix(round, majors, `fix:r${round}:review`)
-        if (!again) { failures.push(`fix r${round} review`); unfixed.push(...majors); break }
-        fixed.push(...again.applied.map(a => Object.assign({ round }, a)))
-        headNow = again.head || headNow
-        given = majors
-        by = again
-      }
-    }
-    if (!same(headNow, gated.head)) {
-      // The last fix moved HEAD and no review follows: the gates step checks it.
-      gated = await runGates(round, `gates:r${round}:recheck`, 'r')
-      rounds[rounds.length - 1].recheck = gated.gates
-      unfixed.push(...gated.found)
-    }
-  }
+  if (!toFix.length && reviewed && round >= MIN_ROUNDS) break
+  // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
+  if (!toFix.length) continue
+  if (round === N) { unfixed = toFix; break }
+  const fromHead = headNow
+  const sent = toFix.concat(minors)
+  const fix = await runFix(round, sent, `fix:r${round}`)
+  if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
+  fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
+  rounds[rounds.length - 1].applied = fix.applied.length
+  rounds[rounds.length - 1].rejected = fix.rejected.length
+  sent.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
+  reconcile(sent.concat(orphans), fix)
+  headNow = fix.head || headNow
+  if (fix.applied.length && same(headNow, fromHead)) failures.push(`applied with head unchanged at fix r${round}: ${fix.applied.map(a => a.id).join(', ')}`)
+  lastFix = { from: fromHead, outcomes: sent.map(f => outcomeOf(f, fix)) }
 }
 // A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
 if (!mutated && !failures.some(f => f.startsWith('fix '))) unfixed.push(...await runMutation())
@@ -258,10 +216,10 @@ const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(
 const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
   id, source: 'checklist', where: research.requirements.find(r => idOf(r) === id), status: status[id] ? status[id].status : 'unverified',
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
+// An unmet row's major (R<round>-R<n>) is left over as the row itself.
+const rowMajor = f => /^R\d+-R\d+$/.test(f.id)
 
-// @include minor-fix run
 // @include proofs settle
-const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
 // Freeing the run directory is the main thread's step after acceptance (skills/start/SKILL.md).
 return {
@@ -281,9 +239,8 @@ return {
   gates: GATES,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
-  leftover_findings: uniq(unfixed.concat(unmet)),
-  advisory: uniq(advisory).filter(f => !minorApplied(f)),
-  minor_fixes: minorFix && { applied: minorFix.applied, rejected: minorFix.rejected },
+  leftover_findings: uniq(unfixed.filter(f => !rowMajor(f)).concat(unmet)),
+  advisory: uniq(advisory.filter(f => !fixed.some(a => a.id === f.id))),
   stray_proofs: strayProofs,
   unverified: impl.unverified,
   implement: { checks: impl.checks, notes: impl.notes },

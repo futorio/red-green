@@ -31,7 +31,7 @@ const fillRun = (v, at) => typeof v === 'string' ? v.replace(/\{\{([^{}]*)\}\}/g
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillRun(x, `${at}.${k}`)])) : v
 const P = fillRun(A.profile || {}, 'profile')
 // Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/red-green/blocks.md).
-const DEFAULTS = {"fix-review":{"fix-review":"STAGE: fix review, HEAD {{HEAD}}. A fix moved HEAD from {{from_head}}; no full review round follows it. Review its diff, `git diff {{from_head}}..HEAD`, and only that: (1) each `fixed` finding is fixed by the diff; each `rejected` one: its `argument` holds against the code; (2) the diff breaks nothing it touches — a sibling caller, another writer of the same state{{duty.test_case_review_fix}}. The gates step checks this HEAD after you.\nGIVEN:\n{{given}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","duty.test_case_review_fix":"; (3) no test was weakened, deleted or left asserting nothing it promises"},"fix":{"fix":"STAGE: fix, round {{round}}. Read {{IMPLEMENT_SKILL}} and follow it, code rules included.{{code_rules}}\nVerify each finding first. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.\n\nFINDINGS:\n{{findings}}\n{{earlier_fixes}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","silence":"delete the thing a finding is about to silence it","earlier_fixes":"\nEARLIER FIXES:\n{{fixed}}\n"},"gates":{"run":"STAGE: gates, HEAD {{HEAD}}.\nFrom {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):\n{{gate_command}}\nIt prints one JSON row per gate.\nExit 0: the report is complete, whatever the gates did; return its rows.\nExit 2: it could not run; a `not_run` row per gate, `line` its stderr.\nExit 3: gates are still running and survive the call; run the same command again, at most 6 calls in all. Still exit 3 after the 6th: a `not_run` row per gate, `line` saying it did not finish.\nDo not end your turn before one of these; judge no gate and read no log."},"implement":{"implement":"STAGE: implementation.{{retry_note}} Read {{IMPLEMENT_SKILL}} and follow it, with the tdd/ directory beside it.{{code_rules}}\nBuild on the research facts and plan: what they settle is settled.\n\nBefore reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row with a test at the seam its requirement's test_harness names; a phrase row is unverified only when this environment cannot run its test (no tool, no data, no binary). Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in `unverified`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.\n\nCASES:\n{{cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","retry_note":" A previous attempt at this stage made NO commit (HEAD still {{BASE}}); its notes: {{previous_notes}}. Implement the ticket now."},"minor-fix":{"minor-fix":"STAGE: minor fixes. Read {{IMPLEMENT_SKILL}} and follow it, code rules included.{{code_rules}}\nApply each finding below whose fix is cheap: a few lines in files this run already changed, no new test file, no change of design. Reject every other one with a one-line reason; it stays advisory. Verify before you agree; never delete the thing a finding is about to silence it.\n\nFINDINGS:\n{{findings}}"},"mutation":{"generated":"STAGE: mutation, HEAD {{HEAD}}. Read `git diff {{BASE}}..HEAD` and {{TARGET}}. For each check below write one mutant that breaks the behaviour its test claims to pin (`target` its ref), then at most {{config.edges}} on edges the ticket does not state (`target` `edge: <short phrase>`). Each `patch` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to {{RUN}}/mutants.json, then run once `{{mutate_command}}` and report its output list as `mutants`; exit 2 means it did not run: ran false, not_run its stderr.\n- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start.\nCHECKS:\n{{tested_checks}}","tool":"STAGE: mutation, HEAD {{HEAD}}. The project's mutation tool: {{config.tool}} Run it once on this HEAD and report every mutant it ran: `target` `operator`, or a check ref only when the tool names one; `patch` a unified diff against HEAD; `status`."},"plan":{"plan":"STAGE: test-case planning.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","replan":"STAGE: test-case planning, the one replan.{{uncovered_note}}{{duplicates_note}} Keep every other case as it is, same id.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nYOUR PREVIOUS CASES:\n{{plan.cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","uncovered_note":" Your cases below leave {{uncovered}} uncovered: add cases for each.","duplicates_note":" These checks sit in several cases after the same Arrange and Act; keep each in one case. Each `check` reads `arrange | act | assert`: {{duplicates}}.","rules":"cases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case."},"research":{"research":"STAGE: research.{{retry_note}} Read {{TARGET}}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.","retry_note":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed; a plan step over its limit keeps its action and moves the details to the facts.","section":"RESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover."},"review":{"checklist":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: checklist. Review the change against its statement. For each requirement id — {{check_ids}} — the promise is the sentence of the statement it rests on, whatever the code, its docs or its tests say. Then find a counterexample: the input or path most likely to make the promise false on the diff `git diff {{BASE}}..HEAD` — a boundary, an empty or malformed input, an error path, an exit code, a second caller.{{verify_review_note}} Scope: a change the statement does not call for is a finding.{{unverified_note}}\nThe gates step already ran every gate and long check at this HEAD; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","code":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}\n{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.\nThe gates step already ran every gate and long check at this HEAD; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","head":"STAGE: review, round {{round}} of at most {{rounds}}. Lens:","frame":"The gates step already ran every gate and long check at this HEAD; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","verify_review_note":" These have no test and are checked only by you: {{verify_review}}.","unverified_note":" Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.","earlier_findings":"\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):\n{{history}}\n","duty.order":" ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.","runtime_note":" in {{config.runtime}}","duty.test_case_review":"A test the diff weakened, deleted or left asserting nothing it promises is a finding. ","weakened":"weakened, deleted or left asserting nothing it promises"},"shared":{"bg":"- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start."}}
+const DEFAULTS = {"fix":{"fix":"STAGE: fix, round {{round}}. Read {{IMPLEMENT_SKILL}} and follow it, code rules included.{{code_rules}}\nVerify each finding first. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.\n\nFINDINGS:\n{{findings}}\n{{earlier_fixes}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","earlier_fixes":"\nEARLIER FIXES:\n{{fixed}}\n"},"gates":{"run":"STAGE: gates, HEAD {{HEAD}}.\nFrom {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):\n{{gate_command}}\nIt prints one JSON row per gate.\nExit 0: the report is complete, whatever the gates did; return its rows.\nExit 2: it could not run; a `not_run` row per gate, `line` its stderr.\nExit 3: gates are still running and survive the call; run the same command again, at most 6 calls in all. Still exit 3 after the 6th: a `not_run` row per gate, `line` saying it did not finish.\nDo not end your turn before one of these; judge no gate and read no log."},"implement":{"implement":"STAGE: implementation.{{retry_note}} Read {{IMPLEMENT_SKILL}} and follow it, with the tdd/ directory beside it.{{code_rules}}\nBuild on the research facts and plan: what they settle is settled.\n\nBefore reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row with a test at the seam its requirement's test_harness names; a phrase row is unverified only when this environment cannot run its test (no tool, no data, no binary). Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in `unverified`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.\n\nCASES:\n{{cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","retry_note":" A previous attempt at this stage made NO commit (HEAD still {{BASE}}); its notes: {{previous_notes}}. Implement the ticket now."},"mutation":{"generated":"STAGE: mutation, HEAD {{HEAD}}. Read `git diff {{BASE}}..HEAD` and {{TARGET}}. For each check below write one mutant that breaks the behaviour its test claims to pin (`target` its ref), then at most {{config.edges}} on edges the ticket does not state (`target` `edge: <short phrase>`). Each `patch` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to {{RUN}}/mutants.json, then run once `{{mutate_command}}` and report its output list as `mutants`; exit 2 means it did not run: ran false, not_run its stderr.\n- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start.\nCHECKS:\n{{tested_checks}}","tool":"STAGE: mutation, HEAD {{HEAD}}. The project's mutation tool: {{config.tool}} Run it once on this HEAD and report every mutant it ran: `target` `operator`, or a check ref only when the tool names one; `patch` a unified diff against HEAD; `status`."},"plan":{"plan":"STAGE: test-case planning.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","replan":"STAGE: test-case planning, the one replan.{{uncovered_note}}{{duplicates_note}} Keep every other case as it is, same id.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nYOUR PREVIOUS CASES:\n{{plan.cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","uncovered_note":" Your cases below leave {{uncovered}} uncovered: add cases for each.","duplicates_note":" These checks sit in several cases after the same Arrange and Act; keep each in one case. Each `check` reads `arrange | act | assert`: {{duplicates}}.","rules":"cases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case."},"research":{"research":"STAGE: research.{{retry_note}} Read {{TARGET}}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.","retry_note":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed; a plan step over its limit keeps its action and moves the details to the facts.","section":"RESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover."},"review":{"checklist":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: checklist. Review the change against its statement. For each requirement id — {{check_ids}} — the promise is the sentence of the statement it rests on, whatever the code, its docs or its tests say. Then find a counterexample: the input or path most likely to make the promise false on the diff `git diff {{BASE}}..HEAD` — a boundary, an empty or malformed input, an error path, an exit code, a second caller.{{verify_review_note}} Scope: a change the statement does not call for is a finding.{{unverified_note}}\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","code":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}\n{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","head":"STAGE: review, round {{round}} of at most {{rounds}}. Lens:","frame":"The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","verify_review_note":" These have no test and are checked only by you: {{verify_review}}.","unverified_note":" Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.","earlier_findings":"\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):\n{{history}}\n","last_fix_note":"THE LAST FIX: on `git diff {{from_head}}..HEAD`, verify that each `fixed` finding below is fixed and that each `rejected` one's `argument` holds against the code; a claim that fails is a new major.\nOUTCOMES:\n{{last_fix}}","duty.test_case_review_fix":"\nA test that diff weakened, deleted or left asserting nothing it promises is a new major too.","duty.order":" ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.","runtime_note":" in {{config.runtime}}","duty.test_case_review":"A test the diff weakened, deleted or left asserting nothing it promises is a finding. ","weakened":"weakened, deleted or left asserting nothing it promises"},"shared":{"bg":"- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start."}}
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
@@ -187,7 +187,8 @@ const LENSES = [
   { key: 'checklist', schema: reviewSchema(Object.assign({ promise: { type: 'string' }, counterexample: { type: 'string' } }, STATUS)), checked: null,
     rules: () => [READ_ONLY, TARGETED, 'One `checked` row per id: item = the id, promise = the quoted sentence with its file and section, counterexample = the input you tried, status `met` (the counterexample was tried and the promise held), `unmet` (it breaks the promise: name it) or `unverified` (you could not try it). An id without a row counts as unverified. An `unmet` row becomes a finding by itself; `findings` are for defects outside the requirements.'] },
   { key: 'code', schema: REVIEW_SCHEMA, checked: 'new or changed function or branch (item = where it is), then one per other thing you verified',
-    rules: () => [`${READ_ONLY} The one exception is a proof: you may prove a major about behaviour with a test, written as a new, uncommitted file in the repository's test directory; \`proof\` is its path, the exact command and the output line that showed it red on HEAD.`, TARGETED] },
+    rules: last => [last ? `${READ_ONLY} Write no proof file: no fix follows this round.`
+      : `${READ_ONLY} The one exception is a proof: you may prove a major about behaviour with a test, written as a new, uncommitted file in the repository's test directory; \`proof\` is its path, the exact command and the output line that showed it red on HEAD. Write no proof file for a minor.`, TARGETED] },
 ]
 // One record per mutant, from the runner or a project's own tool; the script derives ids, places and counts.
 const MUTANT_STATUS = ['killed', 'survived', 'invalid', 'not_run']
@@ -229,25 +230,21 @@ Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE } })
 // The inputs of the gates step.
 INPUTS.gates = ['HEAD', 'REPO', 'gate_command']
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
-// earlier findings and their outcomes.
-INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'research']
+// earlier findings and their outcomes, each finding the last fix was sent with its outcome.
+INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,
   history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,
     outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'round', 'problem', 'outcome'] } },
+  last_fix: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
+    outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } },
 })
-// Fix review's inputs, and the path only it reads: each finding the fix was given, with its outcome.
-INPUTS['fix-review'] = ['HEAD', 'from_head', 'duty.test_case_review_fix', 'given', 'research']
-Object.assign(BLOCK_PATHS, { given: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
-  outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } } })
 // Mutation's inputs, and the path only it reads: implement's check rows with a test.
 INPUTS.mutation = ['HEAD', 'BASE', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool']
 Object.assign(BLOCK_PATHS, { tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items } })
 // Fix's inputs, and the path only it reads: each applied fix so far.
 INPUTS.fix = ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research']
 Object.assign(BLOCK_PATHS, { fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } } })
-// Minor fix's inputs.
-INPUTS['minor-fix'] = ['IMPLEMENT_SKILL', 'code_rules', 'findings']
 // The research input requires nothing extra: the limits research's own checks hold (the `R<n>: ` prefix, a plan step's
 // 600 characters) are left out, so a result recorded before a limit still fills a later block.
 const researchKept = Object.assign(Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions')), { requirements: LIST, plan: LIST })
@@ -263,14 +260,14 @@ const REGISTRY = Object.assign({
   previous_notes: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
-  earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING,
+  earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING, last_fix_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
   findings: { type: 'array', items: SENT_FINDING },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,
-  'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
+  'config.rounds': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
   'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
@@ -344,13 +341,15 @@ function mergeBlocks(defaults, over, registry) {
   return { merged, errors }
 }
 // Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/red-green/blocks.md).
-const { merged: CONFIG, errors: configErrors } = mergeBlocks({"research":{"model":"opus","effort":"high","prompt":null,"skill":null},"plan":{"model":null,"effort":"high","prompt":null,"skill":null},"implement":{"model":"haiku","effort":"high","prompt":null,"skill":null},"gates":{"model":"haiku","effort":"medium","gates":null,"prompt":null,"skill":null},"review":{"model":"opus","effort":"high","rounds":2,"extra":0,"min":2,"lenses":["checklist","code"],"duties":{"test_case_review":true,"order":false},"minors":2,"runtime":null,"prompt":null,"skill":null},"fix-review":{"model":null,"effort":"high","prompt":null,"skill":null},"mutation":{"model":"haiku","effort":"medium","edges":5,"timeout":300,"build":null,"test":null,"tool":null,"prompt":null,"skill":null},"fix":{"model":"sonnet","effort":"high","prompt":null,"skill":null},"minor-fix":{"model":null,"effort":"medium","prompt":null,"skill":null}}, P.blocks, REGISTRY)
+const { merged: CONFIG, errors: configErrors } = mergeBlocks({"research":{"model":"opus","effort":"high","prompt":null,"skill":null},"plan":{"model":null,"effort":"high","prompt":null,"skill":null},"implement":{"model":"haiku","effort":"high","prompt":null,"skill":null},"gates":{"model":"haiku","effort":"medium","gates":null,"prompt":null,"skill":null},"review":{"model":"opus","effort":"high","rounds":3,"min":2,"lenses":["checklist","code"],"duties":{"test_case_review":true,"order":false},"minors":2,"runtime":null,"prompt":null,"skill":null},"mutation":{"model":"haiku","effort":"medium","edges":5,"timeout":300,"build":null,"test":null,"tool":null,"prompt":null,"skill":null},"fix":{"model":"sonnet","effort":"high","prompt":null,"skill":null}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
-const FOLLOWS = { plan: 'research', 'fix-review': 'review', 'minor-fix': 'fix' }
+const FOLLOWS = { plan: 'research' }
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
 // These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
-const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
-  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }]]
+const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.rounds', min_rounds: 'profile.blocks.review.min' }],
+  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }],
+  [Object(P.blocks), 'profile.blocks', { 'minor-fix': 'profile.blocks.fix: minors reach a fix with a major', 'fix-review': 'profile.blocks.review: the next iteration verifies each fix' }],
+  [Object(Object(P.blocks).review), 'profile.blocks.review', { extra: 'profile.blocks.review.rounds' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
 // A block prompt keeps its registry paths ({{default}} among them) for the call to fill; any other placeholder is an error.
 UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)))
@@ -360,6 +359,9 @@ Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => c
 if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')
 if (CONFIG.mutation.build && !CONFIG.mutation.test) configErrors.push('blocks.mutation: build without test')
 if (CONFIG.mutation.tool && (CONFIG.mutation.test || CONFIG.mutation.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
+if (CONFIG.review.rounds < 1) configErrors.push(`blocks.review.rounds: ${CONFIG.review.rounds} is below 1`)
+if (CONFIG.review.min < 1) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is below 1`)
+if (CONFIG.review.min > CONFIG.review.rounds) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is over rounds ${CONFIG.review.rounds}: set min too`)
 // A run has declared gates, each with a tier: the start skill finds them when a profile has none.
 const declaredGates = Array.isArray(CONFIG.gates.gates) ? CONFIG.gates.gates.filter(g => g && typeof g === 'object') : []
 declaredGates.filter(g => 'fast' in g).forEach(g => configErrors.push(`blocks.gates.gates: ${g.name}: fast moved to tier (fast, round or acceptance)`))
@@ -368,8 +370,6 @@ if (!declaredGates.some(g => g.tier !== 'acceptance')) configErrors.push('blocks
 if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
 GATES = CONFIG.gates.gates
 STAGE_GATES = GATES.filter(g => g.tier !== 'acceptance')
-// Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
-let EXTRA = CONFIG.review.extra
 const failures = []
 // Each gate the stage runs needs a baseline.
 const measured = g => Object.hasOwn(BASELINE, g.name) && !validate({ type: 'object', properties: { status: { type: 'string' }, line: { type: 'string' } }, required: ['status', 'line'] }, BASELINE[g.name]).length
@@ -422,9 +422,18 @@ const proofs = []
 const settled = new Set()
 const strayProofs = []
 const stray = f => { settled.add(f.id); strayProofs.push({ id: f.id, path: f.proof.path }) }
+// A proof on a minor backs nothing a fix answers: the finding loses it and the next fix deletes the file.
+const orphans = []
+const orphanFiles = () => orphans.filter(o => !settled.has(o.id)).map(o => `${o.id} ${o.proof.path}`)
 // A proof from another source is not sent to a fix, but its file may exist: it is a stray, never dropped silently.
 function proven(f) {
   if (f.proof && f.source !== 'code') { stray(f); delete f.proof }
+  if (f.proof && f.severity === 'minor') {
+    const o = { id: f.id, proof: f.proof }
+    orphans.push(o)
+    proofs.push(o)
+    delete f.proof
+  }
   if (f.proof) proofs.push(f)
   return f
 }
@@ -485,9 +494,9 @@ research.test_harness = reqIds.map(id => research.test_harness.find(h => idOf(h.
 const researchQuestions = (research.questions || []).filter(q => reqIds.includes(idOf(q.requirement)) || !researchIssues.push(`question for unknown requirement ${q.requirement}: dropped`))
 delete research.questions
 research.files = [...new Set(research.facts.filter(f => f.kind !== 'note').flatMap(f => [].concat(f.where).map(w => w.split(':')[0].trim())))]
-let N = CONFIG.review.rounds
+const N = CONFIG.review.rounds
 // A run reviews review.min rounds in full even when the first is clean: round 2 catches majors round 1 missed.
-const MIN_ROUNDS = Math.min(N, CONFIG.review.min)
+const MIN_ROUNDS = CONFIG.review.min
 const LENS_KEYS = CONFIG.review.lenses
 log(`research: ${research.requirements.length} requirements, ${droppedFacts.length} facts dropped, ${unresearched.length} unresearched -> ${N} review rounds, lenses ${LENS_KEYS.join(' + ')}`)
 
@@ -562,7 +571,7 @@ let gated = null
 
 // The gates step only runs the runner, whose rows hold the status; the script turns them into findings and failures. A
 // gate with no result gets one retry of the step, which picks up finished gates from the runner's cache.
-async function runGates(round, label, tag) {
+async function runGates(round, label) {
   phase('Gates')
   const step = at => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
     'head: `git rev-parse HEAD`. One row per gate; a row the script printed stays as printed.',
@@ -580,11 +589,11 @@ async function runGates(round, label, tag) {
   if (none.length) failures.push(`gates ${label}: no result for ${none.map(r => `${r.name}: ${r.line}`).join('; ')}`)
   const vs = r => `${r.line} (baseline: ${BASELINE[r.name].line})`
   return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'red').map(r => ({
-    id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
+    id: `G${round}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
     consequence: 'the gate fails', fix: 'make the gate pass' })) }
 }
 
-// The mutation step runs once per run, on the HEAD the review rounds settled on, not in every round's gates step.
+// The mutation step runs once per run, after the first clean iteration at or past min, or else after the loop.
 // Returns every survivor as a major for fix, which may reject it with an argument like any finding.
 let mutated = false
 // A mutant's place: its file from the +++ side (the --- side for a deleted file), less any timestamp; its line from
@@ -626,34 +635,15 @@ async function runFix(round, toFix, label) {
   return call('fix', PRE, 'fix', { round, IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: toFix, research, fixed, earlier_fixes: fixed.length > 0 }, fixContract(
     'Commit your work as it stands.',
     toFix.some(f => f.proof) && 'For a finding with a `proof`, run its `command` first: green on HEAD is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test. Never leave a proof as written: rewrite it into the suite in its style and commit it, or delete it; report each in `proofs`.',
+    orphanFiles().length && `Delete each of these proof files and report it in \`proofs\`, by the id before its path: ${orphanFiles().join(', ')}.`,
     fixed.length && 'A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".'),
   { schema: FIX_SCHEMA, phase: 'Fix', label })
 }
-// The contract part of fix and minor fix: a writer that keeps its bar (COMMIT_RULE folds into the one commit), the
+// The contract part of fix: a writer that keeps its bar (COMMIT_RULE folds into the one commit), the
 // block's rules, the head and proofs it reports.
 const fixContract = (bar, ...rules) => contract(writer(bar), ...rules,
   'Report head: `git rev-parse HEAD` after your last change; proofs: [] when no finding has a proof.', died('Answer'))
 
-// The last round's fix, which no full round follows, is reviewed on its own diff: did it fix what it was given, did it break
-// anything near it, did it weaken a test. given: each finding the fix was sent, with its outcome (outcomeOf). Returns
-// its findings, or null when the reviewer died.
-let fixReviews = 0
-async function fixReview(fromHead, given, label) {
-  fixReviews += 1
-  phase('Review')
-  const res = await call('fix-review', NO_CODE_PRE, 'fix-review', {
-    HEAD: headNow, from_head: fromHead, research, 'duty.test_case_review_fix': CONFIG.review.duties.test_case_review,
-    given,
-  }, contract(READ_ONLY, TARGETED, SEVERITY, CHECKED('finding it was given (item = its id), then one per other thing you verified')),
-  { schema: REVIEW_SCHEMA, phase: 'Review', label })
-  if (!res) { failures.push(`fix review ${label}`); return null }
-  const quiet = silence(res)
-  if (quiet) failures.push(`fix review ${label} silent: ${quiet}`)
-  verdicts.push({ round: label, lens: 'fix review', verdict: quiet ? 'SILENT' : res.verdict, count: res.findings.length })
-  return tidy(res.findings).map((f, k) => proven(Object.assign({ id: `F${fixReviews}-${k + 1}`, source: 'fix review' }, f)))
-}
-
-let rejections = []
 const advisory = []
 const fixed = []
 const history = []
@@ -661,30 +651,29 @@ const verdicts = []
 const rounds = []
 const status = {}
 let unfixed = []
+// The last fix's start and what it did to each finding, for the iteration after it.
+let lastFix = null
 let round = 0
 while (round < N) {
   round += 1
-  const fresh = !gated || !same(gated.head, headNow)
-  const gatesStep = async () => {
-    if (!fresh) return gated
-    return runGates(round, `gates:r${round}`)
-  }
+  if (!gated || !same(gated.head, headNow)) gated = await runGates(round, `gates:r${round}`)
   phase('Review')
-  let fromHead = headNow
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  gated = await gatesStep()
   const lensResults = await parallel(active.map(l => () => call('review', NO_CODE_PRE, l.key, {
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
     history, earlier_findings: history.length > 0,
+    from_head: lastFix ? lastFix.from : undefined, last_fix: lastFix ? lastFix.outcomes : undefined, last_fix_note: !!lastFix,
+    'duty.test_case_review_fix': !!lastFix && CONFIG.review.duties.test_case_review,
     verify_review: plan.verify_review, verify_review_note: plan.verify_review.length > 0,
     unverified: impl.unverified, unverified_note: impl.unverified.length > 0,
     'config.runtime': CONFIG.review.runtime, runtime_note: !!CONFIG.review.runtime,
     'duty.order': CONFIG.review.duties.order, 'duty.test_case_review': CONFIG.review.duties.test_case_review,
-  }, contract(...l.rules(), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
+  }, contract(...l.rules(round === N), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
   { schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
+  lastFix = null
 
-  const found = fresh ? gated.found.slice() : []
+  const found = gated.found.slice()
   let reviewed = true
   lensResults.forEach((res, i) => {
     const l = active[i]
@@ -704,72 +693,34 @@ while (round < N) {
     found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })
   let toFix = found.filter(f => f.severity !== 'minor')
-  advisory.push(...found.filter(f => f.severity === 'minor'))
+  const minors = found.filter(f => f.severity === 'minor')
+  advisory.push(...minors)
   if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
   const bySeverity = s => found.filter(f => f.severity === s).length
   rounds.push({ round, major: bySeverity('major'), minor: bySeverity('minor'), gates: gated.gates })
   log(`round ${round}: ${toFix.length} to fix`)
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
-  if (!toFix.length && reviewed && round >= MIN_ROUNDS) {
-    if (mutated) break
+  if (!toFix.length && reviewed && round >= MIN_ROUNDS && !mutated) {
     toFix = await runMutation()
-    if (!toFix.length) break
-    // Survivors get a fix and one more review round, without the step.
-    log(`mutation: ${toFix.length} survivors to fix`)
-    if (round === N) N += 1
+    if (toFix.length) log(`mutation: ${toFix.length} survivors`)
   }
-  if (toFix.length && round === N && EXTRA > 0) {
-    EXTRA -= 1
-    N += 1
-    log(`round ${round}: ${toFix.length} to fix in the last round, one more round reviews the fix`)
-  }
-  let fix = null
-  if (toFix.length) {
-    fromHead = headNow
-    fix = await runFix(round, toFix, `fix:r${round}`)
-    if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
-    fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
-    rounds[rounds.length - 1].applied = fix.applied.length
-    rounds[rounds.length - 1].rejected = fix.rejected.length
-    rejections = fix.rejected.map(r => Object.assign({}, toFix.find(f => f.id === r.id) || { id: r.id }, { argument: r.argument }))
-    toFix.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
-    reconcile(toFix, fix)
-    headNow = fix.head || headNow
-  }
-  if (round === N) {
-    unfixed = rejections.slice()
-    // The last round's fix gets a fix-diff review; its majors get one more fix and review, then are left over.
-    if (toFix.length && !same(headNow, fromHead)) {
-      let from = fromHead
-      let given = toFix
-      let by = fix
-      for (let pass = 0; ; pass++) {
-        const late = await fixReview(from, given.map(f => outcomeOf(f, by)), `review:fix:r${round}${pass ? `:${pass}` : ''}`)
-        if (!late) {
-          unfixed.push(...given.map(f => Object.assign({}, f, { status: 'unverified', problem: `fixed in the last round, its review died: ${f.problem}` })))
-          break
-        }
-        advisory.push(...late.filter(f => f.severity === 'minor'))
-        const majors = late.filter(f => f.severity !== 'minor')
-        if (!majors.length) break
-        if (pass >= 1) { unfixed.push(...majors.map(f => Object.assign({}, f, { status: 'unverified' }))); break }
-        from = headNow
-        const again = await runFix(round, majors, `fix:r${round}:review`)
-        if (!again) { failures.push(`fix r${round} review`); unfixed.push(...majors); break }
-        fixed.push(...again.applied.map(a => Object.assign({ round }, a)))
-        headNow = again.head || headNow
-        given = majors
-        by = again
-      }
-    }
-    if (!same(headNow, gated.head)) {
-      // The last fix moved HEAD and no review follows: the gates step checks it.
-      gated = await runGates(round, `gates:r${round}:recheck`, 'r')
-      rounds[rounds.length - 1].recheck = gated.gates
-      unfixed.push(...gated.found)
-    }
-  }
+  if (!toFix.length && reviewed && round >= MIN_ROUNDS) break
+  // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
+  if (!toFix.length) continue
+  if (round === N) { unfixed = toFix; break }
+  const fromHead = headNow
+  const sent = toFix.concat(minors)
+  const fix = await runFix(round, sent, `fix:r${round}`)
+  if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
+  fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
+  rounds[rounds.length - 1].applied = fix.applied.length
+  rounds[rounds.length - 1].rejected = fix.rejected.length
+  sent.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
+  reconcile(sent.concat(orphans), fix)
+  headNow = fix.head || headNow
+  if (fix.applied.length && same(headNow, fromHead)) failures.push(`applied with head unchanged at fix r${round}: ${fix.applied.map(a => a.id).join(', ')}`)
+  lastFix = { from: fromHead, outcomes: sent.map(f => outcomeOf(f, fix)) }
 }
 // A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
 if (!mutated && !failures.some(f => f.startsWith('fix '))) unfixed.push(...await runMutation())
@@ -780,22 +731,13 @@ const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(
 const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
   id, source: 'checklist', where: research.requirements.find(r => idOf(r) === id), status: status[id] ? status[id].status : 'unverified',
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
+// An unmet row's major (R<round>-R<n>) is left over as the row itself.
+const rowMajor = f => /^R\d+-R\d+$/.test(f.id)
 
-// Cheap minor findings get one pass of a cheaper fixer after the rounds; the ones it does not apply stay advisory.
-const cheap = uniq(advisory)
-let minorFix = null
-if (cheap.length && !failures.length) {
-  phase('Fix')
-  minorFix = await call('minor-fix', PRE, 'minor-fix', { IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: cheap }, fixContract('Commit only with no gate worse than before your edit. If one is, revert your edits and reject every finding.',
-    cheap.some(f => f.proof) && 'Delete the file of every finding with a `proof`, applied or not, and report each in `proofs`.'), { schema: FIX_SCHEMA, phase: 'Fix', label: 'fix:minor' })
-  if (!minorFix) failures.push('fix minor')
-  else reconcile(cheap, minorFix)
-}
-// A proof no fix was sent (its fix died, the run stopped) is a stray too; strays count as failures only here, so
-// one never skips the minor fix.
+// A proof no fix was sent (its fix died, the last iteration, a clean one with no later fix) is a stray too, for the main
+// thread to delete; strays count as failures only here.
 proofs.filter(f => !settled.has(f.id)).forEach(stray)
 strayProofs.forEach(s => failures.push(`stray proof ${s.id}: ${s.path}`))
-const minorApplied = f => !!minorFix && minorFix.applied.some(a => a.id === f.id)
 
 // Freeing the run directory is the main thread's step after acceptance (skills/start/SKILL.md).
 return {
@@ -815,9 +757,8 @@ return {
   gates: GATES,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
-  leftover_findings: uniq(unfixed.concat(unmet)),
-  advisory: uniq(advisory).filter(f => !minorApplied(f)),
-  minor_fixes: minorFix && { applied: minorFix.applied, rejected: minorFix.rejected },
+  leftover_findings: uniq(unfixed.filter(f => !rowMajor(f)).concat(unmet)),
+  advisory: uniq(advisory.filter(f => !fixed.some(a => a.id === f.id))),
   stray_proofs: strayProofs,
   unverified: impl.unverified,
   implement: { checks: impl.checks, notes: impl.notes },
