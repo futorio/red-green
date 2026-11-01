@@ -45,8 +45,8 @@ Done when `baseline` and `gates.json` have an entry per declared gate, each with
 
 ## 4. Run
 
-Pick the launch before calling. The Workflow tool refuses a `scriptPath` outside the session's working directory (not
-`repo`), so:
+Pick the launch before calling. Only the session's working directory counts for a `scriptPath` launch, not `repo` or an
+added directory:
 
 - `<tools>` inside the session's working directory: `Workflow({scriptPath: '<tools>/.claude/workflows/red-green.js', args})`,
   which reads the scripts from disk.
