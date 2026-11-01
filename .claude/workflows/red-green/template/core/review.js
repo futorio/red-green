@@ -1,6 +1,6 @@
 // Block review lenses (checklist, code): the review schemas and the lenses, the severity and checked rules, the lens
 // call, and its inputs. Its only interface is the include order: it reads CONFIG, TARGET, BASE, IMPLEMENT_SKILL,
-// CODE_RULES, research, plan, impl, checkIds and, in the round loop, round, N, active, gated, history and lastFix; NO_CODE_PRE,
+// CODE_RULES, research, plan, impl, checkIds and, in the round loop, round, N, active, gated, attempts, history and lastFix; NO_CODE_PRE,
 // READ_ONLY, TARGETED, call, contract, died, parallel, and INPUTS, BLOCK_PATHS, STRING, INTEGER, LIST. It declares
 // FINDING, REVIEW_SCHEMA, LENSES, SEVERITY, CHECKED and lensResults for later parts.
 // @part schema
@@ -39,6 +39,7 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
   const lensResults = await parallel(active.map(l => () => call('review', NO_CODE_PRE, l.key, {
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
+    red_gates: gated.found.map(f => f.where).join(', '), attempts_made: gated.found.length ? attempts : undefined, red_gates_note: gated.found.length > 0,
     history, earlier_findings: history.length > 0,
     from_head: lastFix ? lastFix.from : undefined, last_fix: lastFix ? lastFix.outcomes : undefined, last_fix_note: !!lastFix,
     'duty.test_case_review_fix': !!lastFix && CONFIG.review.duties.test_case_review,
@@ -51,7 +52,7 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
 // @part inputs
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
 // earlier findings and their outcomes, each finding the last fix was sent with its outcome.
-INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
+INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,
   history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,

@@ -147,12 +147,41 @@ const verdicts = []
 const rounds = []
 const status = {}
 let unfixed = []
-// The last fix's start and what it did to each finding, for the iteration after it.
+// The fixes since the last review: where the first started and what each did to its findings, for the next review.
 let lastFix = null
+// For each gate a fix rejected, the HEAD it was rejected at.
+const gateRejected = {}
+const FIX_ATTEMPTS = CONFIG.gates.fix_attempts
+// What any fix leaves behind, whether an attempt on a red gate or the fix ending an iteration.
+function settleFix(sent, fix, at) {
+  const from = headNow
+  const outcomes = sent.map(f => outcomeOf(f, fix))
+  outcomes.forEach(o => history.push(Object.assign({ id: o.id, round }, o)))
+  reconcile(sent.concat(orphans), fix)
+  sent.filter(f => f.source === 'gates' && fix.rejected.some(r => r.id === f.id)).forEach(f => { gateRejected[f.where] = from })
+  headNow = fix.head || headNow
+  if (fix.applied.length && same(headNow, from)) failures.push(`applied with head unchanged at fix ${at}: ${fix.applied.map(a => a.id).join(', ')}`)
+  lastFix = { from: lastFix ? lastFix.from : from, outcomes: (lastFix ? lastFix.outcomes : []).concat(outcomes) }
+}
 let round = 0
 while (round < N) {
   round += 1
-  if (!gated || !same(gated.head, headNow)) gated = await runGates(round, `gates:r${round}`)
+  if (!gated || !same(gated.head, headNow) || gated.gates.some(r => r.status === 'not_run')) gated = await runGates(`gates:r${round}`, round)
+  // Attempts on a red gate: they cost no iteration, and this iteration's review covers them. Red always comes from the
+  // latest rows, HEAD moved or not; a gate rejected at this HEAD gets no new attempt.
+  const openGates = () => gated.found.filter(f => !same(gateRejected[f.where], headNow))
+  let attempts = 0
+  while (attempts < FIX_ATTEMPTS && openGates().length) {
+    attempts += 1
+    const at = `r${round}:a${attempts}`
+    const fromHead = headNow
+    const sent = openGates()
+    const fix = await runFix(round, sent, `fix:${at}`)
+    if (!fix) { failures.push(`fix ${at}`); break }
+    settleFix(sent, fix, at)
+    if (same(headNow, fromHead)) break
+    gated = await runGates(`gates:${at}`, `${round}a${attempts}`)
+  }
   phase('Review')
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
 // @include review call
@@ -194,18 +223,13 @@ while (round < N) {
   // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
   if (!toFix.length) continue
   if (round === N) { unfixed = toFix; break }
-  const fromHead = headNow
   const sent = toFix.concat(minors)
   const fix = await runFix(round, sent, `fix:r${round}`)
   if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
   fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
   rounds[rounds.length - 1].applied = fix.applied.length
   rounds[rounds.length - 1].rejected = fix.rejected.length
-  sent.forEach(f => history.push(Object.assign({ id: f.id, round }, outcomeOf(f, fix))))
-  reconcile(sent.concat(orphans), fix)
-  headNow = fix.head || headNow
-  if (fix.applied.length && same(headNow, fromHead)) failures.push(`applied with head unchanged at fix r${round}: ${fix.applied.map(a => a.id).join(', ')}`)
-  lastFix = { from: fromHead, outcomes: sent.map(f => outcomeOf(f, fix)) }
+  settleFix(sent, fix, `r${round}`)
 }
 // A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
 if (!mutated && !failures.some(f => f.startsWith('fix '))) unfixed.push(...await runMutation())
