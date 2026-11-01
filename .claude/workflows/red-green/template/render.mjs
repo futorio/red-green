@@ -130,7 +130,7 @@ export async function conform(source, kase, label, output) {
       return { verdict: 'clean', findings: [], checked: ids.map(item => ({ item, evidence: 'stub', status: 'met', promise: 'stub', counterexample: 'stub' })) }
     }
     if (l.startsWith('review:')) return { verdict: 'clean', findings: [], checked: [{ item: 'stub', evidence: 'stub' }] }
-    if (l === 'mutation') return { applies: false, ran: false, mutants: [] }
+    if (l.startsWith('mutation:')) return { applies: false, ran: false, mutants: [] }
     if (!l.startsWith('fix:')) return null
     const given = values.findings
     sent.push(...given.map(f => Object.assign({ sent_to: l }, f)))
