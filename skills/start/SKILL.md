@@ -112,7 +112,7 @@ reason in the report, `run` holds no directory, and the worktree is removed.
 
 ## 6. Report
 
-To the user: `status`, the commits, the acceptance rows, the strays deleted, `leftover_findings`, `verify_launch` (checks only a person can make), the open
+To the user: `status`, the commits, the acceptance rows, the strays deleted, `leftover_findings`, `advisory`, `verify_launch` (checks only a person can make), the open
 questions per stage, and the tokens per block from `trace.mjs --table`.
 
 Done when the report names each of them, `none` where one is empty.
