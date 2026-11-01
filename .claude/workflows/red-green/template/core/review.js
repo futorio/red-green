@@ -39,7 +39,7 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
   const lensResults = await parallel(active.map(l => () => call('review', NO_CODE_PRE, l.key, {
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
-    red_gates: gated.found.map(f => f.where).join(', '), attempts_made: gated.found.length ? attempts : undefined, red_gates_note: gated.found.length > 0,
+    red_gates: gated.found.map(f => f.where).join(', '), attempts_made: gated.found.length ? Math.max(...gated.found.map(f => gateAttempts[f.where] || 0)) : undefined, red_gates_note: gated.found.length > 0,
     history, earlier_findings: history.length > 0,
     from_head: lastFix ? lastFix.from : undefined, last_fix: lastFix ? lastFix.outcomes : undefined, last_fix_note: !!lastFix,
     'duty.test_case_review_fix': !!lastFix && CONFIG.review.duties.test_case_review,

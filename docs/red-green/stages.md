@@ -42,17 +42,19 @@ Labels are unique, since the core's stub tests key on them.
 gates stage, the baseline and acceptance. It runs from the worktree:
 
 ```
-node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>]
+node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
 ```
 
 - **Tiers** are cumulative, `round` by default: `fast` runs fast gates, `round` fast and round gates, `acceptance` all.
 - **A row per gate**, one JSON line: `name`, `status`, `line`, `log`, `seconds`, `cached`. The exit code decides `status`:
-  `green` or `red`, `not_run` when a signal ended the gate. A gate red in the given baseline is `known_red`: run, reported,
+  `green` or `red`, `not_run` when a signal or the timeout ended the gate. A gate red in the given baseline is `known_red`: run, reported,
   not blocking. `line` is the last non-empty line of its output, or `(no output)`; `log` its full output, under `--dir`.
-- **Exit codes:** 0 the report is complete, whatever the gates did; 2 it could not run, stderr says why; 3 gates are still
-  running, call again. One call waits 540 seconds by default.
+- **Exit codes:** 0 the report is complete, whatever the gates did; 2 it could not run or the tier selects no gate, stderr
+  says why; 3 gates are still running, call again. One call waits 540 seconds by default.
+- **Timeout:** a gate past `--timeout` (7200 seconds by default) has its process group killed; its `line` says so.
 - **Detached, one lock per worktree:** the gates run in a detached process and outlive the call. A second call waits for
-  the running one and starts nothing of its own; a dead holder's lock is taken over.
+  the running one and starts nothing of its own; a dead holder's lock is taken over once its gate has ended or passed its
+  timeout.
 - **Cache:** per gate under `--dir`, keyed on its command, HEAD and the tree of tracked and untracked non-ignored files, so
   a retry on the same tree picks up finished gates. Only the gates stage uses it; writers, the baseline and acceptance pass
   `--no-cache`. `--dir` must be outside the tree or ignored, or its logs change the key.
@@ -114,18 +116,19 @@ to `blocks.gates.fix_attempts` (2) per iteration and uses up no iteration. `fix_
 review.
 
 An attempt whose fix leaves HEAD unmoved ends that iteration's attempts, and a gate a fix rejected at this HEAD gets no new
-attempt. When such gates are all an iteration has to fix, it makes no fix either. An attempt whose fix dies is an entry in `failures` and ends the
+attempt. When such gates are all an iteration has to fix, the loop ends there, with them in `leftover_findings`, since
+another iteration would review the same code. An attempt whose fix dies is an entry in `failures` and ends the
 attempts. Attempts are left out of the EARLIER FIXES a fix is given, so they do not count toward the rule on a finding that
 recurs after two fixes.
 
-A gate still red goes on to the lenses with a note naming it and the attempts made in that iteration, and it stays a major,
-so the iteration is not clean.
+A gate still red goes on to the lenses with a note naming it and the attempts made on it so far in the run (the most of any
+gate named), and it stays a major, so the iteration is not clean.
 
 ## Mutation
 
 Once per iteration, once the gates and attempts are done, on the diff from the HEAD last mutated to HEAD; the first step
-covers the diff from `base`. The HEAD last mutated advances only on `ran: true`, so a skipped step leaves its code to the
-next one.
+covers the diff from `base`. The HEAD last mutated advances on `ran: true` or `applies: false` (the range holds no covered
+file), so any other skipped step leaves its code to the next one.
 
 The script skips the step, with a log line and no call, with no `blocks.mutation`, with a gate `red` or with no result
 (`known_red` counts as green), or with HEAD already mutated.
@@ -133,14 +136,16 @@ The script skips the step, with a log line and no call, with no `blocks.mutation
 The generated form gets `from_head`, writes one patch per check whose test or code is in that diff, plus at most
 `blocks.mutation.edges` (5) on the diff's edges;
 [`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs) runs them. The runner first makes a control run,
-a mutant with no patch, and exits 2 if its build or test fails or times out. The `{tool}` form names the same range by
+a mutant with no patch, and exits 2 if its build or test fails or times out; an empty mutant list makes no control run. The `{tool}` form names the same range by
 `{{mutate_from}}` and returns the same records. The script derives ids (`M<round>-<i>`), `file:line` and counts;
 `result.mutation` accumulates every step.
 
 - `applies` false: the step is skipped with a log line.
-- `ran` false with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line.
+- `ran` false with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
+  `result.mutation_skipped` holds the reason until a later step runs.
 - Any other `ran` false, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
-- A `survived` mutant whose patch has no file header and hunk header counts as `not_run`.
+- A `survived` mutant whose patch has no file header and hunk header counts as `not_run`; its `failures` entry names the
+  missing headers.
 - Every survivor is a major finding (`source: mutation`), fixed in an iteration with a fix and left over from the last. No
   separate call rules on survivors.
 
@@ -156,7 +161,7 @@ again only with a `problem` that answers the fixer's `argument`.
   on `git diff {{from_head}}..HEAD` that each `fixed` finding is fixed, that each rejection's argument holds and that no test
   was weakened. A claim that fails is a new major. A rejection no lens raises again is accepted.
 - **Severity:** the script turns a major with an empty `trigger` into a minor and keeps at most `blocks.review.minors`
-  (2) minors per lens.
+  (2) minors per lens; a dropped minor's proof is a stray.
 - **Silence is not clean:** `verdict` is `clean` exactly when `findings` is empty and no row is `unmet`. No rows, or a
   disagreeing verdict, reads as `SILENT` in `verdicts` and lands in `failures`. A dead or silent lens keeps the iteration
   from being clean.
@@ -164,7 +169,7 @@ again only with a `problem` that answers the fixer's `argument`.
 ## Fix
 
 Runs at the end of an iteration with a major or a survivor, unless it is the last. It gets majors, survivors and minors in
-one call; minors alone make no fix. A finding that does not fit is rejected with an argument citing code, the ticket or the
+one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. A finding that does not fit is rejected with an argument citing code, the ticket or the
 spec. Fixed and rejected findings, minors included, enter the earlier findings. `applied` findings with `head` unchanged are
 an entry in `failures`.
 
@@ -172,7 +177,7 @@ an entry in `failures`.
 a valid rejection ("proof green"), a red proof only an argument against the test. Each is rewritten into the suite and
 committed, or deleted, and reported in `proofs`. In the last iteration, and for any minor, the code lens writes no proof
 file; a finding the script downgrades to minor loses its proof, and the next fix deletes the file. A stray is a proof on any
-other source's finding, a sent proof the fix reports by neither id nor path, or one no fix was sent (its fix died, a clean
+other source's finding, on a minor dropped over the cap, a sent proof the fix reports by neither id nor path, or one no fix was sent (its fix died, a clean
 iteration, the last one): a row in `stray_proofs` and one `failures` entry each at the end. The main thread deletes them
 before acceptance.
 

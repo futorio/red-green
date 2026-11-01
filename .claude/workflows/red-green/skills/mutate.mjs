@@ -1,4 +1,5 @@
 // First a control run, a mutant with no patch: a failed or timed-out build or test there is exit 2 and tries no mutant.
+// An empty list makes no control run.
 // Runs each mutant [{target, patch}] in a detached worktree of its own at HEAD, one at a time, and prints the list
 // with a status each: not_run (the patch does not apply), invalid (build non-zero or past the timeout), killed (test
 // non-zero or past the timeout), survived. Build and test each get the full timeout. Exit 0 a completed run, 2 did
@@ -43,7 +44,7 @@ const attempt = async (name, patch) => {
   } finally { try { git('worktree', 'remove', '--force', wt) } catch (e) { die(`remove ${wt}: ${e.message}`) } }
 }
 
-const control = await attempt('control')
+const control = mutants.length ? await attempt('control') : 'survived'
 if (control !== 'survived') die(`control run at ${o.head}: ${control === 'invalid' ? 'build' : 'test'} failed or timed out`)
 
 const out = []

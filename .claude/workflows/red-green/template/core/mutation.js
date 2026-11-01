@@ -1,6 +1,7 @@
 // Block mutation: its schema and runMutation, generated mutants or the project's tool, and its inputs. Its only
 // interface is the include order: it reads CONFIG, REPO, BASE, TARGET, same, RUN, MUTATE, headNow, impl, failures,
-// NO_CODE_PRE, READ_ONLY, call, contract, died, log, phase, and INPUTS, BLOCK_PATHS, IMPL_SCHEMA; it sets mutation and
+// NO_CODE_PRE, READ_ONLY, call, contract, died, log, phase, and INPUTS, BLOCK_PATHS, IMPL_SCHEMA; it sets mutation,
+// mutationSkipped and
 // declares runMutation for later parts, which reads round and gated when called.
 // @part schema
 // One record per mutant, from the runner or a project's own tool; the script derives ids, places and counts.
@@ -22,8 +23,12 @@ const placeOf = patch => {
   return { file: to && to !== '/dev/null' ? to : from, line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] }
 }
 const HEADERS = /^--- .*\n\+\+\+ .*\n@@ -\d+/m
-// The HEAD of the last step that ran; the first step covers the diff from base.
+// The headers a patch lacks, by name.
+const missingHeaders = patch => [[/^--- /m, '---'], [/^\+\+\+ /m, '+++'], [/^@@ -\d+/m, '@@']].filter(([re]) => !re.test(patch)).map(([, h]) => h).join(', ') || 'its headers in order'
+// The HEAD of the last step that ran or found nothing to cover; the first step covers the diff from base.
 let mutatedHead = BASE
+// Why the code since mutatedHead went unmutated with no failure: a red control run while a gate is known red.
+let mutationSkipped = null
 async function runMutation() {
   const { tool, test, build, edges, timeout } = CONFIG.mutation
   if (!tool && !test) { log('mutation: no blocks.mutation, step skipped'); return [] }
@@ -43,15 +48,15 @@ async function runMutation() {
     contract(READ_ONLY, `applies: whether \`git diff --name-only ${from}..HEAD\` lists ${covers}; when it does not, ran is false and mutants []. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
       died('Answer')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: `mutation:r${round}` })
   if (!res) { failures.push('mutation'); return [] }
-  if (!res.applies) { log('mutation: no file it covers in the diff, step skipped'); return [] }
+  if (!res.applies) { mutatedHead = headNow; log('mutation: no file it covers in the diff, step skipped'); return [] }
   // The runner refuses a red baseline: expected while a gate is known red, so no failure.
-  if (!res.ran && /control run/.test(res.not_run) && gated.gates.some(r => r.status === 'known_red')) { log(`mutation: ${res.not_run}, step skipped`); return [] }
+  if (!res.ran && /control run/.test(res.not_run) && gated.gates.some(r => r.status === 'known_red')) { mutationSkipped = res.not_run; log(`mutation: ${res.not_run}, step skipped`); return [] }
   if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)
-  else mutatedHead = headNow
+  else { mutatedHead = headNow; mutationSkipped = null }
   // A survivor must name a file and a line; one whose patch cannot counts as not run.
   const mutants = res.mutants.map((m, i) => Object.assign({ id: `M${round}-${i + 1}`, target: m.target }, placeOf(m.patch), { patch: m.patch,
     status: m.status === 'survived' && !HEADERS.test(m.patch) ? 'not_run' : m.status }))
-  mutants.filter(m => m.status === 'not_run').forEach(m => failures.push(`mutation ${m.id} not run: ${m.target}`))
+  mutants.forEach((m, i) => { if (m.status === 'not_run') failures.push(`mutation ${m.id} not run: ${m.target}${res.mutants[i].status === 'survived' ? `: patch lacks ${missingHeaders(m.patch)}` : ''}`) })
   const all = (mutation ? mutation.mutants : []).concat(mutants)
   mutation = { mutants: all, counts: Object.fromEntries(MUTANT_STATUS.map(s => [s, all.filter(m => m.status === s).length])) }
   log(`mutation: ${JSON.stringify(mutation.counts)}`)

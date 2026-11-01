@@ -6,6 +6,7 @@
 | `rounds_planned`, `rounds_run`, `rounds[]` | per iteration: major/minor counts, `gates` (the rows its lenses got), and `applied`, `rejected` of its closing fix, when it had one (attempts on a red gate are not counted) |
 | `verdicts` | per lens: its verdict, `DIED` or `SILENT` ([`stages.md`](stages.md)) |
 | `mutation` | `{mutants: [{id, target, file, line, patch, status}], counts}`, accumulated over every step, ids `M<round>-<i>`; null when no step reported mutants |
+| `mutation_skipped` | why the code since the last mutated HEAD went unmutated with no failure: a control run refused while a gate is `known_red`; null when no such step is outstanding |
 | `gates`, `research_questions`, `plan_questions`, `implement_questions` | the declared gates; open questions per stage |
 | `uncovered_requirements`, `dropped_facts`, `unresearched_requirements`, `research_issues` | test ids no case covers; research repairs |
 | `verify_launch` | `{requirement, how}` each: a notice for the operator, does not change `status` |

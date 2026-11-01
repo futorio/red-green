@@ -1,12 +1,12 @@
 // Runs the gates of a tier in the working directory and prints one JSON row per gate: name, status (green, red,
-// known_red, or not_run when a signal ended it), line, log, seconds, cached. Exit 0 the report is complete, whatever the
-// gates did; 2 it could not run (stderr says why); 3 gates are still running, call again.
+// known_red, or not_run when a signal or the timeout ended it), line, log, seconds, cached. Exit 0 the report is complete, whatever the
+// gates did; 2 it could not run, or the tier selects no gate (stderr says why); 3 gates are still running, call again.
 //
 // A call only waits: the gates run in a detached process of this script holding a lock per worktree, so they outlive the
 // call, and another call joins them instead of starting its own. Its report stays in the run directory for a later call.
 // The run directory must be outside the tree or ignored, or its logs change the cache key on every run.
 //
-//     node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>]
+//     node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
 import { mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, rmSync, copyFileSync, existsSync, linkSync } from 'node:fs'
 import { spawn, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -17,7 +17,7 @@ const die = why => { process.stderr.write(`run_gates: ${why}\n`); process.exit(2
 let o
 try {
   o = parseArgs({ options: { gates: { type: 'string' }, tier: { type: 'string' }, dir: { type: 'string' }, baseline: { type: 'string' },
-    'no-cache': { type: 'boolean' }, wait: { type: 'string' }, supervise: { type: 'string' } } }).values
+    'no-cache': { type: 'boolean' }, wait: { type: 'string' }, timeout: { type: 'string' }, supervise: { type: 'string' } } }).values
 } catch (e) { die(e.message) }
 for (const k of ['gates', 'dir']) if (!o[k]) die(`--${k} is required`)
 const json = (k, s) => { try { return JSON.parse(s) } catch (e) { die(`--${k}: ${e.message}`) } }
@@ -33,10 +33,13 @@ for (const g of all) {
   if (all.filter(x => x.name === g.name).length > 1) die(`--gates: ${g.name} is named twice`)
 }
 const gates = all.filter(g => TIERS.indexOf(g.tier ?? 'round') <= TIERS.indexOf(tier))
+if (!gates.length) die(`--tier ${tier}: no gates in it`)
 const baseline = o.baseline ? json('baseline', o.baseline) : {}
 if (baseline === null || typeof baseline !== 'object') die('--baseline: not an object')
 const waitSeconds = o.wait === undefined ? 540 : Number(o.wait)
 if (!Number.isFinite(waitSeconds)) die(`--wait ${o.wait}: not a number`)
+const timeoutSeconds = o.timeout === undefined ? 7200 : Number(o.timeout)
+if (!(timeoutSeconds > 0)) die(`--timeout ${o.timeout}: not a positive number`)
 
 const git = (args, env) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } }).trim()
 let GIT_DIR
@@ -68,6 +71,8 @@ const sha = s => createHash('sha256').update(s).digest('hex')
 const request = JSON.stringify({ gates, noCache: !!o['no-cache'] })
 const REPORT = join(o.dir, 'gate-runs', `${sha(request)}.json`)
 
+const killGroup = pid => { try { process.kill(-pid, 'SIGKILL') } catch {} }
+
 const supervise = async id => {
   const held = `${LOCK}.${process.pid}`
   try {
@@ -86,11 +91,16 @@ const supervise = async id => {
       const log = join(logs, `${i}-${encodeURIComponent(g.name)}.log`)
       const fd = openSync(log, 'w')
       const start = Date.now()
-      const p = spawn(g.command, { shell: true, stdio: ['ignore', fd, fd] })
+      // A group of its own, so its timeout kills what it started and not this process.
+      const p = spawn(g.command, { shell: true, stdio: ['ignore', fd, fd], detached: true })
+      writeJson(LOCK, { pid: process.pid, id, request, gate: p.pid, until: start + timeoutSeconds * 1000 })
+      let timedOut = false
+      const timer = setTimeout(() => { timedOut = true; killGroup(p.pid) }, timeoutSeconds * 1000)
       p.on('error', reject)
       p.on('exit', code => {
+        clearTimeout(timer)
         closeSync(fd)
-        const line = readFileSync(log, 'utf8').split(/\r?\n/).filter(l => l.trim()).at(-1)?.trimEnd() ?? '(no output)'
+        const line = timedOut ? `timed out after ${timeoutSeconds}s` : readFileSync(log, 'utf8').split(/\r?\n/).filter(l => l.trim()).at(-1)?.trimEnd() ?? '(no output)'
         resolve({ name: g.name, status: code === null ? 'not_run' : code === 0 ? 'green' : 'red', line, log, seconds: (Date.now() - start) / 1000, cached: false })
       })
     })
@@ -108,8 +118,14 @@ const supervise = async id => {
   rmSync(LOCK, { force: true })
 }
 
-// The holder leads the process group: its gates still running hold the lock even if it died.
 const alive = pid => { try { process.kill(-pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
+// A gate outliving a dead holder holds the lock until its timeout, when the waiter kills it in the holder's place.
+const holds = holder => {
+  if (alive(holder.pid)) return true
+  if (!holder.gate) return false
+  if (Date.now() > holder.until) killGroup(holder.gate)
+  return alive(holder.gate)
+}
 
 const collect = report => {
   writeJson(REPORT, { ...report, collected: true })
@@ -126,7 +142,7 @@ const wait = async () => {
   let child = null, joined = null
   for (;;) {
     const holder = readJson(LOCK)
-    if (holder && alive(holder.pid)) joined = holder.request === request ? holder.id : null
+    if (holder && holds(holder)) joined = holder.request === request ? holder.id : null
     else if (!child) {
       // ponytail: two calls taking over the same dead lock at once can both start; a rename-and-check closes it if that shows up.
       if (holder) rmSync(LOCK, { force: true })
