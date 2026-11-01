@@ -54,7 +54,7 @@ uncovered ids and duplicates; what is still uncovered goes to the result.
 Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
 than baseline (the gates step turns it into a finding). `head` still at `base`: one more run, then `failed`.
 
-- **Gates:** every writer (implement, fix, minor fix) runs the `fast` gates after each red-green cycle and every gate
+- **Gates:** every writer (implement, fix, minor fix) runs the `fast` gates after each TDD cycle and every gate
   once before each commit; with no `fast` gate, only the run before each commit.
 
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason. The script adds

@@ -195,10 +195,11 @@ const fixed = { 'review:r1:code': { verdict: 'findings', findings: [finding('maj
   'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' }, 'gates:r1:recheck': gatesAt('cccc222', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 const AB = { 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 
-test('W108: with fast and slow gates, implement and fix get both lists and run the fast ones each cycle, every gate before a commit', async () => {
-  const { calls } = await runCore(Object.assign({}, AB, fixed), 1, marked(true))
+test('W108: with fast and slow gates, implement and fix get both lists and run the fast ones each cycle, every gate before a commit; the result keeps the marks', async () => {
+  const { calls, result } = await runCore(Object.assign({}, AB, fixed), 1, marked(true))
+  assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', fast: true }, { name: 'B', command: 'make b' }])
   for (const label of ['implement', 'fix:r1']) {
-    assert.equal(gatesLine(calls, label), '- Gates, fast: A: `make a` (baseline: A-BASE 3 of 3); slow: B: `make b` (baseline: B-BASE ok). Run the fast gates after each red-green cycle and every gate once before each commit. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.', label)
+    assert.equal(gatesLine(calls, label), '- Gates, fast: A: `make a` (baseline: A-BASE 3 of 3); slow: B: `make b` (baseline: B-BASE ok). Run the fast gates after each TDD cycle and every gate once before each commit. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.', label)
   }
   const stage = prompt(calls, 'gates:r1').split('STAGE: gates')[1]
   for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(stage.includes(s), s)
@@ -212,13 +213,8 @@ test('W109: with one kind of gate the writers get one list; the fast rule appear
   const slow = `${list}Run every gate once before each commit.${tail}`
   assert.deepEqual(await lines(marked(false)), [slow, slow])
   assert.deepEqual(await lines(twoGates), [slow, slow])
-  const fast = `${list}Run the gates after each red-green cycle and every gate once before each commit.${tail}`
+  const fast = `${list}Run the gates after each TDD cycle and every gate once before each commit.${tail}`
   assert.deepEqual(await lines(marked(true, true)), [fast, fast])
-})
-
-test('W110: the result keeps each gate\'s fast mark', async () => {
-  const { result } = await runCore(AB, 1, marked(true))
-  assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', fast: true }, { name: 'B', command: 'make b' }])
 })
 
 test('W50: a not_run row and a declared gate with no row are each a major gates finding with the reason, not a failure', async () => {
@@ -853,7 +849,7 @@ test('W53: with no profile.gates the discovery step runs first, and its gates an
   assert.deepEqual(Object.keys(call.opts.schema.properties.gates.items.properties), ['name', 'command', 'source', 'line', 'fast'])
   assert.deepEqual(call.opts.schema.properties.gates.items.required, ['name', 'command', 'source', 'line', 'fast'])
   const instructions = call.prompt.split('STAGE: gates discovery.')[1].split('MAILBOX')[0]
-  assert.match(instructions, /A fast gate: a static check that reads the source without building it \(lint, format check, typecheck\); a build or a test suite is slow\./)
+  assert.match(instructions, /A fast gate: a static check that reads the source without building it \(lint, format check, typecheck\); a build, a test suite, or a gate you are unsure of is slow\./)
   assert.deepEqual(Object.keys(call.opts.schema.properties.questions.items.properties), ['command', 'source', 'question'])
   assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['lint', 'test'])
   assert.ok(prompt(calls, 'implement').includes('- Gates, fast: lint: `npm run lint` (baseline: LINT-BASE 0 errors); slow: test: `npm test` (baseline: TEST-BASE 9 of 9).'))

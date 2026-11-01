@@ -240,7 +240,7 @@ const ACAE = {
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
   { replan: 'f8b90f56cad9a872', 'implement:retry': 'ea1fde34765e33e9', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': 'cdc0ffef4e68ab00' }],
   discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
-    { 'gates:discover': 'e442a92f882dd211', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'f1c7ea1e3a276b36', mutation: '7eb79d9049fe8c09' }],
+    { 'gates:discover': '34ddde7ba358aff9', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'f1c7ea1e3a276b36', mutation: '7eb79d9049fe8c09' }],
 }
 
 test('T22: the default render\'s prompts are these', async () => {
