@@ -41,7 +41,7 @@ const REGISTRY = Object.assign({
   'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
   // The approach fields (gates declared or discovered; mutants generated and run under build and test, or a tool) and
   // the plug-in fields every block takes.
-  'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING }, required: ['name', 'command'] } }, { type: 'null' }] },
+  'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING, fast: { type: 'boolean' } }, required: ['name', 'command'] } }, { type: 'null' }] },
   'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
   // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,

@@ -36,7 +36,7 @@ const P = fillRun(A.profile || {}, 'profile')
 const DEFAULTS = {{defaults}}
 // @include shared text
 // @include shared validate
-// blocks.gates.gates: [{name, command}], set once the block config is merged; args.baseline: {<gate name>: its summary
+// blocks.gates.gates: [{name, command, fast?}], set once the block config is merged; args.baseline: {<gate name>: its summary
 // line at base}.
 let GATES = []
 let BASELINE = typeof A.baseline === 'object' && A.baseline || {}

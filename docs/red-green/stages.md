@@ -22,8 +22,9 @@ gate or listed case is dropped.
 
 ## 0. Gates discovery
 
-Only when `blocks.gates.gates` is absent. The returned gates become the profile's gates, each `line` its baseline. A
-dead step, or one with no gate, ends the run as `failed` before research.
+Only when `blocks.gates.gates` is absent. The returned gates become the profile's gates, each `line` its baseline and
+`fast` set by the discover instructions in `defaults/gates.md`. A dead step, or one with no gate, ends the run as
+`failed` before research.
 
 ## 1. Research
 
@@ -53,6 +54,9 @@ uncovered ids and duplicates; what is still uncovered goes to the result.
 Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/implement.md), `skills/tdd/` and `profile.code_rules`. It commits as it stands, even with a gate worse
 than baseline (the gates step turns it into a finding). `head` still at `base`: one more run, then `failed`.
 
+- **Gates:** every writer (implement, fix, minor fix) runs the `fast` gates after each TDD cycle and every gate
+  once before each commit; with no `fast` gate, only the run before each commit.
+
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason. The script adds
   `case <id>: no check reported` per case without a row and `<ref>: <reason>` per `unverified` row to `unverified`.
 
@@ -61,7 +65,8 @@ than baseline (the gates step turns it into a finding). `head` still at `base`: 
 One agent per HEAD, before the lenses, skipped when HEAD has not changed. It
 returns `{name, status: green|red|not_run, line}` per declared gate. The script makes the findings: a `red` row is a
 major `G<round>-<name>` (`G<round>r-<name>` after the last fix), its trigger the line against the baseline. A `not_run`
-row, a declared gate with no row and a dead step land in `failures`. Lenses run no gate.
+row and a declared gate with no row are the same major, its line the step's reason: an unfinished gate never reads as
+a pass. A dead step lands in `failures`. The step runs every gate, `fast` or not. Lenses run no gate.
 
 ## 5. Review × n
 

@@ -62,19 +62,22 @@ Done when every rule file is read and each draft names the file it came from.
 Show the user the table and the drafts, then ask one question at a time, in this order, each led by your recommended
 answer:
 
-1. The gates: which rows, and a short unique `name` for each.
+1. The gates: which rows, a short unique `name` for each, and which are fast (fast: the code-writing agents also run
+   it after each TDD cycle; slow: only before each commit). Recommend fast for the lint and type check rows, slow for
+   the test and build rows.
 2. The code rules and the commit rule to keep.
 3. The model preset, from the presets table in `args-and-profile.md` with what each is for, or keep the current models.
 4. Any block's own `prompt` or `skill` (the Plug-ins section of `${CLAUDE_PLUGIN_ROOT}/docs/red-green/blocks.md`), one
    per block.
 
-Done when the user has answered all four; "none" and "keep" are answers.
+Done when every table row is kept or dropped, each kept row has a name and is marked fast or slow, and the user has
+answered the other three; "none" and "keep" are answers.
 
 ## 6. Write
 
 Start from the current profile and set only what the user decided in step 5:
 
-- `blocks.gates.gates`: the picked gates as `{name, command}`.
+- `blocks.gates.gates`: the picked gates as `{name, command}`, with `fast: true` on the fast ones (absent means slow).
 - `code_rules`, `commit`: the kept rules.
 - A preset: set each `model` its row gives, and remove `model` from every other block that any preset row names.
 - A block's `prompt` or `skill`: set it, and remove the other of the two on that block.

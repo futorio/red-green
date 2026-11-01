@@ -88,9 +88,17 @@ const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git 
 You do not edit ${TARGET} or the other ticket files.`
 // @part code-preamble
 
-const gateList = sep => GATES.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
+const gateList = (sep, gates = GATES) => gates.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
+// The writers' gates: fast ones after each TDD cycle, every gate before a commit; one list when the gates are of one kind.
+const writerGates = () => {
+  const fast = GATES.filter(g => g.fast)
+  const slow = GATES.filter(g => !g.fast)
+  const lists = fast.length && slow.length ? `Gates, fast: ${gateList('; ', fast)}; slow: ${gateList('; ', slow)}` : `Gates: ${gateList('; ')}`
+  const cycle = fast.length ? `the ${slow.length ? 'fast ' : ''}gates after each TDD cycle and ` : ''
+  return `${lists}. Run ${cycle}every gate once before each commit.`
+}
 const PRE = noted => `${CORE_PRE(noted)}
-- Gates: ${gateList('; ')}. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
+- ${writerGates()} Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`
 // @part id
