@@ -104,11 +104,12 @@ function silence(res, ids) {
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
 }
-// A major with no trigger is a minor; a lens keeps at most review.minors minors.
-function tidy(findings) {
+// A major with no trigger is a minor; a lens keeps at most review.minors minors, and a dropped one's proof is a stray.
+function tidy(findings, idBase) {
   let minors = 0
   const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
   const kept = out.filter(f => f.severity !== 'minor' || ++minors <= CONFIG.review.minors)
+  out.filter(f => !kept.includes(f) && f.proof).forEach((f, i) => stray({ id: `${idBase}-dropped-${i + 1}`, proof: f.proof }))
   const down = out.filter(f => f.downgraded).length
   if (down || kept.length < out.length) log(`findings tidied: ${down} downgraded for no trigger, ${out.length - kept.length} minors dropped`)
   return kept
@@ -152,6 +153,14 @@ let unfixed = []
 let lastFix = null
 // For each gate a fix rejected, the HEAD it was rejected at.
 const gateRejected = {}
+// For each gate, the attempts made on it so far in the run.
+const gateAttempts = {}
+// A finding is the same finding by what it says, not by its positional id: a survivor by its patch,
+// any other by source, place and problem (a rejection without a place by its id).
+const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
+const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
+// An earlier minor a fix already answered, under this id or as a repeat of it.
+const answered = f => history.some(h => h.id === f.id || (h.where === f.where && h.problem === f.problem))
 const FIX_ATTEMPTS = CONFIG.gates.fix_attempts
 // What any fix leaves behind, whether an attempt on a red gate or the fix ending an iteration.
 function settleFix(sent, fix, at) {
@@ -177,6 +186,7 @@ while (round < N) {
     const at = `r${round}:a${attempts}`
     const fromHead = headNow
     const sent = openGates()
+    sent.forEach(f => { gateAttempts[f.where] = (gateAttempts[f.where] || 0) + 1 })
     const fix = await runFix(round, sent, `fix:${at}`)
     if (!fix) { failures.push(`fix ${at}`); break }
     settleFix(sent, fix, at)
@@ -206,7 +216,7 @@ while (round < N) {
         where: research.requirements.find(r => idOf(r) === id), problem: `${status[id].promise} — ${status[id].evidence}`, trigger: status[id].counterexample,
         consequence: 'the statement\'s promise is not met', fix: 'keep the promise' }))
     }
-    found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
+    found.push(...tidy(res.findings, `R${round}-${l.key}`).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })
   const toFix = found.filter(f => f.severity !== 'minor')
   const minors = found.filter(f => f.severity === 'minor')
@@ -221,9 +231,9 @@ while (round < N) {
   // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
   if (!toFix.length) continue
   if (round === N) { unfixed = toFix; break }
-  // A fix would only reject again a gate rejected at this HEAD; it stays a major, so the iteration is not clean.
-  if (toFix.every(f => f.source === 'gates' && same(gateRejected[f.where], headNow))) continue
-  const sent = toFix.concat(minors)
+  // A fix would only reject again a gate rejected at this HEAD, and another iteration would review the same code.
+  if (toFix.every(f => f.source === 'gates' && same(gateRejected[f.where], headNow))) { unfixed = toFix; break }
+  const sent = toFix.concat(uniq(minors.concat(advisory.filter(f => !answered(f)))))
   const fix = await runFix(round, sent, `fix:r${round}`)
   if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
   fixed.push(...fix.applied.map(a => Object.assign({ round }, a)))
@@ -231,10 +241,6 @@ while (round < N) {
   rounds[rounds.length - 1].rejected = fix.rejected.length
   settleFix(sent, fix, `r${round}`)
 }
-// A finding is the same finding by what it says, not by its positional id: a survivor by its patch,
-// any other by source, place and problem (a rejection without a place by its id).
-const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
-const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
 const unmet = checkIds.filter(id => !status[id] || status[id].status !== 'met').map(id => ({
   id, source: 'checklist', where: research.requirements.find(r => idOf(r) === id), status: status[id] ? status[id].status : 'unverified',
   problem: status[id] ? status[id].evidence : 'the checklist lens never answered' }))
@@ -251,6 +257,7 @@ return {
   rounds,
   verdicts,
   mutation,
+  mutation_skipped: mutationSkipped,
   uncovered_requirements: cov,
   dropped_facts: droppedFacts,
   unresearched_requirements: unresearched,

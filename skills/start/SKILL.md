@@ -84,7 +84,9 @@ Done when the run's result is in.
    ([`tracing.md`](../../docs/red-green/tracing.md)).
 2. Read the result ([`result.md`](../../docs/red-green/result.md)) and every commit on `wf/<name>`.
 3. Delete from the worktree each `path` in `stray_proofs`: an uncommitted proof left by the run. Its `stray proof` entry
-   in `failures` then no longer counts against the fast-forward; every other entry does.
+   in `failures` then no longer counts against the fast-forward; every other entry does. Then `git status --porcelain`
+   in the worktree: acceptance measures the commit that lands, so anything left skips step 4 and stops the fast-forward;
+   show it to the user at step 6.
 4. Run the acceptance gates from the worktree, from scratch, with a Bash timeout of 10 minutes:
 
    `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
@@ -96,12 +98,12 @@ Done when the run's result is in.
    - `verdicts` holds no `DIED` or `SILENT`;
    - `leftover_findings` holds no blocking finding: `severity: major` or `status: unmet`. A leftover minor or `unverified`
      row goes in the report and does not stop it;
-   - step 4 found nothing blocking.
+   - step 3 left the worktree clean and step 4 found nothing blocking.
 6. Otherwise both branches stay. A red `acceptance` gate may first be run on base: in a temporary worktree at `base`,
-   given the gitignored files the gates read, with `--gates` holding that gate and `--dir <run>/base`, then removed. Red
+   given the gitignored files the gates read, with `--gates` holding that gate, `--tier acceptance` and `--dir <run>/base`, then removed. Red
    there too is an old breakage, and you report it as one. Show the user the findings and wait for the choice:
    - accept: fast-forward as in step 5;
-   - fix: make the fixes on `wf/<name>` in the worktree, then repeat from step 4;
+   - fix: make the fixes on `wf/<name>` in the worktree, then repeat from the status check of step 3;
    - new run: it takes a `<name>` of its own, since `wf/<name>` stays.
 7. After the fast-forward or the user's decision, and only then: remove the worktree (`git worktree remove <repo>`),
    delete every directory under `run` (keeping its top-level files, `trace.jsonl` and `gates.json` among them), then

@@ -239,8 +239,8 @@ const ACAE = {
   results: { 'review:r1:checklist': met('R1'), 'review:r1:code': findings(said('major', 'a.js:1', true), said('minor', 'b.js:2')),
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:r3:checklist': met('R1'), 'review:r3:code': met('x'), 'mutation:r1': { applies: false, ran: false, mutants: [] } } },
-  { research: 'dfecb403802054b6', implement: '9fa45e6e544de090', 'review:r1:code': 'd700a73318b6b37c', 'fix:r1': '60f96fb4b67db9a4', 'gates:r2': 'ec557ef7a7440410',
-    'review:r2:checklist': 'c859c83537130992', 'review:r2:code': '14886a2d1be48a9e', 'fix:r2': '8a26f7d09eadbb25', 'gates:r3': '55ddb5b9561e34cc',
+  { research: 'dfecb403802054b6', implement: '9fa45e6e544de090', 'review:r1:code': 'd700a73318b6b37c', 'fix:r1': '634c0a64f4b2b9c8', 'gates:r2': 'ec557ef7a7440410',
+    'review:r2:checklist': 'c859c83537130992', 'review:r2:code': '14886a2d1be48a9e', 'fix:r2': '576fd3df0faaf430', 'gates:r3': '55ddb5b9561e34cc',
     'review:r3:checklist': '790e387cee27a7ba', 'review:r3:code': '300f708a686b331a', 'mutation:r1': '10620b07bba2d56c' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },

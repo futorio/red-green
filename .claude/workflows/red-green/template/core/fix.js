@@ -22,7 +22,7 @@ async function runFix(round, toFix, label) {
 // The contract part of fix: a writer that keeps its bar (COMMIT_RULE folds into the one commit), the
 // block's rules, the head and proofs it reports.
 const fixContract = (bar, ...rules) => contract(writer(bar), ...rules,
-  'Report head: `git rev-parse HEAD` after your last change; proofs: [] when no finding has a proof.', died('Answer'))
+  'Report head: `git rev-parse HEAD` after your last change; proofs: [] when no finding has a proof and no proof file is listed.', died('Answer'))
 // @part inputs
 // Fix's inputs, and the path only it reads: each applied fix so far.
 INPUTS.fix = ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research']

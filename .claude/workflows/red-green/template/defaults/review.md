@@ -22,7 +22,7 @@ Compare against the statement ({{TARGET}} and every document it points to, as wr
 <!-- @part unverified_note -->
  Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.
 <!-- @part red_gates_note -->
- Still red after {{attempts_made}} attempts at a fix this iteration: {{red_gates}}. Weigh the code knowing that.
+ Still red after {{attempts_made}} attempts at a fix: {{red_gates}}. Weigh the code knowing that.
 <!-- @part earlier_findings -->
 
 EARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):

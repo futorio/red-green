@@ -26,7 +26,8 @@ const args = (s, gates, o = {}) => [RUNNER, '--gates', JSON.stringify(gates), '-
   ...(o.tier ? ['--tier', o.tier] : []),
   ...(o.baseline ? ['--baseline', JSON.stringify(o.baseline)] : []),
   ...(o.noCache ? ['--no-cache'] : []),
-  ...(o.wait ? ['--wait', String(o.wait)] : [])]
+  ...(o.wait ? ['--wait', String(o.wait)] : []),
+  ...(o.timeout ? ['--timeout', String(o.timeout)] : [])]
 const run = (s, gates, o) => spawnSync('node', args(s, gates, o), { cwd: s.repo, encoding: 'utf8' })
 const rows = res => {
   assert.equal(res.status, 0, res.stderr)
@@ -113,6 +114,8 @@ test('G07: exit 2 with the cause on stderr when it could not run', () => {
   fails(run(s, gates, { tier: 'nope' }), /nope/)
   fails(run(s, gates, { baseline: 'x' }), /--baseline/)
   fails(run(s, gates, { wait: 'soon' }), /--wait/)
+  fails(run(s, gates, { timeout: 'soon' }), /--timeout/)
+  fails(run(s, [{ name: 'heavy', command: 'true', tier: 'acceptance' }], { tier: 'fast' }), /no gates/)
   fails(run(s, [{ name: 'a', command: 'true' }, { name: 'a', command: 'false' }]), /twice/)
   const outside = mkdtempSync(join(tmpdir(), 'tdd-gates-'))
   fails(spawnSync('node', args(s, gates), { cwd: outside, encoding: 'utf8' }), /git/)
@@ -247,6 +250,9 @@ test('G15: a call with other gates waits for the running one, then runs its own,
   assert.equal(readFileSync(log, 'utf8'), 'one-in\none-out\ntwo\n')
 })
 
+// The process holding the worktree's lock.
+const holderOf = s => JSON.parse(readFileSync(join(s.repo, '.git', 'red-green-gates.lock'), 'utf8')).pid
+
 test('G16: a dead holder\'s lock is taken over, and the retry picks up its finished gates', async () => {
   const s = setup()
   const a = counting(s)
@@ -255,12 +261,41 @@ test('G16: a dead holder\'s lock is taken over, and the retry picks up its finis
   assert.equal(run(s, [a.gate, hang], { wait: 0.1 }).status, 3)
   await until(() => existsSync(pid) && readFileSync(pid, 'utf8').trim())
   const pgid = execFileSync('ps', ['-o', 'pgid=', '-p', readFileSync(pid, 'utf8').trim()], { encoding: 'utf8' }).trim()
+  process.kill(-holderOf(s), 'SIGKILL')
   process.kill(-Number(pgid), 'SIGKILL')
   writeFileSync(flag, '')
   const [first, second] = rows(run(s, [a.gate, hang]))
   assert.equal(first.cached, true, 'the finished gate')
   assert.equal(a.runs(), 1)
   assert.deepEqual([second.status, second.line, second.cached], ['green', 'over', false])
+})
+
+test('G19: a gate past --timeout is not_run, its whole process group killed; the next gate runs and the lock is free', async () => {
+  const s = setup()
+  const marker = join(s.tmp, 'marker')
+  const hung = { name: 'hung', command: `(sleep 1; touch ${marker}) & wait` }
+  const [row, next] = rows(run(s, [hung, { name: 'next', command: 'echo ran' }], { timeout: 0.3 }))
+  assert.equal(row.status, 'not_run')
+  assert.match(row.line, /timed out after 0\.3s/)
+  assert.ok(row.seconds < 1, `${row.seconds}`)
+  assert.equal(next.status, 'green')
+  await new Promise(r => setTimeout(r, 1100))
+  assert.ok(!existsSync(marker), 'the gate\'s child died with it')
+  assert.ok(!existsSync(join(s.repo, '.git', 'red-green-gates.lock')))
+  assert.equal(rows(run(s, [hung], { timeout: 0.3 }))[0].cached, false, 'a timed-out gate is not cached')
+})
+
+test('G20: a gate outliving its dead holder keeps the lock until its timeout, then is killed and the lock taken over', async () => {
+  const s = setup()
+  const pid = join(s.tmp, 'pid'), flag = join(s.tmp, 'flag')
+  const hang = { name: 'hang', command: `echo $$ > ${pid}; test -f ${flag} || sleep 60; echo over` }
+  assert.equal(run(s, [hang], { wait: 0.1, timeout: 2 }).status, 3)
+  await until(() => existsSync(pid) && readFileSync(pid, 'utf8').trim())
+  process.kill(-holderOf(s), 'SIGKILL')
+  assert.equal(run(s, [hang], { wait: 0.3, timeout: 2 }).status, 3, 'the gate still holds the lock')
+  writeFileSync(flag, '')
+  const [row] = rows(run(s, [hang], { timeout: 2 }))
+  assert.deepEqual([row.status, row.line], ['green', 'over'])
 })
 
 test('G18: a gate ended by a signal is not_run, known red or not, and is not cached', () => {

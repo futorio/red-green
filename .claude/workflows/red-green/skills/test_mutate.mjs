@@ -81,7 +81,7 @@ const assertRefused = (res, why) => {
 
 test('M05: the control is a mutant with no patch: a detached clean worktree at head, build then test', () => {
   const log = newLog()
-  const res = run(repo, [], { build: step(log, 'build'), test: step(log, 'test') })
+  const res = run(repo, MUTANTS.slice(0, 1), { build: step(log, 'build'), test: step(log, 'test') })
   assert.equal(res.status, 0, res.stderr)
   const [[b, bdir, bsha, bdirty], [t, tdir, tsha, tdirty]] = lines(log)
   assert.deepEqual([b, t], ['build', 'test'])
@@ -89,6 +89,14 @@ test('M05: the control is a mutant with no patch: a detached clean worktree at h
   assert.ok(bdir.startsWith(join(tmp, 'run', 'mutants')), bdir)
   assert.deepEqual([bsha, tsha, bdirty, tdirty], [head, head, '0', '0'])
   assert.equal(git('worktree', 'list').trim().split('\n').length, 1)
+})
+
+test('M09: an empty mutant list makes no control run, on a red tree too', () => {
+  const log = newLog()
+  const res = run(repo, [], { build: step(log, 'build'), test: step(log, 'test', 'exit 1') })
+  assert.equal(res.status, 0, res.stderr)
+  assert.deepEqual(JSON.parse(res.stdout), [])
+  assert.deepEqual(lines(log), [])
 })
 
 test('M06: a failing test in the control is exit 2 and tries no mutant', () => {
