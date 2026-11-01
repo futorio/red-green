@@ -28,14 +28,14 @@ const REGISTRY = Object.assign({
   previous_notes: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
-  earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING,
+  earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING, last_fix_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
   findings: { type: 'array', items: SENT_FINDING },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,
-  'config.rounds': INTEGER, 'config.extra': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
+  'config.rounds': INTEGER, 'config.min': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
   'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,

@@ -178,7 +178,7 @@ test('T19: --conform passes a recorded real output and reports what the script m
   assert.deepEqual(report.failures, [])
   assert.equal(report.status, 'done')
   assert.deepEqual(report.findings.map(f => [f.sent_to, f.id, f.severity, f.where]), [['fix:r1', 'R1-code-1', 'major', 'docs/adr/0003-model-intel-rsqrtss.md (not in the diff); docs/coop/data-setup.md:40'],
-    ['fix:minor', 'R1-code-2', 'minor', 'scripts/coop/build-arch.sh:12']])
+    ['fix:r1', 'R1-code-2', 'minor', 'scripts/coop/build-arch.sh:12']])
   assert.deepEqual(report.advisory.map(f => f.id), ['R1-code-2'])
   assert.deepEqual(report.verdicts.filter(v => v.lens === 'code').map(v => [v.round, v.verdict, v.count]), [[1, 'findings', 2], [2, 'clean', 0]])
 })
@@ -208,13 +208,14 @@ test('T21: --conform reads a fix\'s findings and the checklist\'s ids from the c
   const cfg = file('plugins.json', blocks({ fix: { prompt: 'Fix these: {{findings}}' }, review: { prompt: 'Ids {{check_ids}}.' } }))
   const { code, report } = conform(cfg, '--conform', 'review:r1:code', RECORDED)
   assert.equal(code, 0, JSON.stringify(report.failures))
-  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id]), [['fix:r1', 'R1-code-1'], ['fix:minor', 'R1-code-2']])
+  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id]), [['fix:r1', 'R1-code-1'], ['fix:r1', 'R1-code-2']])
 })
 
 // The default render's prompts, byte for byte: per case and label, the first 16 hex digits of the prompt's sha256. A
 // change to a prompt re-records them on purpose, and its commit states each prompt's byte delta. The cases reach every
-// call with every note on: a fix with proofs and earlier fixes under one_commit, a replan with uncovered and duplicate
-// checks, a retry, a checklist with verify-by-review ids and unverified claims, both mutation
+// call with every note on: a fix with proofs and earlier fixes under one_commit, the iteration after it with the last
+// fix's outcomes, a replan with uncovered and duplicate checks, a retry, a checklist with verify-by-review ids and
+// unverified claims, both mutation
 // approaches. Moved fields sit at their new places: blocks.gates, .mutation, .review.runtime and .research (a prompt
 // wrapping {{default}}).
 const G = [{ name: 'gates', command: 'GATES' }]
@@ -225,25 +226,24 @@ const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected:
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { test: 'TEST-CMD' } } } }, results: cleanRounds },
-    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: 'ac2e1cfaf7aaa27d', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': 'e684b9a6afefd3d4',
-      'review:r1:code': 'f839a4c6762560c1', 'review:r2:checklist': '371d3731e8c2638c', 'review:r2:code': '5f6c58a3fb7328da', mutation: '68f5f513d415bae6' }],
+    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: 'ac2e1cfaf7aaa27d', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': '3e3bf11d116926dd',
+      'review:r1:code': '641ebec1b189671b', 'review:r2:checklist': 'b3b8c70f59dd4595', 'review:r2:code': '554f10cc132d0795', mutation: '68f5f513d415bae6' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, mutation: { build: 'B-CMD', test: 'TEST-CMD', timeout: 9 }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
   results: { 'review:r1:checklist': met('R1'), 'review:r1:code': findings(said('major', 'a.js:1', true), said('minor', 'b.js:2')),
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
-    'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
-    'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
-  { research: 'dfecb403802054b6', implement: 'f45e41e3b2176d43', 'review:r1:code': '64b4832d9f0f4be8', 'fix:r1': '6f66a183c5e1e954', 'gates:r2': 'ec557ef7a7440410',
-    'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '5e1bba33bf51b512', 'fix:r2': 'f9d9598ecb719aad', 'review:fix:r2': '04e8815ac3e1fc76',
-    'fix:r2:review': '8f3b9f86ee6a554a', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'fd90415b46d22c39', mutation: '5ddd6ded50bdbfb0', 'fix:minor': '4530a0a1b9ffb669' }],
+    'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:r3:checklist': met('R1'), 'review:r3:code': met('x'), mutation: { applies: false, ran: false, mutants: [] } } },
+  { research: 'dfecb403802054b6', implement: 'f45e41e3b2176d43', 'review:r1:code': 'd700a73318b6b37c', 'fix:r1': '9fe9eca09d02722e', 'gates:r2': 'ec557ef7a7440410',
+    'review:r2:checklist': 'c859c83537130992', 'review:r2:code': '14886a2d1be48a9e', 'fix:r2': 'f9d9598ecb719aad', 'gates:r3': '55ddb5b9561e34cc',
+    'review:r3:checklist': '790e387cee27a7ba', 'review:r3:code': '300f708a686b331a', mutation: '5ddd6ded50bdbfb0' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: 'f8b90f56cad9a872', 'implement:retry': 'ea1fde34765e33e9', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': 'cdc0ffef4e68ab00' }],
+  { replan: 'f8b90f56cad9a872', 'implement:retry': 'ea1fde34765e33e9', 'review:r1:checklist': '3cdbad0e09563efa', 'review:r1:code': '868a6659805cee2c' }],
   tool: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
-    { 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:code': 'f1c7ea1e3a276b36', mutation: '7eb79d9049fe8c09' }],
+    { 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:code': 'a92b228fd4fd937d', mutation: '7eb79d9049fe8c09' }],
 }
 
 test('T22: the default render\'s prompts are these', async () => {
@@ -277,6 +277,16 @@ test('T26: --check exits 0 on a valid profile, and non-zero with the run\'s own 
     assert.notEqual(code, 0, name)
     assert.equal(`stage research not reached: run failed at config: ${err.trim()}`, note, name)
   }
+})
+
+test('T27: the default config has rounds 3 and min 2 and no removed block; a config naming one is an error', () => {
+  assert.deepEqual([DEFAULT.blocks.review.rounds, DEFAULT.blocks.review.min], [3, 2])
+  assert.ok(!('extra' in DEFAULT.blocks.review))
+  for (const b of ['minor-fix', 'fix-review']) {
+    assert.ok(!(b in DEFAULT.blocks), b)
+    assert.throws(() => render(blocks({ [b]: {} })), new RegExp(`unknown block: ${b}`))
+  }
+  assert.throws(() => render(blocks({ review: { extra: 1 } })), /unknown field: review\.extra/)
 })
 
 test('T24: the research input takes what research\'s own checks limit: a plan step over 600 characters, a requirement without the space', () => {
