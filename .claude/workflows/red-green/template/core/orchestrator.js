@@ -66,7 +66,7 @@ const BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/red-green/blocks.md).
 const { merged: CONFIG, errors: configErrors } = mergeBlocks({{blocks}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
-const FOLLOWS = { plan: 'research', fix: 'implement', 'fix-review': 'review', 'minor-fix': 'fix' }
+const FOLLOWS = { plan: 'research', 'fix-review': 'review', 'minor-fix': 'fix' }
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
 // These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
 const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.extra', min_rounds: 'profile.blocks.review.min' }],
