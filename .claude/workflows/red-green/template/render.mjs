@@ -83,7 +83,7 @@ const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run
 const STUB_RESULTS = {
   research: { requirements: ['R1: the ticket'], facts: [], plan: [], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] },
   plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
-  implement: { head: 'HEAD', checks: [{ kind: 'case', ref: 'C1', requirement: 'R1', test: { file: 'f', name: 't' } }], unverified: [], questions: [] },
+  implement: { head: 'HEAD', checks: [{ kind: 'case', ref: 'C1', requirement: 'R1', test: { file: 'f', name: 't' }, red: 'R' }], unverified: [], questions: [] },
 }
 
 // Runs the core on a case: agents answer from the case's results, except `stop`, which never answers; a label with no

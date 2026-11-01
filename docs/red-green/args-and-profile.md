@@ -23,8 +23,8 @@ Values for `profile.blocks`.
 
 | preset | for | `profile.blocks` |
 |---|---|---|
-| standard | most | `{"implement": {"model": "haiku"}, "fix": {"model": "sonnet"}}` |
-| hard | concurrency, determinism, cross-cutting | `{}` (sonnet implement and fix) |
+| standard | most | `{}` (haiku implement, sonnet fix) |
+| hard | concurrency, determinism, cross-cutting | `{"implement": {"model": "sonnet"}, "fix": {"model": "sonnet"}}` |
 | cheap | docs, config, small edits | `{"research": {"model": "sonnet"}, "plan": {"model": "opus"}, "implement": {"model": "haiku"}, "fix": {"model": "haiku"}}` |
 
 ## `profile`

@@ -30,7 +30,7 @@ const withBlocks = blocks => withProfile({ blocks })
 const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requirements.join('-')}`, where, requirements })
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
-const check = (ref, extra) => Object.assign({ kind: 'case', ref, requirement: 'R1', test: { file: 'f', name: 't' } }, extra)
+const check = (ref, extra) => Object.assign({ kind: 'case', ref, requirement: 'R1', test: { file: 'f', name: 't' }, red: 'FAILED: t' }, extra)
 const measured = (line, status = 'green') => ({ status, line })
 const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
 
@@ -172,7 +172,6 @@ test('W49: the gates step runs the runner on the declared gates at tier round, a
   const call = calls.find(c => c.label === 'gates:r1')
   const stage = call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]
   assert.ok(stage.includes(`node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify(twoGates.profile.blocks.gates.gates)}' --dir /run --tier round --baseline '${JSON.stringify(twoGates.baseline)}'`), stage)
-  assert.ok(prompt(calls, 'implement').includes('A: `make a` (baseline: A-BASE 3 of 3)'))
   const item = call.opts.schema.properties.gates.items
   assert.deepEqual(item.properties.name.enum, ['A', 'B'])
   assert.deepEqual(item.properties.status.enum, ['green', 'red', 'known_red', 'not_run'])
@@ -233,31 +232,63 @@ test('W116: a red gate is a major whose problem names its log', async () => {
   assert.match(sent.problem, /\/run\/gate-logs\/x\/0-tests\.log/)
 })
 
-// The writers' gates line: the fast and slow lists when both kinds exist, one list otherwise, and when to run them.
-const gatesLine = (calls, label) => prompt(calls, label).split('\n').find(l => l.startsWith('- Gates'))
+// The writers' one gate rule: the runner at tier fast before each commit, then commit as is; no fast gate, no word on gates.
 const marked = (a, b) => ({ profile: withProfile({ gates: [Object.assign({ name: 'A', command: 'make a' }, a !== undefined && { tier: a ? 'fast' : 'round' }),
   Object.assign({ name: 'B', command: 'make b' }, b !== undefined && { tier: b ? 'fast' : 'round' })] }).profile, baseline: twoGates.baseline })
 const fixed = { 'review:r1:code': { verdict: 'findings', findings: [finding('major', 'a.js:1', 't')], checked: [row('x')] },
   'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' }, 'gates:r2': gatesAt('cccc222', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 const AB = { 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 
-test('W108: with fast and slow gates, implement and fix get both lists and run the fast ones each cycle, every gate before a commit; the result keeps the marks', async () => {
+test('W108: with a fast gate, implement and fix run the runner at tier fast, uncached, before each commit and commit as is', async () => {
   const { calls, result } = await runCore(Object.assign({}, AB, fixed), 2, marked(true))
   assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', tier: 'fast' }, { name: 'B', command: 'make b' }])
+  const runner = `node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify([{ name: 'A', command: 'make a', tier: 'fast' }])}' --dir /run --tier fast --no-cache`
   for (const label of ['implement', 'fix:r1']) {
-    assert.equal(gatesLine(calls, label), '- Gates, fast: A: `make a` (baseline: A-BASE 3 of 3); slow: B: `make b` (baseline: B-BASE ok). Run the fast gates after each TDD cycle and every gate once before each commit. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.', label)
+    const text = prompt(calls, label)
+    assert.ok(text.includes(runner), label)
+    assert.match(text, /commit as is/, label)
+    assert.doesNotMatch(text, /baseline|make b|revert/i, label)
+    assert.doesNotMatch(text, /Commit only|even with a gate/, label)
   }
 })
 
-test('W109: with one kind of gate the writers get one list; the fast rule appears only when a gate is fast', async () => {
-  const lines = async gates => { const { calls } = await runCore(Object.assign({}, AB, fixed), 2, gates); return ['implement', 'fix:r1'].map(l => gatesLine(calls, l)) }
-  const list = '- Gates: A: `make a` (baseline: A-BASE 3 of 3); B: `make b` (baseline: B-BASE ok). '
-  const tail = ' Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.'
-  const slow = `${list}Run every gate once before each commit.${tail}`
-  assert.deepEqual(await lines(marked(false)), [slow, slow])
-  assert.deepEqual(await lines(twoGates), [slow, slow])
-  const fast = `${list}Run the gates after each TDD cycle and every gate once before each commit.${tail}`
-  assert.deepEqual(await lines(marked(true, true)), [fast, fast])
+test('W109: with no fast gate, implement and fix prompts say nothing about gates', async () => {
+  const { calls } = await runCore(Object.assign({}, AB, fixed), 2, marked(false))
+  for (const label of ['implement', 'fix:r1']) assert.doesNotMatch(prompt(calls, label), /\bgates?\b|baseline|run_gates/i, label)
+})
+
+test('W110: a check row with a test takes an optional red; one without moves to unverified, and stays a tested check', async () => {
+  const props = (await runCore()).calls.find(c => c.label === 'implement').opts.schema.properties
+  assert.equal(props.checks.items.properties.red.type, 'string')
+  assert.ok(!props.checks.items.required.includes('red'))
+  const implement = Object.assign({}, base().implement, { checks: [check('C1', { red: undefined })] })
+  const { result, calls } = await runCore({ implement }, 1, withBlocks({ mutation: { test: 'T' } }))
+  assert.deepEqual(result.unverified, ['C1: test t reported no red line'])
+  assert.equal(result.status, 'done_unverified')
+  assert.ok(prompt(calls, 'mutation').includes('"ref": "C1"') || prompt(calls, 'mutation').includes('"ref":"C1"'))
+  assert.deepEqual((await runCore()).result.unverified, [])
+  assert.match(prompt(calls, 'implement'), /`red`/)
+})
+
+test('W111: implement defaults to haiku, high; fix to sonnet, high, whatever implement is set to', async () => {
+  const opts = (calls, l) => { const c = calls.find(x => x.label === l); return [c.opts.model, c.opts.effort] }
+  const fixes = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' } }
+  const plain = await runCore(fixes, 2)
+  assert.deepEqual(opts(plain.calls, 'implement'), ['haiku', 'high'])
+  assert.deepEqual(opts(plain.calls, 'fix:r1'), ['sonnet', 'high'])
+  const moved = await runCore(fixes, 2, withBlocks({ implement: { model: 'opus' } }))
+  assert.deepEqual(opts(moved.calls, 'fix:r1'), ['sonnet', 'high'])
+})
+
+test('W112: the presets table: standard is the defaults, hard is sonnet on implement and fix, cheap stays', async () => {
+  const doc = readFileSync(new URL('../../../docs/red-green/args-and-profile.md', import.meta.url), 'utf8')
+  const preset = name => JSON.parse(doc.split('\n').find(l => l.startsWith(`| ${name} |`)).match(/`(\{.*\})`/)[1])
+  assert.deepEqual(preset('standard'), {})
+  assert.deepEqual(preset('hard'), { implement: { model: 'sonnet' }, fix: { model: 'sonnet' } })
+  assert.deepEqual(preset('cheap'), { research: { model: 'sonnet' }, plan: { model: 'opus' }, implement: { model: 'haiku' }, fix: { model: 'haiku' } })
+  const fixes = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' } }
+  const { calls } = await runCore(fixes, 2, withBlocks(preset('hard')))
+  for (const label of ['implement', 'fix:r1']) assert.equal(calls.find(c => c.label === label).opts.model, 'sonnet', label)
 })
 
 test('W50: a not_run row or a missing row gets one retry of the stage, whose rows are the result', async () => {
@@ -604,7 +635,7 @@ test('W39: the research asks for typed facts as JSON, and no prompt mentions res
   for (const s of ['- code and change-site:', '- note:', '`path § section`', '`$ command`', 'Every fact is shown by']) assert.ok(research.prompt.includes(s), s)
   assert.ok(!/Markdown/.test(research.prompt))
   // Research commits nothing and runs no gate: the preamble and the mailbox leave those rules out, later stages keep them.
-  for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'or commit']) {
+  for (const s of ['COMMITS', 'run_in_background', 'or commit']) {
     assert.ok(!research.prompt.includes(s), s)
     assert.ok(prompt(calls, 'implement').includes(s), s)
   }
@@ -912,12 +943,12 @@ test('W75: the implement prompt asks for a question\'s requirement as its id', a
   assert.equal(prompt(calls, 'implement').split('contradicts the ticket').length, 2, 'the plan-question rule has one source')
 })
 
-test('W76: implement commits its work as it stands, a red gate going to the fix; fix keeps the green bar or commits nothing; one commit is created by implement', async () => {
+test('W76: implement and fix commit their work as it stands, a red gate going to the fix; one commit is created by implement', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')),
     'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'tests still red' }], proofs: [], head: 'bbbb111' } }, 2)
-  assert.match(prompt(calls, 'implement'), /Commit your work as it stands, even with a gate worse than its baseline/)
+  assert.match(prompt(calls, 'implement'), /Commit your work as it stands\./)
   assert.ok(!/Commit only with/.test(prompt(calls, 'implement')))
-  assert.ok(prompt(calls, 'fix:r1').includes('Commit only with every gate at its baseline or better. If a gate stays worse than its baseline, revert your edits, report `head` unchanged and reject every finding, naming each such gate in its `argument`.'))
+  assert.match(prompt(calls, 'fix:r1'), /Commit your work as it stands\./)
   const one = await runCore({}, 1, { one_commit: true })
   assert.match(prompt(one.calls, 'implement'), /The implementation stage creates it/)
   assert.ok(!/leave it uncommitted/.test(prompt(one.calls, 'implement')))
@@ -947,10 +978,10 @@ test('W83: profile.blocks.<name>.model and effort override the defaults; a block
   const opts = (calls, l) => [calls.find(c => c.label === l).opts.model, calls.find(c => c.label === l).opts.effort]
   const run = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' } }
   const plain = (await runCore(run, 2)).calls
-  const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['sonnet', 'high'], 'gates:r1': ['haiku', 'medium'], 'review:r1:code': ['opus', 'high'],
+  const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['haiku', 'high'], 'gates:r1': ['haiku', 'medium'], 'review:r1:code': ['opus', 'high'],
     'fix:r1': ['sonnet', 'high'], mutation: ['haiku', 'medium'] }
   for (const [l, w] of Object.entries(want)) assert.deepEqual(opts(plain, l), w, l)
-  const { calls } = await runCore(run, 2, withBlocks({ research: { model: 'sonnet', effort: 'max' }, implement: { model: 'haiku' }, review: { effort: 'low' } }))
+  const { calls } = await runCore(run, 2, withBlocks({ research: { model: 'sonnet', effort: 'max' }, fix: { model: 'haiku' }, review: { effort: 'low' } }))
   assert.deepEqual(opts(calls, 'research'), ['sonnet', 'max'])
   assert.deepEqual(opts(calls, 'plan'), ['sonnet', 'high'])
   assert.deepEqual(opts(calls, 'fix:r1'), ['haiku', 'high'])
@@ -1164,7 +1195,6 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
 
 test('W94: the gates and mutation approaches are read from profile.blocks: declared gates, generated mutants or a tool', async () => {
   const declared = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('G', 'green', 'g')) }, 1, Object.assign(withProfile({ gates: [{ name: 'G', command: 'make g' }], mutation: { test: 'T-CMD', timeout: 9 } }), { baseline: { G: measured('G-BASE') } }))
-  assert.ok(prompt(declared.calls, 'implement').includes('G: `make g` (baseline: G-BASE)'))
   assert.ok(prompt(declared.calls, 'mutation').includes("--test 'T-CMD' --timeout 9`"))
   const tool = await runCore({}, 1, withProfile({ mutation: { tool: 'TOOL-TEXT' } }))
   assert.match(prompt(tool.calls, 'mutation'), /TOOL-TEXT/)
@@ -1274,7 +1304,7 @@ test('W106: a profile string\'s {{base}}, {{run}}, {{repo}} and {{tools}} reach 
     gates: [{ name: 'tests', command: 'make -C {{repo}} test' }], mutation: { test: 'T {{run}}/m' },
     code_rules: ['diff against {{base}}'], context: ['notes in {{run}}/notes'],
     blocks: { research: { prompt: '{{default}}\nSee {{tools}}/docs.' } } }))
-  assert.ok(prompt(calls, 'implement').includes('tests: `make -C /r test`'))
+  assert.ok(prompt(calls, 'gates:r1').includes('make -C /r test'))
   assert.ok(prompt(calls, 'implement').includes('- diff against aaaa000'))
   assert.ok(prompt(calls, 'mutation').includes("--test 'T /run/m'"))
   assert.ok(prompt(calls, 'research').includes('\nSee /t/docs.'))

@@ -1,5 +1,5 @@
 // Shared helpers: text helpers, the validator, the block config merge, the preambles every stage prompt starts with and
-// the contract part, requirement ids. They read A, P, TARGET, REPO, BRANCH, RUN, DEFAULTS, GATES and BASELINE.
+// the contract part, requirement ids. They read A, P, TARGET, REPO, BRANCH, RUN, DEFAULTS, RUN_GATES and GATES.
 // @part text
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
@@ -83,23 +83,17 @@ const TARGETED = 'At most one targeted run of the changed path (one test or one 
 const contract = (...rules) => `\n\nCONTRACT (binding, whatever the text above says):\n${rules.filter(Boolean).join('\n')}`
 // What counts as died, as what the agent must do.
 const died = what => `${what}, or the stage counts as died.`
-// A writer's invariants. Implement commits its work as it stands; a gate it left worse reaches the fix as a gates
-// finding. Fixes keep the bar.
+// A writer's invariants; the bar is what it commits. The gates stage follows every writer, so a red gate costs an attempt.
 const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git add -A\` or \`git add .\`. Commit messages describe the change, not the run (no "round", no stage names)${P.commit ? `; ${P.commit}` : ''}. ${bar}
 You do not edit ${TARGET} or the other ticket files.`
 // @part code-preamble
 
-const gateList = (sep, gates = STAGE_GATES) => gates.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name].line})`).join(sep)
-// The writers' gates: fast ones after each TDD cycle, every gate before a commit; one list when the gates are of one kind.
+// The writers' one gate rule, uncached and with no baseline; with no fast gate, no word on gates.
 const writerGates = () => {
-  const fast = STAGE_GATES.filter(g => g.tier === 'fast')
-  const slow = STAGE_GATES.filter(g => g.tier !== 'fast')
-  const lists = fast.length && slow.length ? `Gates, fast: ${gateList('; ', fast)}; slow: ${gateList('; ', slow)}` : `Gates: ${gateList('; ')}`
-  const cycle = fast.length ? `the ${slow.length ? 'fast ' : ''}gates after each TDD cycle and ` : ''
-  return `${lists}. Run ${cycle}every gate once before each commit.`
+  const fast = GATES.filter(g => g.tier === 'fast')
+  return fast.length ? `\n- Before each commit run, with a Bash timeout of 600000 ms: \`node ${RUN_GATES} --gates ${sq(JSON.stringify(fast))} --dir ${RUN} --tier fast --no-cache\`. Exit 3: run it again. Then commit as is, whatever it reports.` : ''
 }
-const PRE = noted => `${CORE_PRE(noted)}
-- ${writerGates()} Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.
+const PRE = noted => `${CORE_PRE(noted)}${writerGates()}
 ${BG}
 - Over-built output is a finding, not a bonus.${LAST}`
 // @part id
