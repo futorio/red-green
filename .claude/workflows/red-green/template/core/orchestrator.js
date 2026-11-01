@@ -73,7 +73,8 @@ const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'pro
   [Object(Object(P.blocks).review), 'profile.blocks.review', { extra: 'profile.blocks.review.rounds' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
 // A block prompt keeps its registry paths ({{default}} among them) for the call to fill; any other placeholder is an error.
-UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)))
+// blocks.mutation.tool keeps {{mutate_from}}, which each step fills.
+UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)) && !(at === 'profile.blocks.mutation.tool' && p === 'mutate_from'))
   .forEach(([at, m]) => configErrors.push(`${at}: unknown placeholder ${m}`))
 Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => configErrors.push(`blocks.${b}: prompt or skill, not both`))
 // Mutation runs on a test or a tool; with no blocks.mutation given the step is skipped.
@@ -182,12 +183,13 @@ while (round < N) {
     if (same(headNow, fromHead)) break
     gated = await runGates(`gates:${at}`, `${round}a${attempts}`)
   }
+  const survivors = await runMutation()
   phase('Review')
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
 // @include review call
   lastFix = null
 
-  const found = gated.found.slice()
+  const found = gated.found.concat(survivors)
   let reviewed = true
   lensResults.forEach((res, i) => {
     const l = active[i]
@@ -206,7 +208,7 @@ while (round < N) {
     }
     found.push(...tidy(res.findings).map((f, k) => proven(Object.assign({ id: `R${round}-${l.key}-${k + 1}`, source: l.key }, f))))
   })
-  let toFix = found.filter(f => f.severity !== 'minor')
+  const toFix = found.filter(f => f.severity !== 'minor')
   const minors = found.filter(f => f.severity === 'minor')
   advisory.push(...minors)
   if (lensResults.every(r => !r)) log(`round ${round}: every lens died — this round was NOT reviewed`)
@@ -215,14 +217,12 @@ while (round < N) {
   log(`round ${round}: ${toFix.length} to fix`)
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
-  if (!toFix.length && reviewed && round >= MIN_ROUNDS && !mutated) {
-    toFix = await runMutation()
-    if (toFix.length) log(`mutation: ${toFix.length} survivors`)
-  }
   if (!toFix.length && reviewed && round >= MIN_ROUNDS) break
   // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
   if (!toFix.length) continue
   if (round === N) { unfixed = toFix; break }
+  // A fix would only reject again a gate rejected at this HEAD; it stays a major, so the iteration is not clean.
+  if (toFix.every(f => f.source === 'gates' && same(gateRejected[f.where], headNow))) continue
   const sent = toFix.concat(minors)
   const fix = await runFix(round, sent, `fix:r${round}`)
   if (!fix) { failures.push(`fix r${round}`); unfixed = toFix; break }
@@ -231,8 +231,6 @@ while (round < N) {
   rounds[rounds.length - 1].rejected = fix.rejected.length
   settleFix(sent, fix, `r${round}`)
 }
-// A run that used up its rounds without a clean one still gets its one mutation run; its survivors are left over.
-if (!mutated && !failures.some(f => f.startsWith('fix '))) unfixed.push(...await runMutation())
 // A finding is the same finding by what it says, not by its positional id: a survivor by its patch,
 // any other by source, place and problem (a rejection without a place by its id).
 const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)

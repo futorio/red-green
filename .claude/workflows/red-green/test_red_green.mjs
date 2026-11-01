@@ -47,7 +47,9 @@ function base(over) {
     'review:r2:code': clean([row('x')]),
     'review:r3:checklist': clean([row('R1', { status: 'met' })]),
     'review:r3:code': clean([row('x')]),
-    mutation: step(),
+    'mutation:r1': step(),
+    'mutation:r2': step(),
+    'mutation:r3': step(),
     'gates:r2': gatesAt('cccc222'),
     'gates:r3': gatesAt('cccc222'),
   }, over)
@@ -89,11 +91,11 @@ const sentTo = (calls, label) => JSON.parse(prompt(calls, label).split('FINDINGS
 
 test('W01: a survivor is a major M-<n> placed by its first hunk header that reaches fix; killed and invalid ones make no finding', async () => {
   const { result, calls } = await runCore({
-    mutation: step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3)),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-3', argument: 'a' }], head: 'bbbb111' },
+    'mutation:r1': step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3)),
+    'fix:r1': { applied: [], rejected: [{ id: 'M1-3', argument: 'a' }], head: 'bbbb111' },
   }, 2, withBlocks({ review: { min: 1 } }))
   const sent = sentTo(calls, 'fix:r1')
-  assert.deepEqual(sent.map(f => [f.id, f.source, f.severity, f.where]), [['M-3', 'mutation', 'major', 'src/a.cpp:13']])
+  assert.deepEqual(sent.map(f => [f.id, f.source, f.severity, f.where]), [['M1-3', 'mutation', 'major', 'src/a.cpp:13']])
   assert.match(sent[0].problem, /C3/)
   assert.equal(sent[0].trigger, PATCH(3))
   assert.match(sent[0].fix, /reject/)
@@ -102,7 +104,7 @@ test('W01: a survivor is a major M-<n> placed by its first hunk header that reac
 
 test('W02: the mutation schema is {applies, ran, not_run?, mutants: [{target, patch, status}]}', async () => {
   const { calls } = await runCore({})
-  const s = calls.find(c => c.label === 'mutation').opts.schema
+  const s = calls.find(c => c.label === 'mutation:r1').opts.schema
   assert.deepEqual(Object.keys(s.properties), ['applies', 'ran', 'not_run', 'mutants', 'mailbox'])
   assert.deepEqual(s.required, ['applies', 'ran', 'mutants'])
   const item = s.properties.mutants.items
@@ -163,7 +165,7 @@ test('W14: after a fix that moved HEAD the gates step runs every gate, with no s
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
-    mutation: step(),
+    'mutation:r1': step(),
   }, 2)
   const second = prompt(calls, 'gates:r2')
   assert.ok(!/already ran at|git diff --name-only|docs only|tests only/.test(second))
@@ -269,7 +271,7 @@ test('W110: a check row with a test takes an optional red; one without moves to 
   const { result, calls } = await runCore({ implement }, 1, withBlocks({ mutation: { test: 'T' } }))
   assert.deepEqual(result.unverified, ['C1: test t reported no red line'])
   assert.equal(result.status, 'done_unverified')
-  assert.ok(prompt(calls, 'mutation').includes('"ref": "C1"') || prompt(calls, 'mutation').includes('"ref":"C1"'))
+  assert.ok(prompt(calls, 'mutation:r1').includes('"ref": "C1"') || prompt(calls, 'mutation:r1').includes('"ref":"C1"'))
   assert.deepEqual((await runCore()).result.unverified, [])
   assert.match(prompt(calls, 'implement'), /`red`/)
 })
@@ -361,8 +363,8 @@ test('W15: a fix that leaves HEAD alone reuses the gates result', async () => {
 
 test('W16: a run with survivors makes no ruling call; the fix alone may reject one', async () => {
   const { calls } = await runCore({
-    mutation: mutants(1),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'equivalent' }], head: 'bbbb111' },
+    'mutation:r1': mutants(1),
+    'fix:r1': { applied: [], rejected: [{ id: 'M1-1', argument: 'equivalent' }], head: 'bbbb111' },
   }, 2, withBlocks({ review: { min: 1 } }))
   assert.ok(called(calls, 'fix:r1'))
   assert.deepEqual(calls.map(c => c.label).filter(l => /survivor|rul/.test(l)), [])
@@ -371,7 +373,7 @@ test('W16: a run with survivors makes no ruling call; the fix alone may reject o
 test('W77: the generator gets the tested checks and the runner with the build, test and timeout; model models.mutation, haiku by default', async () => {
   const implement = Object.assign({}, base().implement, { checks: [check('C1', { test: { file: 'TESTED-FILE', name: 'TESTED-NAME' } }), check('"UNTESTED PHRASE"', { kind: 'phrase', test: undefined, unverified: 'no tool' }), check('C2', { test: { file: 'FLAKY-FILE', name: 'n' }, unverified: 'flaky' })] })
   const { calls } = await runCore({ implement }, 1, withProfile({ mutation: { build: "make 'b'", test: 'TEST-CMD', timeout: 7 } }))
-  const call = calls.find(c => c.label === 'mutation')
+  const call = calls.find(c => c.label === 'mutation:r1')
   assert.equal(call.opts.model, 'haiku')
   assert.equal(call.opts.effort, 'medium')
   assert.ok(call.prompt.includes('node /t/.claude/workflows/red-green/skills/mutate.mjs --mutants /run/mutants.json --repo /r --head bbbb111 --dir /run --test \'TEST-CMD\' --build \'make \'\\\'\'b\'\\\'\'\' --timeout 7'))
@@ -380,12 +382,12 @@ test('W77: the generator gets the tested checks and the runner with the build, t
   assert.match(call.prompt, /at most 5 on edges/)
   assert.match(call.prompt, /git diff aaaa000\.\.HEAD/)
   assert.match(call.prompt, /\/t\.md/)
-  assert.equal((await runCore({}, 1, withBlocks({ mutation: { model: 'sonnet' } }))).calls.find(c => c.label === 'mutation').opts.model, 'sonnet')
+  assert.equal((await runCore({}, 1, withBlocks({ mutation: { model: 'sonnet' } }))).calls.find(c => c.label === 'mutation:r1').opts.model, 'sonnet')
 })
 
 test('W78: the plug-in form puts the profile\'s tool text in the prompt and no runner or checks', async () => {
   const { calls } = await runCore({}, 1, withProfile({ mutation: { tool: 'PLUGIN-TOOL-TEXT' } }))
-  const p = prompt(calls, 'mutation')
+  const p = prompt(calls, 'mutation:r1')
   assert.match(p, /PLUGIN-TOOL-TEXT/)
   assert.match(p, /`operator`/)
   assert.ok(!/`target` the check ref/.test(p))
@@ -394,22 +396,22 @@ test('W78: the plug-in form puts the profile\'s tool text in the prompt and no r
 
 test('W79: the result\'s mutation holds every mutant with id, place, patch and status, and counts by status', async () => {
   const { result } = await runCore({
-    mutation: step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3), mutant(4, 'killed')),
+    'mutation:r1': step(mutant(1, 'killed'), mutant(2, 'invalid'), mutant(3), mutant(4, 'killed')),
   })
   assert.deepEqual(result.mutation, {
-    mutants: [[1, 'killed'], [2, 'invalid'], [3, 'survived'], [4, 'killed']].map(([i, status]) => ({ id: `M-${i}`, target: `C${i}`, file: 'src/a.cpp', line: 10 + i, patch: PATCH(i), status })),
+    mutants: [[1, 'killed'], [2, 'invalid'], [3, 'survived'], [4, 'killed']].map(([i, status]) => ({ id: `M1-${i}`, target: `C${i}`, file: 'src/a.cpp', line: 10 + i, patch: PATCH(i), status })),
     counts: { killed: 2, survived: 1, invalid: 1, not_run: 0 },
   })
-  assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.mutation, null)
+  assert.equal((await runCore({ 'mutation:r1': { applies: false, ran: false, mutants: [] } })).result.mutation, null)
   const none = await runCore({}, 1, withProfile({ mutation: null }))
-  assert.ok(!called(none.calls, 'mutation'))
+  assert.ok(!called(none.calls, 'mutation:r1'))
   assert.equal(none.result.mutation, null)
   assert.equal(none.result.status, 'done')
 })
 
 test('W80: a mutant\'s file is its patch\'s +++ side, the --- side when that is /dev/null, without a timestamp', async () => {
   const at = (from, to, line) => ({ target: 'C1', patch: `--- ${from}\t2026-01-01 00:00:00\n+++ ${to}\t2026-01-02 00:00:00\n@@ -${line},1 +${line},1 @@\n-a\n+b\n`, status: 'killed' })
-  const { result } = await runCore({ mutation: step(at('a/old.cpp', 'b/new.cpp', 5), at('a/gone.cpp', '/dev/null', 1)) })
+  const { result } = await runCore({ 'mutation:r1': step(at('a/old.cpp', 'b/new.cpp', 5), at('a/gone.cpp', '/dev/null', 1)) })
   assert.deepEqual(result.mutation.mutants.map(m => [m.file, m.line]), [['new.cpp', 5], ['gone.cpp', 1]])
 })
 
@@ -422,51 +424,48 @@ test('W81: blocks.mutation given with neither test nor tool, with a build and no
   }
 })
 
-test('W24: the mutation step runs once, in its own step after a clean round, never in a gates step', async () => {
+test('W24: each mutation step runs on its HEAD, in its own step, never in a gates step', async () => {
   const { calls } = await runCore({
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
-    mutation: step(),
   }, 2)
-  assert.equal(count(calls, 'mutation'), 1)
-  assert.match(prompt(calls, 'mutation'), /--head cccc222 /)
-  assert.match(prompt(calls, 'mutation'), /TEST-CMD/)
+  assert.match(prompt(calls, 'mutation:r1'), /--head bbbb111 /)
+  assert.match(prompt(calls, 'mutation:r2'), /--head cccc222 /)
+  assert.match(prompt(calls, 'mutation:r1'), /TEST-CMD/)
   for (const label of ['gates:r1', 'gates:r2']) assert.ok(!/TEST-CMD|mutate\.mjs/.test(prompt(calls, label)), label)
-  const order = calls.map(c => c.label)
-  assert.ok(order.indexOf('mutation') > order.indexOf('review:r2:code'))
 })
 
 test('W25: survivors get a fix and one more iteration without the tool; the rounds do not grow', async () => {
   const { result, calls } = await runCore({
-    mutation: mutants(1),
-    'fix:r1': { applied: [{ id: 'M-1', what: 'w' }], rejected: [], head: 'cccc222' },
+    'mutation:r1': mutants(1),
+    'fix:r1': { applied: [{ id: 'M1-1', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222'),
   }, 2, withBlocks({ review: { min: 1 } }))
   assert.ok(called(calls, 'review:r2:code'))
-  assert.equal(count(calls, 'mutation'), 1)
+  assert.equal(count(calls, 'mutation:r1'), 1)
   assert.deepEqual([result.rounds_planned, result.rounds_run], [2, 2])
   assert.deepEqual(result.leftover_findings, [])
-  const last = await runCore({ mutation: mutants(1) })
+  const last = await runCore({ 'mutation:r1': mutants(1) })
   assert.ok(!called(last.calls, 'fix:r1'))
   assert.equal(last.result.rounds_run, 1)
-  assert.deepEqual(last.result.leftover_findings.map(f => f.id), ['M-1'])
+  assert.deepEqual(last.result.leftover_findings.map(f => f.id), ['M1-1'])
 })
 
-test('W26: a run that ends without a clean iteration still runs the step once, and every survivor is left over', async () => {
+test('W26: in a last iteration with a major every survivor is left over too', async () => {
   const { result, calls } = await runCore({
     'review:r1:code': major,
-    mutation: step(mutant(1), mutant(2), mutant(3, 'killed')),
+    'mutation:r1': step(mutant(1), mutant(2), mutant(3, 'killed')),
   })
-  assert.equal(count(calls, 'mutation'), 1)
+  assert.equal(count(calls, 'mutation:r1'), 1)
   assert.ok(!called(calls, 'fix:r1'))
-  assert.deepEqual(result.leftover_findings.filter(f => f.source === 'mutation').map(f => f.id), ['M-1', 'M-2'])
+  assert.deepEqual(result.leftover_findings.filter(f => f.source === 'mutation').map(f => f.id), ['M1-1', 'M1-2'])
   assert.deepEqual(result.advisory.filter(f => f.source === 'mutation'), [])
 })
 
-test('W27: a dead fix stops the run before the tool', async () => {
+test('W27: a dead fix ends the loop before the next step', async () => {
   const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': null }, 2)
-  assert.ok(!called(calls, 'mutation'))
+  assert.ok(!called(calls, 'mutation:r2'))
 })
 
 test('W07: a lens major without a trigger becomes a minor and is not fixed', async () => {
@@ -514,15 +513,15 @@ test('W12: a dead lens makes the run done_with_failures', async () => {
 })
 
 test('W18: a dead mutation step, one that did not run, a not_run mutant or a dead gates step is a failure; applies false is not', async () => {
-  assert.equal((await runCore({ mutation: null })).result.status, 'done_with_failures')
-  const notRun = await runCore({ mutation: { applies: true, ran: false, not_run: 'NO-NODE', mutants: [] } })
+  assert.equal((await runCore({ 'mutation:r1': null })).result.status, 'done_with_failures')
+  const notRun = await runCore({ 'mutation:r1': { applies: true, ran: false, not_run: 'NO-NODE', mutants: [] } })
   assert.equal(notRun.result.status, 'done_with_failures')
   assert.ok(notRun.result.failures.some(f => /NO-NODE/.test(f)))
-  const bad = await runCore({ mutation: step(mutant(1, 'killed'), mutant(2, 'not_run')) })
+  const bad = await runCore({ 'mutation:r1': step(mutant(1, 'killed'), mutant(2, 'not_run')) })
   assert.equal(bad.result.status, 'done_with_failures')
   assert.equal(bad.result.failures.filter(f => /mutation/.test(f)).length, 1)
-  assert.match(bad.result.failures.find(f => /mutation/.test(f)), /M-2/)
-  assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.status, 'done')
+  assert.match(bad.result.failures.find(f => /mutation/.test(f)), /M1-2/)
+  assert.equal((await runCore({ 'mutation:r1': { applies: false, ran: false, mutants: [] } })).result.status, 'done')
   const deadGates = await runCore({ 'gates:r1': null, 'gates:r1:retry': null })
   assert.equal(deadGates.result.status, 'done_with_failures')
 })
@@ -539,8 +538,8 @@ test('W19: an id-only rejection is accepted once the next review does not raise 
 
 test('W22: a survivor the fix rejected without moving HEAD is not sent to fix again', async () => {
   const { calls } = await runCore({
-    mutation: mutants(1),
-    'fix:r1': { applied: [], rejected: [{ id: 'M-1', argument: 'a' }], head: 'bbbb111' },
+    'mutation:r1': mutants(1),
+    'fix:r1': { applied: [], rejected: [{ id: 'M1-1', argument: 'a' }], head: 'bbbb111' },
   }, 2, withBlocks({ review: { min: 1 } }))
   assert.ok(called(calls, 'fix:r1'))
   assert.ok(!called(calls, 'fix:r2'))
@@ -558,10 +557,10 @@ test('W23: a run reviews every round with both lenses', async () => {
   assert.ok(called(calls, 'review:r3:code'))
 })
 
-test('W32: with default rounds a run plans three iterations, reviews two in full with both lenses, then runs the mutation tool', async () => {
+test('W32: with default rounds a run plans three iterations, reviews two in full with both lenses, and runs the mutation tool', async () => {
   const { result, calls } = await runCore({}, 'default')
   assert.equal(result.rounds_planned, 3)
-  assert.ok(called(calls, 'plan') && called(calls, 'review:r2:checklist') && called(calls, 'review:r2:code') && called(calls, 'mutation'))
+  assert.ok(called(calls, 'plan') && called(calls, 'review:r2:checklist') && called(calls, 'review:r2:code') && called(calls, 'mutation:r1'))
   assert.match(prompt(calls, 'review:r1:code'), /Start from the change-site facts/)
 })
 
@@ -984,7 +983,7 @@ test('W83: profile.blocks.<name>.model and effort override the defaults; a block
   const run = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' } }
   const plain = (await runCore(run, 2)).calls
   const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['haiku', 'high'], 'gates:r1': ['haiku', 'medium'], 'review:r1:code': ['opus', 'high'],
-    'fix:r1': ['sonnet', 'high'], mutation: ['haiku', 'medium'] }
+    'fix:r1': ['sonnet', 'high'], 'mutation:r1': ['haiku', 'medium'] }
   for (const [l, w] of Object.entries(want)) assert.deepEqual(opts(plain, l), w, l)
   const { calls } = await runCore(run, 2, withBlocks({ research: { model: 'sonnet', effort: 'max' }, fix: { model: 'haiku' }, review: { effort: 'low' } }))
   assert.deepEqual(opts(calls, 'research'), ['sonnet', 'max'])
@@ -1004,9 +1003,9 @@ test('W84: the review rounds and min rounds, the minors cap, the edge cap and th
   assert.match(prompt(capped.calls, 'review:r1:code'), /report at most 1 minors/)
   assert.match(prompt((await runCore({})).calls, 'review:r1:code'), /report at most 2 minors/)
   const mut = (await runCore({}, 1, withBlocks({ mutation: { edges: 2, timeout: 60 } }))).calls
-  assert.match(prompt(mut, 'mutation'), /at most 2 on edges/)
-  assert.match(prompt(mut, 'mutation'), /--timeout 60`/)
-  assert.match(prompt((await runCore({})).calls, 'mutation'), /--timeout 300`/)
+  assert.match(prompt(mut, 'mutation:r1'), /at most 2 on edges/)
+  assert.match(prompt(mut, 'mutation:r1'), /--timeout 60`/)
+  assert.match(prompt((await runCore({})).calls, 'mutation:r1'), /--timeout 300`/)
 })
 
 test('W85: a removed arg, or a block, field, duty or lens the config does not know, fails the run before any agent', async () => {
@@ -1048,7 +1047,7 @@ const SAMPLES = {
   'gates:r1': [gatesAt('h'), { enum: gatesAt('h', gate('tests', 'amber', 'l')), required: { gates: [] } }],
   'review:r1:checklist': [lensClean, { enum: clean([row('R1', { status: 'maybe', promise: 'p', counterexample: 'c' })]), required: clean([row('R1', { status: 'met' })]) }],
   'review:r1:code': [clean([row('x')]), { enum: { verdict: 'dirty', findings: [], checked: [] }, required: { verdict: 'clean', findings: [] } }],
-  mutation: [step(mutant(1)), { enum: step(mutant(1, 'zombie')), required: { applies: true, mutants: [] } }],
+  'mutation:r1': [step(mutant(1)), { enum: step(mutant(1, 'zombie')), required: { applies: true, mutants: [] } }],
   'fix:r1': [fixRes, { enum: edit(fixRes, r => { r.proofs = [{ id: 'a', path: 'p', outcome: 'kept' }] }), required: { applied: [], rejected: [], proofs: [] } }],
 }
 
@@ -1102,8 +1101,8 @@ const everyBlock = () => {
 
 test('W86: every block\'s filled input validates, and its contract part follows its instructions and precedes the mailbox note', async () => {
   const { result, calls } = await everyBlock()
-  assert.deepEqual(calls.map(c => c.label), ['research', 'plan', 'replan', 'implement', 'implement:retry', 'gates:r1',
-    'review:r1:checklist', 'review:r1:code', 'fix:r1', 'gates:r2', 'review:r2:checklist', 'review:r2:code', 'mutation'])
+  assert.deepEqual(calls.map(c => c.label), ['research', 'plan', 'replan', 'implement', 'implement:retry', 'gates:r1', 'mutation:r1',
+    'review:r1:checklist', 'review:r1:code', 'fix:r1', 'gates:r2', 'mutation:r2', 'review:r2:checklist', 'review:r2:code'])
   assert.deepEqual(result.failures, [])
   for (const c of calls) {
     const at = c.prompt.indexOf('\n\nCONTRACT (binding, whatever the text above says):\n')
@@ -1139,8 +1138,8 @@ test('W88: a value an instruction names that is missing, or off its schema, fail
   core = coreOf(swapped)
   try {
     const typed = await runCore({})
-    assert.ok(!called(typed.calls, 'mutation'))
-    assert.deepEqual(typed.result.failures, ['mutation input: $.config.edges: string, not integer', 'mutation'])
+    assert.ok(!called(typed.calls, 'mutation:r1'))
+    assert.deepEqual(typed.result.failures, ['mutation:r1 input: $.config.edges: string, not integer', 'mutation'])
   } finally { core = coreOf(SOURCE) }
 })
 
@@ -1200,9 +1199,9 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
 
 test('W94: the gates and mutation approaches are read from profile.blocks: declared gates, generated mutants or a tool', async () => {
   const declared = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('G', 'green', 'g')) }, 1, Object.assign(withProfile({ gates: [{ name: 'G', command: 'make g' }], mutation: { test: 'T-CMD', timeout: 9 } }), { baseline: { G: measured('G-BASE') } }))
-  assert.ok(prompt(declared.calls, 'mutation').includes("--test 'T-CMD' --timeout 9`"))
+  assert.ok(prompt(declared.calls, 'mutation:r1').includes("--test 'T-CMD' --timeout 9`"))
   const tool = await runCore({}, 1, withProfile({ mutation: { tool: 'TOOL-TEXT' } }))
-  assert.match(prompt(tool.calls, 'mutation'), /TOOL-TEXT/)
+  assert.match(prompt(tool.calls, 'mutation:r1'), /TOOL-TEXT/)
 })
 
 test('W95: the removed profile strings and the moved profile fields fail the run before any agent, naming where they went', async () => {
@@ -1280,7 +1279,7 @@ test('W102: a checklist with an unmet row answers verdict findings, even with no
 
 test('W103: a runner that did not run and a step that does not apply are answers, not deaths; code rules end their line', async () => {
   const { calls } = await everyBlock()
-  const mutation = prompt(calls, 'mutation')
+  const mutation = prompt(calls, 'mutation:r1')
   assert.match(mutation, /exit 2 means it did not run: ran false, not_run its stderr\./)
   assert.match(mutation, /when it does not, ran is false and mutants \[\]\./)
   assert.match(mutation, /\nAnswer, or the stage counts as died\./)
@@ -1311,7 +1310,7 @@ test('W106: a profile string\'s {{base}}, {{run}}, {{repo}} and {{tools}} reach 
     blocks: { research: { prompt: '{{default}}\nSee {{tools}}/docs.' } } }))
   assert.ok(prompt(calls, 'gates:r1').includes('make -C /r test'))
   assert.ok(prompt(calls, 'implement').includes('- diff against aaaa000'))
-  assert.ok(prompt(calls, 'mutation').includes("--test 'T /run/m'"))
+  assert.ok(prompt(calls, 'mutation:r1').includes("--test 'T /run/m'"))
   assert.ok(prompt(calls, 'research').includes('\nSee /t/docs.'))
   for (const c of calls) {
     assert.ok(c.prompt.includes('- notes in /run/notes'), c.label)
@@ -1340,7 +1339,7 @@ const minorsOnly = (...wheres) => ({ verdict: 'findings', checked: [row('x')], f
 
 test('L01: a clean run reviews min iterations, runs mutation and ends with an empty result', async () => {
   const { result, calls } = await runCore({}, 'default')
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), ...lensesOf(2), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), ...lensesOf(2)])
   assert.deepEqual([result.status, result.rounds_planned, result.rounds_run], ['done', 3, 2])
   assert.deepEqual([result.leftover_findings, result.advisory, result.failures, result.stray_proofs], [[], [], [], []])
 })
@@ -1351,7 +1350,7 @@ test('L02: the loop runs at most rounds iterations and never grows, whatever the
     'review:r2:code': major, 'fix:r2': applied('R2-code-1', 'dddd333'), 'gates:r3': gatesAt('dddd333'),
     'review:r3:code': major,
   }, 3)
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), 'fix:r1', 'gates:r2', ...lensesOf(2), 'fix:r2', 'gates:r3', ...lensesOf(3), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), 'fix:r1', 'gates:r2', 'mutation:r2', ...lensesOf(2), 'fix:r2', 'gates:r3', 'mutation:r3', ...lensesOf(3)])
   assert.deepEqual([result.rounds_planned, result.rounds_run], [3, 3])
   assert.deepEqual(result.leftover_findings.map(f => f.id), ['R3-code-1'])
 })
@@ -1360,35 +1359,35 @@ test('L03: a clean iteration at min ends the loop; one past min after a finding 
   const atMin = await runCore({}, 3)
   assert.equal(atMin.result.rounds_run, 2)
   const past = await runCore({ 'review:r2:code': major, 'fix:r2': applied('R2-code-1', 'cccc222') }, 4)
-  assert.deepEqual(labels(past.calls), ['gates:r1', ...lensesOf(1), ...lensesOf(2), 'fix:r2', 'gates:r3', ...lensesOf(3), 'mutation'])
+  assert.deepEqual(labels(past.calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), ...lensesOf(2), 'fix:r2', 'gates:r3', 'mutation:r3', ...lensesOf(3)])
   assert.equal(past.result.rounds_run, 3)
 })
 
 test('L04: a clean iteration before min makes no fix and reviews the same code again: no gates, no mutation in between', async () => {
   const { calls } = await runCore({}, 3)
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), ...lensesOf(2), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), ...lensesOf(2)])
 })
 
 test('L05: each fix is followed by gates and a full review', async () => {
   const { calls } = await runCore({ 'review:r1:checklist': major, 'fix:r1': applied('R1-checklist-1', 'cccc222') }, 2)
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), 'fix:r1', 'gates:r2', ...lensesOf(2), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), 'fix:r1', 'gates:r2', 'mutation:r2', ...lensesOf(2)])
 })
 
 test('L06: the last iteration makes no fix, and its majors are left over', async () => {
   const { result, calls } = await runCore({ 'review:r1:code': major })
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1)])
   assert.deepEqual(result.leftover_findings.map(f => [f.id, f.severity]), [['R1-code-1', 'major']])
 })
 
 test('L07: minors alone make no fix, and reach advisory', async () => {
   const { result, calls } = await runCore({ 'review:r1:code': minorsOnly('m:1') }, 2)
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), ...lensesOf(2), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), ...lensesOf(2)])
   assert.deepEqual(result.advisory.map(f => f.where), ['m:1'])
 })
 
 test('L08: a dead-lens iteration with only minors is not clean and makes no fix', async () => {
   const { result, calls } = await runCore({ 'review:r1:checklist': null, 'review:r1:code': minorsOnly('m:1') }, 3, withBlocks({ review: { min: 1 } }))
-  assert.deepEqual(labels(calls), ['gates:r1', ...lensesOf(1), ...lensesOf(2), 'mutation'])
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), ...lensesOf(2)])
   assert.equal(result.rounds_run, 2)
   assert.deepEqual(result.advisory.map(f => f.where), ['m:1'])
 })
@@ -1397,8 +1396,8 @@ test('L09: minors reach fix together with a major, and with survivors after a cl
   const both = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'a:1', 't'), finding('minor', 'm:1', 't')] }
   const { calls } = await runCore({ 'review:r1:code': both, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
   assert.deepEqual(sentTo(calls, 'fix:r1').map(f => [f.id, f.severity]), [['R1-code-1', 'major'], ['R1-code-2', 'minor']])
-  const survivors = await runCore({ 'review:r1:code': minorsOnly('m:1'), mutation: mutants(1), 'fix:r1': applied('M-1', 'cccc222') }, 2, withBlocks({ review: { min: 1 } }))
-  assert.deepEqual(sentTo(survivors.calls, 'fix:r1').map(f => f.id), ['M-1', 'R1-code-1'])
+  const survivors = await runCore({ 'review:r1:code': minorsOnly('m:1'), 'mutation:r1': mutants(1), 'fix:r1': applied('M1-1', 'cccc222') }, 2, withBlocks({ review: { min: 1 } }))
+  assert.deepEqual(sentTo(survivors.calls, 'fix:r1').map(f => f.id), ['M1-1', 'R1-code-1'])
 })
 
 test('L10: fixed and rejected minors enter the earlier-findings history; applied ones leave advisory, rejected ones stay', async () => {
@@ -1473,7 +1472,7 @@ test('L18: applied findings with head unchanged are one entry in failures; all r
   assert.equal(stuck.result.failures.filter(f => /head unchanged/.test(f)).length, 1)
   assert.match(stuck.result.failures.find(f => /head unchanged/.test(f)), /R1-code-1/)
   assert.equal(stuck.result.status, 'done_with_failures')
-  assert.ok(called(stuck.calls, 'mutation'))
+  assert.ok(called(stuck.calls, 'mutation:r1'))
   const rejected = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 2)
   assert.deepEqual(rejected.result.failures, [])
 })
@@ -1508,7 +1507,7 @@ test('L20: a finding downgraded to minor loses its proof, and the next fix is to
 
 test('L21: a clean iteration\'s proof is a stray for the main thread, as is one on a last iteration\'s major', async () => {
   const onMinor = await runCore({ 'review:r1:code': noTrigger() })
-  assert.deepEqual(labels(onMinor.calls), ['gates:r1', ...lensesOf(1), 'mutation'])
+  assert.deepEqual(labels(onMinor.calls), ['gates:r1', 'mutation:r1', ...lensesOf(1)])
   assert.deepEqual(onMinor.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
   const onMajor = await runCore({ 'review:r1:code': proven })
   assert.deepEqual(onMajor.result.stray_proofs, [{ id: 'R1-code-1', path: proof.path }])
@@ -1636,8 +1635,8 @@ test('W127: a fix leaving HEAD unmoved ends the iteration\'s attempts; red still
 
 test('W128: a gate rejected at this HEAD gets no new attempt, and its rows are reused with no stage agent', async () => {
   const rejects = id => ({ applied: [], rejected: [{ id, argument: 'a' }], head: 'bbbb111' })
-  const { calls, result } = await runCore({ 'gates:r1': redAt('bbbb111'), 'fix:r1:a1': rejects('G1-tests'), 'fix:r1': rejects('G1-tests') }, 2)
-  assert.deepEqual(labels(calls).filter(l => /^(gates|fix)/.test(l)), ['gates:r1', 'fix:r1:a1', 'fix:r1'])
+  const { calls, result } = await runCore({ 'gates:r1': redAt('bbbb111'), 'fix:r1:a1': rejects('G1-tests') }, 2)
+  assert.deepEqual(labels(calls).filter(l => /^(gates|fix)/.test(l)), ['gates:r1', 'fix:r1:a1'])
   assert.match(prompt(calls, 'review:r2:code'), /Still red after 0 attempts/)
   assert.deepEqual(result.leftover_findings.map(f => f.where), ['tests'])
 })
@@ -1684,4 +1683,126 @@ test('W132: labels are unique, a retry inside an attempt too', async () => {
   const seen = calls.map(c => c.label)
   assert.equal(new Set(seen).size, seen.length)
   assert.ok(called(calls, 'gates:r1:a1:retry'))
+})
+
+// Mutation in the loop: one step per iteration between the gates and the review, on code not yet mutated.
+test('MU01: mutation runs once per iteration between gates and review, and not after the loop', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
+  assert.deepEqual(labels(calls), ['gates:r1', 'mutation:r1', ...lensesOf(1), 'fix:r1', 'gates:r2', 'mutation:r2', ...lensesOf(2)])
+})
+
+test('MU02: a red gate skips the step and the next step covers the skipped code', async () => {
+  const { calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'F')),
+    'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222'),
+  }, 2, noAttempts)
+  assert.ok(!called(calls, 'mutation:r1'))
+  assert.match(prompt(calls, 'mutation:r2'), /git diff aaaa000\.\.HEAD/)
+})
+
+test('MU03: a gate with no result counts as red: the step is skipped', async () => {
+  const noResult = gatesAt('bbbb111', gate('tests', 'not_run', 'cut'))
+  const { calls } = await runCore({ 'gates:r1': noResult, 'gates:r1:retry': noResult })
+  assert.ok(!called(calls, 'mutation:r1'))
+})
+
+test('MU04: a known_red gate counts as green', async () => {
+  const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'known_red', 'F')) })
+  assert.ok(called(calls, 'mutation:r1'))
+})
+
+test('MU05: the first step covers the diff from base, each later one from the HEAD last mutated, in the prompts and applies', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
+  assert.match(prompt(calls, 'mutation:r1'), /`git diff aaaa000\.\.HEAD`/)
+  assert.match(prompt(calls, 'mutation:r1'), /git diff --name-only aaaa000\.\.HEAD/)
+  assert.match(prompt(calls, 'mutation:r2'), /`git diff bbbb111\.\.HEAD`/)
+  assert.match(prompt(calls, 'mutation:r2'), /git diff --name-only bbbb111\.\.HEAD/)
+  assert.ok(!/aaaa000/.test(prompt(calls, 'mutation:r2')))
+})
+
+test('MU06: generated checks are filtered to the range, plus edges', async () => {
+  const p = prompt((await runCore({})).calls, 'mutation:r1')
+  assert.match(p, /For each check below whose test or the code it pins is in that diff/)
+  assert.match(p, /at most 5 on edges in that diff/)
+})
+
+test('MU07: {{mutate_from}} is filled per step in blocks.mutation.tool; another unknown placeholder there, or it elsewhere, fails on config', async () => {
+  const { calls } = await runCore({ 'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2, withProfile({ mutation: { tool: 'mutate --from {{mutate_from}}' } }))
+  assert.match(prompt(calls, 'mutation:r1'), /mutate --from aaaa000 /)
+  assert.match(prompt(calls, 'mutation:r2'), /mutate --from bbbb111 /)
+  const other = await runCore({}, 1, withProfile({ mutation: { tool: 'mutate {{mutate_form}}' } }))
+  assert.equal(other.calls.length, 0)
+  assert.match(other.result.note, /profile\.blocks\.mutation\.tool: unknown placeholder \{\{mutate_form\}\}/)
+  const elsewhere = await runCore({}, 1, withProfile({ mutation: { test: 'T {{mutate_from}}' } }))
+  assert.equal(elsewhere.calls.length, 0)
+  assert.match(elsewhere.result.note, /profile\.blocks\.mutation\.test: unknown placeholder/)
+})
+
+test('MU08: HEAD equal to the HEAD last mutated makes no call', async () => {
+  const { calls } = await runCore({}, 2)
+  assert.equal(count(calls, 'mutation:r1'), 1)
+  assert.ok(!called(calls, 'mutation:r2'))
+})
+
+test('MU09: the mutated HEAD advances only on ran: true', async () => {
+  const notRun = await runCore({ 'mutation:r1': { applies: true, ran: false, not_run: 'NO-NODE', mutants: [] } }, 2)
+  assert.match(prompt(notRun.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+  const notApplied = await runCore({ 'mutation:r1': { applies: false, ran: false, mutants: [] } }, 2)
+  assert.match(prompt(notApplied.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+  const dead = await runCore({ 'mutation:r1': null }, 2)
+  assert.match(prompt(dead.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+})
+
+test('MU10: a survivor without a file header and a hunk header is not_run: in failures, no finding; a killed or invalid one is only counted', async () => {
+  const noFile = { target: 'C1', patch: '@@ -1 +1 @@\n-a\n+b\n', status: 'survived' }
+  const noHunk = { target: 'C2', patch: '--- a/x\n+++ b/x\n-a\n+b\n', status: 'survived' }
+  const killed = { target: 'C3', patch: 'junk', status: 'killed' }
+  const invalid = { target: 'C4', patch: '', status: 'invalid' }
+  const { result, calls } = await runCore({ 'mutation:r1': step(noFile, noHunk, killed, invalid, mutant(5)), 'fix:r1': applied('M1-5', 'cccc222') }, 2, withBlocks({ review: { min: 1 } }))
+  assert.deepEqual(result.mutation.counts, { killed: 1, survived: 1, invalid: 1, not_run: 2 })
+  assert.deepEqual(result.failures.filter(f => /^mutation /.test(f)).map(f => f.split(' ')[1]), ['M1-1', 'M1-2'])
+  assert.deepEqual(sentTo(calls, 'fix:r1').map(f => f.id), ['M1-5'])
+})
+
+test('MU11: a control exit 2 with a known_red gate is a log line and a skipped step; without one it is a failure', async () => {
+  const control = { 'mutation:r1': { applies: true, ran: false, not_run: 'mutate: control run at bbbb111: test failed or timed out', mutants: [] } }
+  const known = await runCore(Object.assign({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'known_red', 'F')) }, control))
+  assert.deepEqual(known.result.failures, [])
+  assert.equal(known.result.mutation, null)
+  const plain = await runCore(control)
+  assert.ok(plain.result.failures.some(f => /control run/.test(f)))
+  const other = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'known_red', 'F')), 'mutation:r1': { applies: true, ran: false, not_run: 'NO-NODE', mutants: [] } })
+  assert.ok(other.result.failures.some(f => /NO-NODE/.test(f)))
+})
+
+test('MU12: survivors reach fix and, from the last iteration, leftover_findings', async () => {
+  const fixedOne = await runCore({ 'mutation:r1': mutants(1), 'fix:r1': applied('M1-1', 'cccc222') }, 2)
+  assert.deepEqual(sentTo(fixedOne.calls, 'fix:r1').map(f => [f.id, f.source, f.severity]), [['M1-1', 'mutation', 'major']])
+  const last = await runCore({ 'mutation:r1': mutants(1), 'fix:r1': applied('M1-1', 'cccc222'), 'mutation:r2': mutants(2) }, 2)
+  assert.deepEqual(last.result.leftover_findings.map(f => f.id), ['M2-1'])
+  assert.ok(!called(last.calls, 'fix:r2'))
+})
+
+test('MU13: a survivor makes the iteration not clean, past min too', async () => {
+  const { calls } = await runCore({ 'mutation:r1': mutants(1), 'fix:r1': applied('M1-1', 'cccc222') }, 2, withBlocks({ review: { min: 1 } }))
+  assert.ok(called(calls, 'fix:r1') && called(calls, 'review:r2:code'))
+})
+
+test('MU14: result.mutation accumulates its steps; ids are M<round>-<i>', async () => {
+  const { result } = await runCore({
+    'mutation:r1': step(mutant(1, 'killed'), mutant(2)), 'fix:r1': applied('M1-2', 'cccc222'), 'mutation:r2': step(mutant(3, 'killed')),
+  }, 2)
+  assert.deepEqual(result.mutation.mutants.map(m => [m.id, m.status]), [['M1-1', 'killed'], ['M1-2', 'survived'], ['M2-1', 'killed']])
+  assert.deepEqual(result.mutation.counts, { killed: 2, survived: 1, invalid: 0, not_run: 0 })
+})
+
+test('MU15: a gate rejected at this HEAD as the only major makes no review-driven fix; it stays a major and reaches leftover_findings', async () => {
+  const red = gatesAt('bbbb111', gate('tests', 'red', 'F'))
+  const rejected = { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }], proofs: [], head: 'bbbb111' }
+  const { result, calls } = await runCore({ 'gates:r1': red, 'fix:r1:a1': rejected }, 2)
+  assert.deepEqual(labels(calls), ['gates:r1', 'fix:r1:a1', ...lensesOf(1), ...lensesOf(2)])
+  assert.deepEqual(result.rounds.map(r => r.major), [1, 1])
+  assert.deepEqual(result.leftover_findings.map(f => [f.id, f.severity]), [['G1-tests', 'major']])
+  const withOther = await runCore({ 'gates:r1': red, 'fix:r1:a1': rejected, 'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
+  assert.deepEqual(sentTo(withOther.calls, 'fix:r1').map(f => f.id), ['G1-tests', 'R1-code-1'])
 })
