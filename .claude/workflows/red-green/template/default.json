@@ -3,7 +3,7 @@
     "research": { "model": "opus", "effort": "high", "prompt": null, "skill": null },
     "plan": { "model": null, "effort": "high", "prompt": null, "skill": null },
     "implement": { "model": "haiku", "effort": "high", "prompt": null, "skill": null },
-    "gates": { "model": "haiku", "effort": "medium", "gates": null, "prompt": null, "skill": null },
+    "gates": { "model": "haiku", "effort": "medium", "gates": null, "fix_attempts": 2, "prompt": null, "skill": null },
     "review": { "model": "opus", "effort": "high", "rounds": 3, "min": 2, "lenses": ["checklist", "code"], "duties": { "test_case_review": true, "order": false }, "minors": 2, "runtime": null, "prompt": null, "skill": null },
     "mutation": { "model": "haiku", "effort": "medium", "edges": 5, "timeout": 300, "build": null, "test": null, "tool": null, "prompt": null, "skill": null },
     "fix": { "model": "sonnet", "effort": "high", "prompt": null, "skill": null }

@@ -11,7 +11,7 @@ whitespace: some notes start with a space or a blank line, the test-case review 
 <!-- @part head -->
 STAGE: review, round {{round}} of at most {{rounds}}. Lens:
 <!-- @part frame -->
-The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.
+The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}
 GATES:
 {{gate_rows}}
 Compare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.
@@ -21,6 +21,8 @@ Compare against the statement ({{TARGET}} and every document it points to, as wr
  These have no test and are checked only by you: {{verify_review}}.
 <!-- @part unverified_note -->
  Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.
+<!-- @part red_gates_note -->
+ Still red after {{attempts_made}} attempts at a fix this iteration: {{red_gates}}. Weigh the code knowing that.
 <!-- @part earlier_findings -->
 
 EARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):

@@ -42,6 +42,12 @@ test('T03: the lens list changes only the block defaults line', () => {
   assert.match(out, /"lenses":\["code"\]/)
 })
 
+test('T03b: fix_attempts changes only the block defaults line', () => {
+  const out = render(blocks({ gates: { fix_attempts: 5 } }))
+  onlyBlocksLine(out)
+  assert.match(out, /"fix_attempts":5/)
+})
+
 test('T04: a block model changes only the block defaults line', () => {
   const out = render(blocks({ review: { model: 'sonnet' } }))
   onlyBlocksLine(out)

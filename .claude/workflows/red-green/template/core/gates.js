@@ -7,6 +7,7 @@ const declaredGates = Array.isArray(CONFIG.gates.gates) ? CONFIG.gates.gates.fil
 declaredGates.filter(g => 'fast' in g).forEach(g => configErrors.push(`blocks.gates.gates: ${g.name}: fast moved to tier (fast, round or acceptance)`))
 declaredGates.filter(g => 'tier' in g && !['fast', 'round', 'acceptance'].includes(g.tier)).forEach(g => configErrors.push(`blocks.gates.gates: ${g.name}: tier ${g.tier} is not fast, round or acceptance`))
 if (!declaredGates.some(g => g.tier !== 'acceptance')) configErrors.push('blocks.gates.gates: no fast or round gate declared')
+if (CONFIG.gates.fix_attempts < 0) configErrors.push(`blocks.gates.fix_attempts: ${CONFIG.gates.fix_attempts} is below 0`)
 // @part baseline
 const measured = g => Object.hasOwn(BASELINE, g.name) && !validate({ type: 'object', properties: { status: { type: 'string' }, line: { type: 'string' } }, required: ['status', 'line'] }, BASELINE[g.name]).length
 const unmeasured = STAGE_GATES.filter(g => !measured(g)).map(g => g.name)
@@ -25,11 +26,11 @@ const GATES_SCHEMA = { type: 'object', properties: {
 
 // The gates step only runs the runner, whose rows hold the status; the script turns them into findings and failures. A
 // gate with no result gets one retry of the step, which picks up finished gates from the runner's cache.
-async function runGates(round, label) {
+async function runGates(label, at) {
   phase('Gates')
-  const step = at => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
+  const step = stage => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
     'head: `git rev-parse HEAD`. One row per gate; a row the script printed stays as printed.',
-    died('Answer')), { schema: GATES_SCHEMA, phase: 'Gates', label: at })
+    died('Answer')), { schema: GATES_SCHEMA, phase: 'Gates', label: stage })
   const rowIn = (res, g) => res && res.gates.find(r => r.name === g.name)
   const hasResult = r => r && r.status !== 'not_run'
   const first = await step(label)
@@ -43,7 +44,7 @@ async function runGates(round, label) {
   if (none.length) failures.push(`gates ${label}: no result for ${none.map(r => `${r.name}: ${r.line}`).join('; ')}`)
   const vs = r => `${r.line} (baseline: ${BASELINE[r.name].line})`
   return { head: headNow, gates: rows, found: rows.filter(r => r.status === 'red').map(r => ({
-    id: `G${round}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
+    id: `G${at}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
     consequence: 'the gate fails', fix: 'make the gate pass' })) }
 }
 // @part inputs

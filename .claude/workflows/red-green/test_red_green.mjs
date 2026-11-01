@@ -123,6 +123,9 @@ test('W03: the lenses start after the gates step of their round returns', async 
 
 // Two declared gates, A and B, with their baselines.
 const twoGates = { profile: withProfile({ gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }).profile, baseline: { A: measured('A-BASE 3 of 3'), B: measured('B-BASE ok') } }
+// With no attempts on a red gate: for a case about what follows the attempts.
+const noAttempts = withBlocks({ gates: { fix_attempts: 0 } })
+const twoNoAttempts = { baseline: twoGates.baseline, profile: withProfile({ gates: twoGates.profile.blocks.gates.gates, blocks: { gates: { fix_attempts: 0 } } }).profile }
 
 test('W04: the lens prompts carry each gate as name, status and line; the checklist job carries the scope sentence', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'GATE-SENTINEL 3 of 3'), gate('B', 'green', 'B ok')) }, 1, twoGates)
@@ -139,7 +142,7 @@ test('W05: a red gate is one major finding made by the script; red at the last i
     'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'A-RED 2 of 3'), gate('B', 'green', 'B ok')),
     'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }], rejected: [], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222', gate('A', 'red', 'A-STILL-RED 1 of 3'), gate('B', 'green', 'B ok')),
-  }, 2, twoGates)
+  }, 2, twoNoAttempts)
   const sent = sentTo(calls, 'fix:r1')
   assert.equal(sent.length, 1)
   assert.equal(sent[0].id, 'G1-A')
@@ -224,9 +227,10 @@ test('W115: a known_red gate makes no finding and its row stays in the rounds an
 test('W116: a red gate is a major whose problem names its log', async () => {
   const { calls } = await runCore({
     'gates:r1': gatesAt('bbbb111', Object.assign(gate('tests', 'red', 'RED 1'), { log: '/run/gate-logs/x/0-tests.log' })),
-    'fix:r1': { applied: [{ id: 'G1-tests', what: 'w' }], rejected: [], head: 'cccc222' },
+    'fix:r1:a1': { applied: [{ id: 'G1-tests', what: 'w' }], rejected: [], head: 'cccc222' },
+    'gates:r1:a1': gatesAt('cccc222'),
   }, 2)
-  const [sent] = sentTo(calls, 'fix:r1')
+  const [sent] = sentTo(calls, 'fix:r1:a1')
   assert.deepEqual([sent.id, sent.source, sent.severity], ['G1-tests', 'gates', 'major'])
   assert.match(sent.problem, /RED 1/)
   assert.match(sent.problem, /\/run\/gate-logs\/x\/0-tests\.log/)
@@ -280,7 +284,7 @@ test('W111: implement defaults to haiku, high; fix to sonnet, high, whatever imp
   assert.deepEqual(opts(moved.calls, 'fix:r1'), ['sonnet', 'high'])
 })
 
-test('W112: the presets table: standard is the defaults, hard is sonnet on implement and fix, cheap stays', async () => {
+test('W118: the presets table: standard is the defaults, hard is sonnet on implement and fix, cheap stays', async () => {
   const doc = readFileSync(new URL('../../../docs/red-green/args-and-profile.md', import.meta.url), 'utf8')
   const preset = name => JSON.parse(doc.split('\n').find(l => l.startsWith(`| ${name} |`)).match(/`(\{.*\})`/)[1])
   assert.deepEqual(preset('standard'), {})
@@ -315,12 +319,13 @@ test('W117: still no result after the retry: one failures entry naming the gates
   assert.ok(called(calls, 'review:r1:code'))
 })
 
-test('W111: a gates step dead twice is one failure, not a finding per gate; a retry that dies keeps the first answer', async () => {
+test('W119: a gates step dead twice is one failure, not a finding per gate; a retry that dies keeps the first answer', async () => {
   const { result } = await runCore({ 'gates:r1': null, 'gates:r1:retry': null }, 1, twoGates)
   assert.equal(result.failures.filter(f => /gates gates:r1/.test(f)).length, 1)
   assert.equal(result.leftover_findings.filter(f => f.source === 'gates').length, 0)
   const kept = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'RED'), gate('B', 'not_run', 'x')), 'gates:r1:retry': null,
-    'fix:r1': { applied: [], rejected: [{ id: 'G1-A', argument: 'a' }], head: 'bbbb111' } }, 2, twoGates)
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-A', argument: 'a' }], head: 'bbbb111' },
+    'gates:r2': gatesAt('bbbb111', gate('A', 'red', 'RED'), gate('B', 'green', 'b')) }, 2, twoNoAttempts)
   assert.deepEqual(kept.result.rounds[0].gates.map(r => r.status), ['red', 'not_run'])
   assert.ok(called(kept.calls, 'fix:r1'))
 })
@@ -527,7 +532,7 @@ test('W19: an id-only rejection is accepted once the next review does not raise 
     'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')),
     'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }, { id: 'Z1', argument: 'a' }], head: 'cccc222' },
     'gates:r2': gatesAt('cccc222', gate('tests', 'red', 'RED 2')),
-  }, 2)
+  }, 2, noAttempts)
   assert.equal(withIds(result.leftover_findings, 'Z1').length, 0)
   assert.deepEqual(result.leftover_findings.filter(f => f.source === 'gates').map(f => f.id), ['G2-tests'])
 })
@@ -945,7 +950,7 @@ test('W75: the implement prompt asks for a question\'s requirement as its id', a
 
 test('W76: implement and fix commit their work as it stands, a red gate going to the fix; one commit is created by implement', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('tests', 'red', 'RED 1')),
-    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'tests still red' }], proofs: [], head: 'bbbb111' } }, 2)
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'tests still red' }], proofs: [], head: 'bbbb111' } }, 2, noAttempts)
   assert.match(prompt(calls, 'implement'), /Commit your work as it stands\./)
   assert.ok(!/Commit only with/.test(prompt(calls, 'implement')))
   assert.match(prompt(calls, 'fix:r1'), /Commit your work as it stands\./)
@@ -1416,9 +1421,9 @@ test('L11: last-iteration majors and unmet rows are left over once each; an unve
 
 test('L12: a red gate at the last iteration is left over, also when HEAD did not move since its rows', async () => {
   const red = gatesAt('bbbb111', gate('tests', 'red', 'RED'))
-  const last = await runCore({ 'gates:r1': red })
+  const last = await runCore({ 'gates:r1': red }, 1, noAttempts)
   assert.deepEqual(last.result.leftover_findings.map(f => f.id), ['G1-tests'])
-  const rejected = await runCore({ 'gates:r1': red, 'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 2)
+  const rejected = await runCore({ 'gates:r1': red, 'fix:r1': { applied: [], rejected: [{ id: 'G1-tests', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 2, noAttempts)
   assert.ok(!called(rejected.calls, 'gates:r2'))
   assert.deepEqual(rejected.result.leftover_findings.map(f => f.source), ['gates'])
 })
@@ -1530,4 +1535,153 @@ test('L23: rounds < 1, min < 1 and min > rounds fail on config; rounds: 1 alone 
   const { result } = await runCore({}, 'default', withBlocks({ review: { rounds: 1 } }))
   assert.equal(result.stage, 'config')
   assert.match(result.note, /blocks\.review\.min: 2 is over rounds 1: set min too/)
+})
+
+// One gate, tests, red with this line, and an attempt's or a fix's answer.
+const redAt = (head, line = 'RED') => gatesAt(head, gate('tests', 'red', line))
+const fixedAs = (id, head) => ({ applied: [{ id, what: 'w' }], rejected: [], head })
+
+test('W120: a red gate goes to fix as a major from the gates source, before any review, and the stage runs again', async () => {
+  const { result, calls } = await runCore({
+    'gates:r1': redAt('bbbb111', 'FIRST-RED'),
+    'fix:r1:a1': fixedAs('G1-tests', 'cccc222'),
+    'gates:r1:a1': gatesAt('cccc222'),
+  })
+  assert.deepEqual(labels(calls).filter(l => /^(gates|fix|review)/.test(l)), ['gates:r1', 'fix:r1:a1', 'gates:r1:a1', 'review:r1:checklist', 'review:r1:code'])
+  const [sent] = sentTo(calls, 'fix:r1:a1')
+  assert.deepEqual([sent.id, sent.source, sent.severity, sent.where], ['G1-tests', 'gates', 'major', 'tests'])
+  assert.match(sent.problem, /FIRST-RED/)
+  assert.deepEqual(result.failures, [])
+  assert.deepEqual(result.leftover_findings, [])
+})
+
+test('W121: attempts repeat up to fix_attempts per iteration, default 2, with rounds untouched', async () => {
+  const over = {
+    'gates:r1': redAt('bbbb111'),
+    'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': redAt('cccc222'),
+    'fix:r1:a2': fixedAs('G1a1-tests', 'dddd333'), 'gates:r1:a2': redAt('dddd333'),
+    'fix:r1': fixedAs('G1a2-tests', 'eeee444'), 'gates:r2': gatesAt('eeee444'),
+  }
+  const { result, calls } = await runCore(over, 2)
+  assert.deepEqual(labels(calls).filter(l => /^(gates|fix)/.test(l)), ['gates:r1', 'fix:r1:a1', 'gates:r1:a1', 'fix:r1:a2', 'gates:r1:a2', 'fix:r1', 'gates:r2'])
+  assert.equal(result.rounds_planned, 2)
+  assert.equal(result.rounds_run, 2)
+  const one = await runCore(over, 2, withBlocks({ gates: { fix_attempts: 1 } }))
+  assert.equal(count(one.calls, 'fix:r1:a1'), 1)
+  assert.ok(!called(one.calls, 'fix:r1:a2'))
+})
+
+test('W122: past the limit the review gets a note naming the gates still red and the attempts made; the iteration is never clean', async () => {
+  const { result, calls } = await runCore({
+    'gates:r1': redAt('bbbb111'),
+    'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': redAt('cccc222'),
+    'fix:r1:a2': fixedAs('G1a1-tests', 'dddd333'), 'gates:r1:a2': redAt('dddd333', 'LAST-RED'),
+  })
+  for (const l of ['review:r1:checklist', 'review:r1:code']) assert.match(prompt(calls, l), /Still red after 2 attempts at a fix this iteration: tests\./)
+  assert.deepEqual(result.leftover_findings.map(f => [f.source, f.severity, f.where]), [['gates', 'major', 'tests']])
+  assert.match(result.leftover_findings[0].problem, /LAST-RED/)
+  assert.equal(result.rounds[0].major, 1)
+})
+
+test('W123: no note while every gate is green or known_red, also after an attempt', async () => {
+  const { calls } = await runCore({ 'gates:r1': redAt('bbbb111'), 'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': gatesAt('cccc222', gate('tests', 'known_red', 'old')) })
+  assert.ok(!/Still red/.test(prompt(calls, 'review:r1:code')))
+})
+
+test('W124: an attempt in the last iteration runs, and that iteration\'s review covers it from where the attempts started', async () => {
+  const { calls, result } = await runCore({
+    'gates:r1': redAt('bbbb111'),
+    'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': redAt('cccc222'),
+    'fix:r1:a2': fixedAs('G1a1-tests', 'dddd333'), 'gates:r1:a2': gatesAt('dddd333'),
+  })
+  const code = prompt(calls, 'review:r1:code')
+  assert.ok(code.includes('git diff bbbb111..HEAD'))
+  const outcomes = code.split('OUTCOMES:\n')[1]
+  assert.ok(outcomes.includes('"id":"G1-tests"') && outcomes.includes('"id":"G1a1-tests"'))
+  assert.deepEqual(result.leftover_findings, [])
+  assert.deepEqual(result.failures, [])
+})
+
+test('W125: a review after a fix and attempts covers both, from the start of the fix', async () => {
+  const { calls } = await runCore({
+    'review:r1:code': major,
+    'fix:r1': fixedAs('R1-code-1', 'cccc222'), 'gates:r2': redAt('cccc222'),
+    'fix:r2:a1': fixedAs('G2-tests', 'dddd333'), 'gates:r2:a1': gatesAt('dddd333'),
+  }, 2)
+  const code = prompt(calls, 'review:r2:code')
+  assert.ok(code.includes('git diff bbbb111..HEAD'))
+  const outcomes = code.split('OUTCOMES:\n')[1]
+  assert.ok(outcomes.includes('"id":"R1-code-1"') && outcomes.includes('"id":"G2-tests"'))
+})
+
+test('W126: fix_attempts 0 sends a red gate straight to review with the note; below 0 fails on config', async () => {
+  const { calls } = await runCore({ 'gates:r1': redAt('bbbb111') }, 1, withBlocks({ gates: { fix_attempts: 0 } }))
+  assert.ok(!called(calls, 'fix:r1:a1'))
+  assert.match(prompt(calls, 'review:r1:code'), /Still red after 0 attempts at a fix this iteration: tests\./)
+  const bad = await runCore({}, 1, withBlocks({ gates: { fix_attempts: -1 } }))
+  assert.equal(bad.calls.length, 0)
+  assert.equal(bad.result.stage, 'config')
+  assert.match(bad.result.note, /fix_attempts: -1/)
+})
+
+test('W127: a fix leaving HEAD unmoved ends the iteration\'s attempts; red still comes from the latest rows in the next one', async () => {
+  const silent = { applied: [], rejected: [], head: 'bbbb111' }
+  const { calls } = await runCore({
+    'gates:r1': redAt('bbbb111'), 'fix:r1:a1': silent, 'fix:r1': silent,
+    'fix:r2:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r2:a1': gatesAt('cccc222'),
+  }, 2)
+  assert.deepEqual(labels(calls).filter(l => /^(gates|fix)/.test(l)), ['gates:r1', 'fix:r1:a1', 'fix:r1', 'fix:r2:a1', 'gates:r2:a1'])
+  assert.match(prompt(calls, 'review:r1:code'), /Still red after 1 attempts/)
+})
+
+test('W128: a gate rejected at this HEAD gets no new attempt, and its rows are reused with no stage agent', async () => {
+  const rejects = id => ({ applied: [], rejected: [{ id, argument: 'a' }], head: 'bbbb111' })
+  const { calls, result } = await runCore({ 'gates:r1': redAt('bbbb111'), 'fix:r1:a1': rejects('G1-tests'), 'fix:r1': rejects('G1-tests') }, 2)
+  assert.deepEqual(labels(calls).filter(l => /^(gates|fix)/.test(l)), ['gates:r1', 'fix:r1:a1', 'fix:r1'])
+  assert.match(prompt(calls, 'review:r2:code'), /Still red after 0 attempts/)
+  assert.deepEqual(result.leftover_findings.map(f => f.where), ['tests'])
+})
+
+test('W129: rejected at an earlier HEAD, a gate red at a new one gets an attempt', async () => {
+  const { calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'a'), gate('B', 'red', 'b')),
+    'fix:r1:a1': { applied: [{ id: 'G1-B', what: 'w' }], rejected: [{ id: 'G1-A', argument: 'x' }], head: 'cccc222' },
+    'gates:r1:a1': gatesAt('cccc222', gate('A', 'red', 'a'), gate('B', 'green', 'b')),
+    'fix:r1:a2': fixedAs('G1a1-A', 'dddd333'),
+    'gates:r1:a2': gatesAt('dddd333', gate('A', 'green', 'a'), gate('B', 'green', 'b')),
+  }, 1, twoGates)
+  assert.deepEqual(sentTo(calls, 'fix:r1:a2').map(f => f.where), ['A'])
+})
+
+test('W130: with HEAD unchanged the stage runs again only while a gate holds no result', async () => {
+  const reused = await runCore({ 'gates:r1': gatesAt('bbbb111') }, 2)
+  assert.ok(!called(reused.calls, 'gates:r2'))
+  const { calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', gate('tests', 'not_run', 'x')), 'gates:r1:retry': gatesAt('bbbb111', gate('tests', 'not_run', 'x')),
+    'gates:r2': gatesAt('bbbb111'),
+  }, 2)
+  assert.ok(called(calls, 'gates:r2'))
+})
+
+test('W131: attempts do not count toward the rule on a finding that recurs after two fixes', async () => {
+  const { calls } = await runCore({
+    'gates:r1': redAt('bbbb111'), 'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': redAt('cccc222'),
+    'fix:r1:a2': fixedAs('G1a1-tests', 'dddd333'), 'gates:r1:a2': gatesAt('dddd333'),
+    'review:r1:code': major, 'fix:r1': fixedAs('R1-code-1', 'eeee444'), 'gates:r2': gatesAt('eeee444'),
+  }, 2)
+  const text = prompt(calls, 'fix:r1')
+  assert.ok(!/EARLIER FIXES/.test(text))
+  assert.ok(!/recurs after two fixes/.test(text))
+  assert.ok(/EARLIER FINDINGS/.test(prompt(calls, 'review:r2:code')))
+})
+
+test('W132: labels are unique, a retry inside an attempt too', async () => {
+  const none = gatesAt('cccc222', gate('tests', 'not_run', 'x'))
+  const { calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', gate('tests', 'not_run', 'x')), 'gates:r1:retry': redAt('bbbb111'),
+    'fix:r1:a1': fixedAs('G1-tests', 'cccc222'), 'gates:r1:a1': none, 'gates:r1:a1:retry': gatesAt('cccc222'),
+  })
+  const seen = calls.map(c => c.label)
+  assert.equal(new Set(seen).size, seen.length)
+  assert.ok(called(calls, 'gates:r1:a1:retry'))
 })
