@@ -62,8 +62,8 @@ Done when every rule file is read and each draft names the file it came from.
 Show the user the table and the drafts, then ask one question at a time, in this order, each led by your recommended
 answer:
 
-1. The gates: which rows, a short unique `name` for each, and which are fast. Recommend fast for lint, format check
-   and type check rows, slow for test and build rows.
+1. The gates: which rows, a short unique `name` for each, and which are fast. Recommend fast for the lint and type
+   check rows, slow for the test and build rows.
 2. The code rules and the commit rule to keep.
 3. The model preset, from the presets table in `args-and-profile.md` with what each is for, or keep the current models.
 4. Any block's own `prompt` or `skill` (the Plug-ins section of `${CLAUDE_PLUGIN_ROOT}/docs/red-green/blocks.md`), one

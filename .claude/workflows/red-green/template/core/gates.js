@@ -16,7 +16,7 @@ if (CONFIG.gates.gates) {
   if (unmeasured.length) return { status: 'failed', stage: 'gates', note: `args.baseline has no entry for: ${unmeasured.join(', ')}`, failures }
 } else {
   phase('Gates')
-  const found = await call('gates', NO_CODE_PRE, 'discover', {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure), `fast`: true for a static check that reads the source without building it (lint, format check, typecheck), false for a build or a test suite. questions: each command you are unsure of (is it a gate), with `source` the source of the gate it bears on; it stays out of gates. A repository with no gate: gates [] and a question saying where you looked.',
+  const found = await call('gates', NO_CODE_PRE, 'discover', {}, contract(READ_ONLY, 'gates: name, command (the exact command line), source (the file that names it), line (its summary line verbatim, with the cause of any failure), `fast` (whether it is a fast gate). questions: each command you are unsure of (is it a gate), with `source` the source of the gate it bears on; it stays out of gates. A repository with no gate: gates [] and a question saying where you looked.',
     died('Answer')), { schema: DISCOVER_SCHEMA, phase: 'Gates', label: 'gates:discover' })
   if (!found || !found.gates.length) return { status: 'failed', stage: 'gates:discover', note: found ? 'no gate found' : 'the discovery step died', gates_questions: found ? found.questions : [], failures }
   GATES = found.gates
@@ -45,11 +45,11 @@ async function runGates(round, label, tag) {
   const rows = GATES.map(g => (res && res.gates.find(r => r.name === g.name)) || { name: g.name, status: 'not_run', line: res ? 'no row' : 'the gates step died' })
   // A gate the live step did not finish is a finding like a red one: an unfinished gate never reads as a pass.
   const vs = r => `${r.line} (baseline: ${BASELINE[r.name]})`
-  const why = { red: ['the gate is worse than at base', 'make the gate pass at its baseline or better'],
-    not_run: ['the gate was not measured at this HEAD', 'make the gate run to completion at its baseline or better'] }
+  const why = { red: { consequence: 'the gate is worse than at base', fix: 'make the gate pass at its baseline or better' },
+    not_run: { consequence: 'the gate was not measured at this HEAD', fix: 'make the gate run to completion at its baseline or better' } }
   return { head: headNow, gates: rows, found: res ? rows.filter(r => r.status !== 'green').map(r => ({
     id: `G${round}${tag || ''}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: vs(r), trigger: vs(r),
-    consequence: why[r.status][0], fix: why[r.status][1] })) : [] }
+    ...why[r.status] })) : [] }
 }
 // @part inputs
 // The inputs of discovery and the gates step.

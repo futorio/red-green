@@ -23,7 +23,7 @@ gate or listed case is dropped.
 ## 0. Gates discovery
 
 Only when `blocks.gates.gates` is absent. The returned gates become the profile's gates, each `line` its baseline and
-`fast` set by kind (a static check: lint, format check, typecheck). A dead step, or one with no gate, ends the run as
+`fast` set by the discover instructions in `defaults/gates.md`. A dead step, or one with no gate, ends the run as
 `failed` before research.
 
 ## 1. Research
