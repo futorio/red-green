@@ -1,12 +1,10 @@
-<!-- Block gates: the discovery step's and the gates step's default instructions. -->
-<!-- @part discover -->
-STAGE: gates discovery.
-Where: the repo's agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree. A fast gate: a static check that reads the source without building it (lint, format check, typecheck); a build, a test suite, or a gate you are unsure of is slow.
-Run each gate exactly as its `command` reads, once, to completion; one that cannot run that way here is a question, not a gate.
-{{> shared bg}}
+<!-- Block gates: the gates step's default instructions. -->
 <!-- @part run -->
 STAGE: gates, HEAD {{HEAD}}.
-Run each gate below from {{REPO}} to completion and compare it with its baseline.
-GATES:
-{{gate_list}}
-{{> shared bg}}
+From {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):
+{{gate_command}}
+It prints one JSON row per gate.
+Exit 0: the report is complete, whatever the gates did; return its rows.
+Exit 2: it could not run; a `not_run` row per gate, `line` its stderr.
+Exit 3: gates are still running and survive the call; run the same command again, at most 6 calls in all. Still exit 3 after the 6th: a `not_run` row per gate, `line` saying it did not finish.
+Do not end your turn before one of these; judge no gate and read no log.

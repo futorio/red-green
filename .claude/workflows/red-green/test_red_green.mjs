@@ -31,6 +31,7 @@ const fact = (kind, where, ...requirements) => ({ kind, fact: `FACT-${requiremen
 const harness = (requirement, by) => ({ requirement, by: by || 'test', how: 'h' })
 const gate = (name, status, line) => ({ name, status, line })
 const check = (ref, extra) => Object.assign({ kind: 'case', ref, requirement: 'R1', test: { file: 'f', name: 't' } }, extra)
+const measured = (line, status = 'green') => ({ status, line })
 const gatesAt = (head, ...rows) => ({ head, gates: rows.length ? rows : [gate('tests', 'green', '17 of 17')] })
 
 // The recorded results of one clean round and its mutation step; a case overrides the labels it is about.
@@ -73,7 +74,7 @@ async function runCore(over, rounds, extra) {
     return r && clone(r)
   }
   const parallel = thunks => Promise.all(thunks.map(async t => { try { return await t() } catch (e) { return null } }))
-  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', baseline: { tests: '17 of 17' }, profile: withProfile().profile }
+  const args = { repo: '/r', branch: 'b', tools: '/t', run: '/run', base: 'aaaa000', target: '/t.md', baseline: { tests: measured('17 of 17') }, profile: withProfile().profile }
   Object.assign(args, extra)
   const blocks = Object.assign({}, args.profile.blocks)
   blocks.review = Object.assign(rounds === 'default' ? {} : { rounds: rounds || 1 }, blocks.review)
@@ -125,7 +126,7 @@ test('W03: the lenses start after the gates step of their round returns', async 
 })
 
 // Two declared gates, A and B, with their baselines.
-const twoGates = { profile: withProfile({ gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }).profile, baseline: { A: 'A-BASE 3 of 3', B: 'B-BASE ok' } }
+const twoGates = { profile: withProfile({ gates: [{ name: 'A', command: 'make a' }, { name: 'B', command: 'make b' }] }).profile, baseline: { A: measured('A-BASE 3 of 3'), B: measured('B-BASE ok') } }
 
 test('W04: the lens prompts carry each gate as name, status and line; the checklist job carries the scope sentence', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'GATE-SENTINEL 3 of 3'), gate('B', 'green', 'B ok')) }, 1, twoGates)
@@ -171,39 +172,87 @@ test('W14: after a fix that moved HEAD the gates step runs every gate, with no s
   assert.equal(second.replace(/cccc222/g, 'H').replace(/gates:r2/g, 'L'), prompt(calls, 'gates:r1').replace(/bbbb111/g, 'H').replace(/gates:r1/g, 'L'))
 })
 
-test('W49: the gates step names every declared gate with its command and baseline, and its schema takes only their names', async () => {
+test('W49: the gates step runs the runner on the declared gates at tier round, and its schema takes the runner rows', async () => {
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }, 1, twoGates)
   const call = calls.find(c => c.label === 'gates:r1')
   const stage = call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]
-  for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(stage.includes(s), s)
+  assert.ok(stage.includes(`node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify(twoGates.profile.blocks.gates.gates)}' --dir /run --tier round --baseline '${JSON.stringify(twoGates.baseline)}'`), stage)
   assert.ok(prompt(calls, 'implement').includes('A: `make a` (baseline: A-BASE 3 of 3)'))
   const item = call.opts.schema.properties.gates.items
   assert.deepEqual(item.properties.name.enum, ['A', 'B'])
-  assert.deepEqual(item.properties.status.enum, ['green', 'red', 'not_run'])
+  assert.deepEqual(item.properties.status.enum, ['green', 'red', 'known_red', 'not_run'])
+  assert.deepEqual(item.required, ['name', 'status', 'line'])
+  assert.deepEqual(Object.keys(item.properties), ['name', 'status', 'line', 'log', 'seconds', 'cached'])
   assert.deepEqual(Object.keys(call.opts.schema.properties), ['head', 'gates', 'notes', 'mailbox'])
-  assert.match(stage, /to completion/)
-  assert.match(stage, /run_in_background/)
   for (const w of [/scope/i, /recount/i, /changed_files/, /git diff/, /SEVERITY/, /blocker/, /already ran at/, /mutation/i, /reviewers/, /cut a gate short/]) assert.ok(!w.test(stage), String(w))
   for (const s of ['COMMITS', 'Gates:', 'Over-built']) assert.ok(!call.prompt.includes(s), s)
 })
 
+test('W112: the gates prompt has no background rule, says to call again on exit 3 at most 6 calls, then not_run, and states the Bash timeout', async () => {
+  const stage = prompt((await runCore({})).calls, 'gates:r1')
+  assert.ok(!/run_in_background/.test(stage))
+  assert.match(stage, /Bash timeout of 600000 ms/)
+  assert.match(stage, /Exit 3: .*again, at most 6 calls/)
+  assert.match(stage, /after the 6th.*`not_run`/)
+})
+
+test('W113: the gates block defaults to Haiku, medium', async () => {
+  const { opts } = (await runCore({})).calls.find(c => c.label === 'gates:r1')
+  assert.deepEqual([opts.model, opts.effort], ['haiku', 'medium'])
+})
+
+// A fast, a round (by default) and an acceptance gate; only the first two have a baseline.
+const tiered = { profile: withProfile({ gates: [{ name: 'L', command: 'lint', tier: 'fast' }, { name: 'T', command: 'test' }, { name: 'H', command: 'heavy', tier: 'acceptance' }] }).profile,
+  baseline: { L: measured('L ok'), T: measured('T ok') } }
+const greenLT = gatesAt('bbbb111', gate('L', 'green', 'l'), gate('T', 'green', 't'))
+
+test('W114: an acceptance gate needs no baseline, reads as no missing row, and writers do not get it', async () => {
+  const { result, calls } = await runCore({ 'gates:r1': greenLT }, 1, tiered)
+  assert.ok(!called(calls, 'gates:r1:retry'))
+  assert.deepEqual(result.rounds[0].gates, greenLT.gates)
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.status, 'done')
+  assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['L', 'T'])
+  assert.ok(!/heavy/.test(prompt(calls, 'implement')))
+  assert.ok(prompt(calls, 'gates:r1').includes('"name":"H"'))
+})
+
+test('W115: a known_red gate makes no finding and its row stays in the rounds and the lens prompts', async () => {
+  const known = gate('tests', 'known_red', 'OLD 3 failed')
+  const { result, calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', known) }, 1, { baseline: { tests: measured('OLD 3 failed', 'red') } })
+  assert.ok(!called(calls, 'fix:r1'))
+  assert.ok(!called(calls, 'gates:r1:retry'))
+  assert.deepEqual(result.rounds[0].gates, [known])
+  assert.equal(result.leftover_findings.filter(f => f.source === 'gates').length, 0)
+  assert.ok(prompt(calls, 'review:r1:code').includes('tests: known_red — OLD 3 failed'))
+})
+
+test('W116: a red gate is a major whose problem names its log', async () => {
+  const { calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', Object.assign(gate('tests', 'red', 'RED 1'), { log: '/run/gate-logs/x/0-tests.log' })),
+    'fix:r1': { applied: [{ id: 'G1-tests', what: 'w' }], rejected: [], head: 'cccc222' },
+    'gates:r1:recheck': gatesAt('cccc222'),
+  })
+  const [sent] = sentTo(calls, 'fix:r1')
+  assert.deepEqual([sent.id, sent.source, sent.severity], ['G1-tests', 'gates', 'major'])
+  assert.match(sent.problem, /RED 1/)
+  assert.match(sent.problem, /\/run\/gate-logs\/x\/0-tests\.log/)
+})
+
 // The writers' gates line: the fast and slow lists when both kinds exist, one list otherwise, and when to run them.
 const gatesLine = (calls, label) => prompt(calls, label).split('\n').find(l => l.startsWith('- Gates'))
-const marked = (a, b) => ({ profile: withProfile({ gates: [Object.assign({ name: 'A', command: 'make a' }, a !== undefined && { fast: a }),
-  Object.assign({ name: 'B', command: 'make b' }, b !== undefined && { fast: b })] }).profile, baseline: twoGates.baseline })
+const marked = (a, b) => ({ profile: withProfile({ gates: [Object.assign({ name: 'A', command: 'make a' }, a !== undefined && { tier: a ? 'fast' : 'round' }),
+  Object.assign({ name: 'B', command: 'make b' }, b !== undefined && { tier: b ? 'fast' : 'round' })] }).profile, baseline: twoGates.baseline })
 const fixed = { 'review:r1:code': { verdict: 'findings', findings: [finding('major', 'a.js:1', 't')], checked: [row('x')] },
   'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], head: 'cccc222' }, 'gates:r1:recheck': gatesAt('cccc222', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 const AB = { 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }
 
 test('W108: with fast and slow gates, implement and fix get both lists and run the fast ones each cycle, every gate before a commit; the result keeps the marks', async () => {
   const { calls, result } = await runCore(Object.assign({}, AB, fixed), 1, marked(true))
-  assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', fast: true }, { name: 'B', command: 'make b' }])
+  assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', tier: 'fast' }, { name: 'B', command: 'make b' }])
   for (const label of ['implement', 'fix:r1']) {
     assert.equal(gatesLine(calls, label), '- Gates, fast: A: `make a` (baseline: A-BASE 3 of 3); slow: B: `make b` (baseline: B-BASE ok). Run the fast gates after each TDD cycle and every gate once before each commit. Each baseline was measured before the run (re-measure, never quote). "Green" means no gate worse than its baseline.', label)
   }
-  const stage = prompt(calls, 'gates:r1').split('STAGE: gates')[1]
-  for (const s of ['A: `make a` (baseline: A-BASE 3 of 3)', 'B: `make b` (baseline: B-BASE ok)']) assert.ok(stage.includes(s), s)
-  assert.ok(!/fast/.test(stage))
 })
 
 test('W109: with one kind of gate the writers get one list; the fast rule appears only when a gate is fast', async () => {
@@ -217,31 +266,48 @@ test('W109: with one kind of gate the writers get one list; the fast rule appear
   assert.deepEqual(await lines(marked(true, true)), [fast, fast])
 })
 
-test('W50: a not_run row and a declared gate with no row are each a major gates finding with the reason, not a failure', async () => {
+test('W50: a not_run row or a missing row gets one retry of the stage, whose rows are the result', async () => {
   const { result, calls } = await runCore({
-    'gates:r1': gatesAt('bbbb111', gate('A', 'not_run', 'NO-TIME cap hit')),
-    'gates:r1:recheck': gatesAt('cccc222', gate('A', 'green', 'a'), gate('B', 'green', 'b')),
-    'fix:r1': { applied: [{ id: 'G1-A', what: 'w' }, { id: 'G1-B', what: 'w' }], rejected: [], head: 'cccc222' },
+    'gates:r1': gatesAt('bbbb111', gate('A', 'not_run', 'unfinished')),
+    'gates:r1:retry': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')),
   }, 1, twoGates)
-  const sent = sentTo(calls, 'fix:r1')
-  assert.deepEqual(sent.map(f => [f.id, f.source, f.severity, f.where]), [['G1-A', 'gates', 'major', 'A'], ['G1-B', 'gates', 'major', 'B']])
-  assert.match(sent[0].problem, /NO-TIME cap hit/)
-  assert.match(sent[1].problem, /no row/)
-  assert.equal(result.failures.filter(f => /gates/.test(f)).length, 0)
+  assert.deepEqual(calls.filter(c => c.label.startsWith('gates:')).map(c => c.label), ['gates:r1', 'gates:r1:retry'])
+  assert.deepEqual(result.rounds[0].gates, [gate('A', 'green', 'a'), gate('B', 'green', 'b')])
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.status, 'done')
 })
 
-test('W111: a dead gates step is a failure, not a finding per gate', async () => {
-  const { result } = await runCore({ 'gates:r1': null }, 1, twoGates)
+test('W117: still no result after the retry: one failures entry naming the gates, no finding, no fix, and the round can be clean', async () => {
+  const { result, calls } = await runCore({
+    'gates:r1': gatesAt('bbbb111', gate('A', 'not_run', 'unfinished'), gate('B', 'green', 'b')),
+    'gates:r1:retry': gatesAt('bbbb111', gate('A', 'not_run', 'STILL-UNFINISHED'), gate('B', 'green', 'b')),
+  }, 1, twoGates)
+  assert.ok(!called(calls, 'fix:r1'))
+  assert.equal(result.leftover_findings.filter(f => f.source === 'gates').length, 0)
+  assert.equal(result.failures.filter(f => /gates/.test(f)).length, 1)
+  assert.match(result.failures.find(f => /gates/.test(f)), /A: STILL-UNFINISHED/)
+  assert.equal(result.status, 'done_with_failures')
+  assert.ok(called(calls, 'review:r1:code'))
+})
+
+test('W111: a gates step dead twice is one failure, not a finding per gate; a retry that dies keeps the first answer', async () => {
+  const { result } = await runCore({ 'gates:r1': null, 'gates:r1:retry': null }, 1, twoGates)
   assert.equal(result.failures.filter(f => /gates gates:r1/.test(f)).length, 1)
   assert.equal(result.leftover_findings.filter(f => f.source === 'gates').length, 0)
+  const kept = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'red', 'RED'), gate('B', 'not_run', 'x')), 'gates:r1:retry': null,
+    'fix:r1': { applied: [], rejected: [{ id: 'G1-A', argument: 'a' }], head: 'bbbb111' } }, 1, twoGates)
+  assert.deepEqual(kept.result.rounds[0].gates.map(r => r.status), ['red', 'not_run'])
+  assert.ok(called(kept.calls, 'fix:r1'))
 })
 
-test('W51: a declared gate without a baseline entry fails the run before any agent is called', async () => {
-  const { result, calls } = await runCore({}, 1, { profile: twoGates.profile, baseline: { A: 'a' } })
-  assert.equal(calls.length, 0)
-  assert.equal(result.status, 'failed')
-  assert.match(result.note, /\bB\b/)
-  assert.ok(!/\bA\b/.test(result.note.replace(/baseline/g, '')))
+test('W51: a declared gate without a status and line in the baseline fails the run before any agent is called', async () => {
+  for (const B of [undefined, 'a line', { status: 'green' }, { line: 'l' }]) {
+    const { result, calls } = await runCore({}, 1, { profile: twoGates.profile, baseline: { A: measured('a'), ...(B && { B }) } })
+    assert.equal(calls.length, 0)
+    assert.equal(result.status, 'failed')
+    assert.match(result.note, /\bB\b/)
+    assert.ok(!/\bA\b/.test(result.note.replace(/baseline/g, '')))
+  }
 })
 
 test('W52: the result records per round the gates rows that gated its HEAD, and the recheck rows', async () => {
@@ -427,8 +493,8 @@ test('W18: a dead mutation step, one that did not run, a not_run mutant or a dea
   assert.equal(bad.result.failures.filter(f => /mutation/.test(f)).length, 1)
   assert.match(bad.result.failures.find(f => /mutation/.test(f)), /M-2/)
   assert.equal((await runCore({ mutation: { applies: false, ran: false, mutants: [] } })).result.status, 'done')
-  const noGates = await runCore({ 'gates:r1': null })
-  assert.equal(noGates.result.status, 'done_with_failures')
+  const deadGates = await runCore({ 'gates:r1': null, 'gates:r1:retry': null })
+  assert.equal(deadGates.result.status, 'done_with_failures')
 })
 
 test('W19: id-only rejections and a gate red again with a new line each stay one finding', async () => {
@@ -825,58 +891,33 @@ test('W44: plan and replan get the no-code preamble and the short mailbox checkp
   }
 })
 
-// A profile without gates, and what the discovery step finds.
-const noGates = Object.assign(withProfile({ gates: null }), { baseline: 'ignored' })
-const discovered = (over) => Object.assign({
-  gates: [{ name: 'lint', command: 'npm run lint', source: 'AGENTS.md', line: 'LINT-BASE 0 errors', fast: true }, { name: 'test', command: 'npm test', source: 'AGENTS.md', line: 'TEST-BASE 9 of 9', fast: false }],
-  questions: [],
-}, over)
-
-test('W53: with no profile.gates the discovery step runs first, and its gates and lines drive the gates step and the preamble', async () => {
-  const q = { command: 'npm run e2e', source: 'AGENTS.md', question: 'needs a browser: a gate?' }
-  const { result, calls } = await runCore({
-    'gates:discover': discovered({ questions: [q, Object.assign({}, q, { source: 'Makefile' })] }),
-    'gates:r1': gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't')),
-  }, 1, noGates)
-  assert.deepEqual(calls.slice(0, 2).map(c => c.label), ['gates:discover', 'research'])
-  const call = calls[0]
-  assert.equal(call.opts.model, 'sonnet')
-  assert.ok(call.prompt.includes('Where: the repo\'s agent instructions, then CI config, then the task runner; the first source that names gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or secrets; pass/fail by exit code; writes nothing to the tree.'))
-  for (const s of ['COMMITS', 'Gates:']) assert.ok(!call.prompt.includes(s), s)
-  assert.match(call.prompt, /run_in_background/)
-  assert.match(call.prompt, /`source` the source of the gate it bears on/)
-  assert.match(call.prompt, /Run each gate exactly as its `command` reads, once, to completion; one that cannot run that way here is a question/)
-  assert.deepEqual(Object.keys(call.opts.schema.properties.gates.items.properties), ['name', 'command', 'source', 'line', 'fast'])
-  assert.deepEqual(call.opts.schema.properties.gates.items.required, ['name', 'command', 'source', 'line', 'fast'])
-  const instructions = call.prompt.split('STAGE: gates discovery.')[1].split('MAILBOX')[0]
-  assert.match(instructions, /A fast gate: a static check that reads the source without building it \(lint, format check, typecheck\); a build, a test suite, or a gate you are unsure of is slow\./)
-  assert.deepEqual(Object.keys(call.opts.schema.properties.questions.items.properties), ['command', 'source', 'question'])
-  assert.deepEqual(calls.find(c => c.label === 'gates:r1').opts.schema.properties.gates.items.properties.name.enum, ['lint', 'test'])
-  assert.ok(prompt(calls, 'implement').includes('- Gates, fast: lint: `npm run lint` (baseline: LINT-BASE 0 errors); slow: test: `npm test` (baseline: TEST-BASE 9 of 9).'))
-  assert.deepEqual(result.gates, discovered().gates)
-  assert.deepEqual(result.gates_questions, [q])
-  calls.slice(1).forEach(c => assert.ok(!/needs a browser/.test(c.prompt), c.label))
-  assert.equal(result.status, 'done')
-})
-
-test('W54: a discovery step that dies or finds no gate fails the run before research', async () => {
-  for (const r of [null, discovered({ gates: [] })]) {
-    const { result, calls } = await runCore({ 'gates:discover': r }, 1, noGates)
-    assert.equal(result.status, 'failed')
-    assert.equal(result.stage, 'gates:discover')
-    assert.ok(!called(calls, 'research'))
+test('W53: no declared gates, an empty list or no fast or round gate fail on config before any agent', async () => {
+  for (const gates of [null, [], [{ name: 'H', command: 'heavy', tier: 'acceptance' }]]) {
+    const { result, calls } = await runCore({}, 1, Object.assign(withProfile({ gates }), { baseline: {} }))
+    assert.equal(calls.length, 0)
+    assert.equal(result.stage, 'config')
+    assert.match(result.note, /no fast or round gate/)
   }
-  // A project where no gate can run here: the questions saying why are the result.
-  const q = { command: 'make check', source: 'AGENTS.md', question: 'make is not installed' }
-  const { result } = await runCore({ 'gates:discover': discovered({ gates: [], questions: [q] }) }, 1, noGates)
-  assert.deepEqual(result.gates_questions, [q])
 })
 
-test('W55: with profile.gates given no discovery step runs, and the result carries the declared gates and no questions', async () => {
+test('W54: a bad tier fails on config, and a gate\'s fast fails naming tier', async () => {
+  const run = g => runCore({}, 1, withProfile({ gates: [g] }))
+  const bad = await run({ name: 'tests', command: 'c', tier: 'nightly' })
+  assert.equal(bad.result.stage, 'config')
+  assert.match(bad.result.note, /tests: tier nightly is not fast, round or acceptance/)
+  for (const fast of [true, false]) {
+    const { result, calls } = await run({ name: 'tests', command: 'c', fast })
+    assert.equal(calls.length, 0)
+    assert.equal(result.stage, 'config')
+    assert.match(result.note, /tests: fast moved to tier/)
+  }
+})
+
+test('W55: the result carries the declared gates and no gates_questions; a removed discovery stage is never called', async () => {
   const { result, calls } = await runCore({})
   assert.ok(!called(calls, 'gates:discover'))
   assert.deepEqual(result.gates, [{ name: 'tests', command: 'npm test' }])
-  assert.deepEqual(result.gates_questions, [])
+  assert.ok(!('gates_questions' in result))
 })
 
 test('W56: a gate named like an Object.prototype key still needs its own baseline entry', async () => {
@@ -1024,7 +1065,7 @@ test('W83: profile.blocks.<name>.model and effort override the defaults; a block
   const minor = { verdict: 'findings', checked: [row('x')], findings: [finding('minor', 'a:1', 't')] }
   const run = { 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'cccc222' }, 'review:fix:r1': minor }
   const plain = (await runCore(run)).calls
-  const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['sonnet', 'high'], 'gates:r1': ['sonnet', 'medium'], 'review:r1:code': ['opus', 'high'],
+  const want = { research: ['opus', 'high'], plan: ['opus', 'high'], implement: ['sonnet', 'high'], 'gates:r1': ['haiku', 'medium'], 'review:r1:code': ['opus', 'high'],
     'fix:r1': ['sonnet', 'high'], 'review:fix:r1': ['opus', 'high'], mutation: ['haiku', 'medium'], 'fix:minor': ['sonnet', 'medium'] }
   for (const [l, w] of Object.entries(want)) assert.deepEqual(opts(plain, l), w, l)
   const { calls } = await runCore(run, 1, withBlocks({ research: { model: 'sonnet', effort: 'max' }, implement: { model: 'haiku' }, review: { effort: 'low' }, 'minor-fix': { model: 'opus' } }))
@@ -1093,7 +1134,6 @@ const SAMPLES = {
   'review:r1:code': [clean([row('x')]), { enum: { verdict: 'dirty', findings: [], checked: [] }, required: { verdict: 'clean', findings: [] } }],
   mutation: [step(mutant(1)), { enum: step(mutant(1, 'zombie')), required: { applies: true, mutants: [] } }],
   'fix:r1': [fixRes, { enum: edit(fixRes, r => { r.proofs = [{ id: 'a', path: 'p', outcome: 'kept' }] }), required: { applied: [], rejected: [], proofs: [] } }],
-  'gates:discover': [discovered(), { required: { gates: [] } }],
 }
 
 test('V01: every agent schema of the core takes its valid sample and rejects an invalid one per keyword it uses', async () => {
@@ -1101,7 +1141,6 @@ test('V01: every agent schema of the core takes its valid sample and rejects an 
     'review:r1:code': major,
     'fix:r1': { applied: [{ id: 'R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
   })
-  calls.push(...(await runCore({ 'gates:discover': discovered() }, 1, noGates)).calls)
   for (const [label, [valid, own]] of Object.entries(SAMPLES)) {
     const schema = calls.find(c => c.label === label).opts.schema
     assert.deepEqual(validate(schema, valid), [], label)
@@ -1125,13 +1164,12 @@ test('V03: the validator names the place of each error', () => {
   assert.deepEqual(validate({ type: 'integer' }, 2.5), ['$: number, not integer'])
 })
 
-// A run that calls every block, each label once: discovery, replan, the implement retry, a fix and its fix-diff
+// A run that calls every block, each label once: replan, the implement retry, a fix and its fix-diff
 // review with one more fix and review, the recheck, mutation and the minor fix.
 const everyBlock = () => {
   const green = gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't'))
   const late = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'b:1', 't'), finding('minor', 'c:1', 't')] }
   return runCore({
-    'gates:discover': discovered(),
     research: research({ requirements: ['R1: one', 'R2: two'], test_harness: [harness('R1'), harness('R2')] }),
     replan: base().plan,
     implement: Object.assign({}, base().implement, { head: 'aaaa000' }), 'implement:retry': base().implement,
@@ -1144,12 +1182,12 @@ const everyBlock = () => {
     'review:fix:r1:1': clean([row('x')]),
     'gates:r1:recheck': Object.assign({}, green, { head: 'dddd333' }),
     'fix:minor': { applied: [], rejected: [{ id: 'F1-2', argument: 'a' }], proofs: [], head: 'dddd333' },
-  }, 1, noGates)
+  }, 1, Object.assign(withProfile({ gates: [{ name: 'lint', command: 'npm run lint', tier: 'fast' }, { name: 'test', command: 'npm test' }] }), { baseline: { lint: measured('l'), test: measured('t') } }))
 }
 
 test('W86: every block\'s filled input validates, and its contract part follows its instructions and precedes the mailbox note', async () => {
   const { result, calls } = await everyBlock()
-  assert.deepEqual(calls.map(c => c.label), ['gates:discover', 'research', 'plan', 'replan', 'implement', 'implement:retry', 'gates:r1',
+  assert.deepEqual(calls.map(c => c.label), ['research', 'plan', 'replan', 'implement', 'implement:retry', 'gates:r1',
     'review:r1:checklist', 'review:r1:code', 'fix:r1', 'review:fix:r1', 'fix:r1:review', 'review:fix:r1:1', 'gates:r1:recheck', 'mutation', 'fix:minor'])
   assert.deepEqual(result.failures, [])
   for (const c of calls) {
@@ -1245,15 +1283,12 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
   assert.match(both.result.note, /blocks\.implement: prompt or skill, not both/)
 })
 
-test('W94: the gates and mutation approaches are read from profile.blocks: declared gates or discovery, generated mutants or a tool', async () => {
-  const declared = await runCore({}, 1, Object.assign(withProfile({ gates: [{ name: 'G', command: 'make g' }], mutation: { test: 'T-CMD', timeout: 9 } }), { baseline: { G: 'G-BASE' } }))
-  assert.ok(!called(declared.calls, 'gates:discover'))
+test('W94: the gates and mutation approaches are read from profile.blocks: declared gates, generated mutants or a tool', async () => {
+  const declared = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('G', 'green', 'g')) }, 1, Object.assign(withProfile({ gates: [{ name: 'G', command: 'make g' }], mutation: { test: 'T-CMD', timeout: 9 } }), { baseline: { G: measured('G-BASE') } }))
   assert.ok(prompt(declared.calls, 'implement').includes('G: `make g` (baseline: G-BASE)'))
   assert.ok(prompt(declared.calls, 'mutation').includes("--test 'T-CMD' --timeout 9`"))
-  const found = await runCore({ 'gates:discover': discovered(), 'gates:r1': gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't')) },
-    1, withProfile({ gates: null, mutation: { tool: 'TOOL-TEXT' } }))
-  assert.ok(called(found.calls, 'gates:discover'))
-  assert.match(prompt(found.calls, 'mutation'), /TOOL-TEXT/)
+  const tool = await runCore({}, 1, withProfile({ mutation: { tool: 'TOOL-TEXT' } }))
+  assert.match(prompt(tool.calls, 'mutation'), /TOOL-TEXT/)
 })
 
 test('W95: the removed profile strings and the moved profile fields fail the run before any agent, naming where they went', async () => {
@@ -1344,16 +1379,13 @@ test('W102: a checklist with an unmet row answers verdict findings, even with no
   assert.match(prompt(sent.calls, 'review:r1:checklist'), /verdict `clean` exactly when findings is empty and no row is `unmet`/)
 })
 
-test('W103: a runner that did not run, a step that does not apply and a repository with no gate are answers, not deaths; code rules end their line', async () => {
+test('W103: a runner that did not run and a step that does not apply are answers, not deaths; code rules end their line', async () => {
   const { calls } = await everyBlock()
   const mutation = prompt(calls, 'mutation')
   assert.match(mutation, /exit 2 means it did not run: ran false, not_run its stderr\./)
   assert.match(mutation, /when it does not, ran is false and mutants \[\]\./)
   assert.match(mutation, /\nAnswer, or the stage counts as died\./)
   assert.ok(!/run every mutant/.test(mutation))
-  const discover = prompt(calls, 'gates:discover')
-  assert.match(discover, /A repository with no gate: gates \[\] and a question saying where you looked\.\nAnswer, or the stage counts as died\./)
-  assert.ok(!/disagree/.test(discover))
   const ruled = await runCore({ 'review:r1:code': major, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1', argument: 'a' }], proofs: [], head: 'bbbb111' } }, 1, withProfile({ code_rules: ['RULE-ONE'] }))
   assert.match(prompt(ruled.calls, 'fix:r1'), /- RULE-ONE\nVerify each finding first/)
 })

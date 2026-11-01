@@ -107,9 +107,12 @@ test('T11: --json prints the stage prompt with the schema, model and effort its 
   assert.ok('mailbox' in out.schema.properties)
 })
 
-test('T12: a case whose profile declares no gates reaches the lenses through a stub discovery step', () => {
-  const caseFile = file('case5.json', { args: { profile: {} }, gate_lines: ['FOUND-GATE ok'] })
-  assert.ok(cli('--case', caseFile, '--prompt', 'review:r1:code').includes(': green — FOUND-GATE ok'))
+test('T12: a case whose profile declares no gates fails on config, and --check lets it through', () => {
+  assert.throws(() => execFileSync('node', [CLI, '--case', file('case5.json', { args: { profile: {} } }), '--prompt', 'review:r1:code'], { stdio: 'pipe' }), /run failed at config: .*no fast or round gate/)
+  execFileSync('node', [CLI, '--check', file('none.json', {})], { stdio: 'pipe' })
+  execFileSync('node', [CLI, '--check', file('empty.json', { blocks: { gates: { gates: [] } } })], { stdio: 'pipe' })
+  const heavy = file('heavy.json', { blocks: { gates: { gates: [{ name: 'H', command: 'h', tier: 'acceptance' }] } } })
+  assert.throws(() => execFileSync('node', [CLI, '--check', heavy], { stdio: 'pipe' }), /no fast or round gate/)
 })
 
 // fixtures.json: the sha256 of the render of every slot variant; a change that alters the render re-records them.
@@ -211,7 +214,7 @@ test('T21: --conform reads a fix\'s findings and the checklist\'s ids from the c
 // The default render's prompts, byte for byte: per case and label, the first 16 hex digits of the prompt's sha256. A
 // change to a prompt re-records them on purpose, and its commit states each prompt's byte delta. The cases reach every
 // call with every note on: a fix with proofs and earlier fixes under one_commit, a replan with uncovered and duplicate
-// checks, a retry, a checklist with verify-by-review ids and unverified claims, gates discovery, both mutation
+// checks, a retry, a checklist with verify-by-review ids and unverified claims, both mutation
 // approaches. Moved fields sit at their new places: blocks.gates, .mutation, .review.runtime and .research (a prompt
 // wrapping {{default}}).
 const G = [{ name: 'gates', command: 'GATES' }]
@@ -222,7 +225,7 @@ const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected:
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { test: 'TEST-CMD' } } } }, results: cleanRounds },
-    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: 'ac2e1cfaf7aaa27d', 'gates:r1': '0cc4614b3825b623', 'review:r1:checklist': 'e684b9a6afefd3d4',
+    { research: '6911c78e1828d634', plan: 'f6a4abaf5ce38b49', implement: 'ac2e1cfaf7aaa27d', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': 'e684b9a6afefd3d4',
       'review:r1:code': 'f839a4c6762560c1', 'review:r2:checklist': '371d3731e8c2638c', 'review:r2:code': '5f6c58a3fb7328da', mutation: '68f5f513d415bae6' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, mutation: { build: 'B-CMD', test: 'TEST-CMD', timeout: 9 }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
@@ -230,17 +233,17 @@ const ACAE = {
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:fix:r2': findings(said('major', 'd.js:4')), 'fix:r2:review': fixedAt('F1-1', 'w3', 'H4'),
     'review:fix:r2:1': { verdict: 'clean', findings: [], checked: [{ item: 'x', evidence: 'e' }] }, mutation: { applies: false, ran: false, mutants: [] } } },
-  { research: 'dfecb403802054b6', implement: 'f45e41e3b2176d43', 'review:r1:code': '64b4832d9f0f4be8', 'fix:r1': '6f66a183c5e1e954', 'gates:r2': '85f06a733be7ed6c',
+  { research: 'dfecb403802054b6', implement: 'f45e41e3b2176d43', 'review:r1:code': '64b4832d9f0f4be8', 'fix:r1': '6f66a183c5e1e954', 'gates:r2': 'ec557ef7a7440410',
     'review:r2:checklist': 'd8ccb92231bd1fa0', 'review:r2:code': '5e1bba33bf51b512', 'fix:r2': 'f9d9598ecb719aad', 'review:fix:r2': '04e8815ac3e1fc76',
-    'fix:r2:review': '8f3b9f86ee6a554a', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'db1d924b42508b00', mutation: '5ddd6ded50bdbfb0', 'fix:minor': '4530a0a1b9ffb669' }],
+    'fix:r2:review': '8f3b9f86ee6a554a', 'review:fix:r2:1': '2254c405d7f17b35', 'gates:r2:recheck': 'fd90415b46d22c39', mutation: '5ddd6ded50bdbfb0', 'fix:minor': '4530a0a1b9ffb669' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
   { replan: 'f8b90f56cad9a872', 'implement:retry': 'ea1fde34765e33e9', 'review:r1:checklist': '511aad0626c85e69', 'review:r1:code': 'cdc0ffef4e68ab00' }],
-  discover: [{ args: { profile: { blocks: { mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
-    { 'gates:discover': '34ddde7ba358aff9', 'gates:r1': '0cc4614b3825b623', 'review:r1:code': 'f1c7ea1e3a276b36', mutation: '7eb79d9049fe8c09' }],
+  tool: [{ args: { profile: { blocks: { gates: { gates: G }, mutation: { tool: 'TOOL-TEXT' }, review: { duties: { order: true } } } } }, results: cleanRounds },
+    { 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:code': 'f1c7ea1e3a276b36', mutation: '7eb79d9049fe8c09' }],
 }
 
 test('T22: the default render\'s prompts are these', async () => {
@@ -265,10 +268,10 @@ test('T25: a replay takes a recorded research plan step over 600 characters as g
 
 test('T26: --check exits 0 on a valid profile, and non-zero with the run\'s own config note on an invalid one', async () => {
   const run = (...a) => { try { execFileSync('node', [CLI, ...a], { stdio: 'pipe' }); return { code: 0 } } catch (e) { return { code: e.status, err: e.stderr.toString() } } }
-  const valid = { code_rules: ['diff against {{base}}'], blocks: { gates: { gates: [{ name: 'lint', command: 'make -C {{repo}} lint', fast: true }, { name: 'test', command: 'make test', fast: false }] }, research: { prompt: '{{default}}\nMore.' } } }
+  const valid = { code_rules: ['diff against {{base}}'], blocks: { gates: { gates: [{ name: 'lint', command: 'make -C {{repo}} lint', tier: 'fast' }, { name: 'test', command: 'make test' }] }, research: { prompt: '{{default}}\nMore.' } } }
   assert.deepEqual(run('--check', file('valid.json', valid)), { code: 0 })
-  for (const [name, profile] of [['field', { blocks: { plan: { nope: 1 } } }], ['placeholder', { context: ['{{nope}}'] }],
-    ['fast', { blocks: { gates: { gates: [{ name: 'lint', command: 'make lint', fast: 'yes' }] } } }]]) {
+  for (const [name, profile] of [['field', { blocks: { gates: { gates: G }, plan: { nope: 1 } } }], ['placeholder', { blocks: { gates: { gates: G } }, context: ['{{nope}}'] }],
+    ['fast', { blocks: { gates: { gates: [{ name: 'lint', command: 'make lint', fast: true }] } } }], ['tier', { blocks: { gates: { gates: [{ name: 'lint', command: 'make lint', tier: 'x' }] } } }]]) {
     const note = await new Promise(resolve => stageCall(render(DEFAULT), { args: { profile } }, 'research').catch(e => resolve(e.message)))
     const { code, err } = run('--check', file(`${name}.json`, profile))
     assert.notEqual(code, 0, name)

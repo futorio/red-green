@@ -24,6 +24,7 @@ const BASE = A.base
 const TARGET = A.target
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/red-green/skills/implement.md`
 const MUTATE = `${TOOLS}/.claude/workflows/red-green/skills/mutate.mjs`
+const RUN_GATES = `${TOOLS}/.claude/workflows/red-green/skills/run_gates.mjs`
 // The profile, its strings' {{base}}, {{run}}, {{repo}} and {{tools}} filled from args; any other {{...}} stays as
 // given and is listed in UNFILLED as [where, placeholder, name] for the config check (docs/red-green/args-and-profile.md).
 const RUN_VALUES = { base: BASE, run: RUN, repo: REPO, tools: TOOLS }
@@ -36,13 +37,13 @@ const P = fillRun(A.profile || {}, 'profile')
 const DEFAULTS = {{defaults}}
 // @include shared text
 // @include shared validate
-// blocks.gates.gates: [{name, command, fast?}], set once the block config is merged; args.baseline: {<gate name>: its summary
-// line at base}.
+// blocks.gates.gates: [{name, command, tier?}], set once the block config is merged, and those the gates step runs;
+// args.baseline: {<gate name>: {status, line}} at base, for those it runs.
 let GATES = []
-let BASELINE = typeof A.baseline === 'object' && A.baseline || {}
+let STAGE_GATES = []
+const BASELINE = typeof A.baseline === 'object' && A.baseline || {}
 // @include shared preamble
 // @include mailbox ask
-// @include gates discover-schema
 // @include research schema
 // @include plan schema
 // @include implement schema
@@ -79,15 +80,15 @@ Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => c
 if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')
 if (CONFIG.mutation.build && !CONFIG.mutation.test) configErrors.push('blocks.mutation: build without test')
 if (CONFIG.mutation.tool && (CONFIG.mutation.test || CONFIG.mutation.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
+// @include gates config
 if (configErrors.length) return { status: 'failed', stage: 'config', note: configErrors.join('; '), failures: [] }
-GATES = CONFIG.gates.gates || []
+GATES = CONFIG.gates.gates
+STAGE_GATES = GATES.filter(g => g.tier !== 'acceptance')
 // Full rounds added when the last planned round has majors to fix; by default the fix-diff review sees the fix instead.
 let EXTRA = CONFIG.review.extra
 const failures = []
-// Declared gates need a baseline each; with none declared, the discovery step finds them and measures the baseline.
-// Its questions go to the result alone.
-let gatesQuestions = []
-// @include gates discover
+// Each gate the stage runs needs a baseline.
+// @include gates baseline
 // @include shared code-preamble
 // @include gates schema
 // @include review rules
@@ -278,7 +279,6 @@ return {
   research_questions: researchQuestions,
   implement_questions: implementQuestions,
   gates: GATES,
-  gates_questions: gatesQuestions,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
   leftover_findings: uniq(unfixed.concat(unmet)),

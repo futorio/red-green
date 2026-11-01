@@ -3,6 +3,7 @@
 // @part text
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
+const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 // @part validate
 // A JSON Schema validator for the keywords the core's schemas use; it throws on any other keyword anywhere in the
 // schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid.
@@ -65,7 +66,7 @@ const COMMIT_RULE = A.one_commit
   : 'COMMITS: commit iteratively on the current branch, one commit per coherent step.'
 
 // Each preamble takes noted, whether the stage's schema has notes: a stage without gets the relayed-message rule
-// without its mention clause. The gates discovery, research, plan and review stages write no code: they get the
+// without its mention clause. The gates, research, plan and review stages write no code: they get the
 // preamble without the commit, gate and long-command rules.
 const CORE_PRE = noted => `You are one agent in a workflow run implementing ${TARGET}.
 Repository ${REPO}, branch \`${BRANCH}\`: cd there; work only there and in run dir ${RUN} (state, scratch); all else read-only.
@@ -88,11 +89,11 @@ const writer = bar => `${COMMIT_RULE} Stage explicit paths only — never \`git 
 You do not edit ${TARGET} or the other ticket files.`
 // @part code-preamble
 
-const gateList = (sep, gates = GATES) => gates.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name]})`).join(sep)
+const gateList = (sep, gates = STAGE_GATES) => gates.map(g => `${g.name}: \`${g.command}\` (baseline: ${BASELINE[g.name].line})`).join(sep)
 // The writers' gates: fast ones after each TDD cycle, every gate before a commit; one list when the gates are of one kind.
 const writerGates = () => {
-  const fast = GATES.filter(g => g.fast)
-  const slow = GATES.filter(g => !g.fast)
+  const fast = STAGE_GATES.filter(g => g.tier === 'fast')
+  const slow = STAGE_GATES.filter(g => g.tier !== 'fast')
   const lists = fast.length && slow.length ? `Gates, fast: ${gateList('; ', fast)}; slow: ${gateList('; ', slow)}` : `Gates: ${gateList('; ')}`
   const cycle = fast.length ? `the ${slow.length ? 'fast ' : ''}gates after each TDD cycle and ` : ''
   return `${lists}. Run ${cycle}every gate once before each commit.`

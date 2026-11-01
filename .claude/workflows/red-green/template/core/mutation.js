@@ -22,7 +22,6 @@ const placeOf = patch => {
   const from = (/^--- (?:a\/)?([^\t\n]*)/m.exec(patch) || [, ''])[1].trim()
   return { file: to && to !== '/dev/null' ? to : from, line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] }
 }
-const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 async function runMutation() {
   mutated = true
   const { tool, test, build, edges, timeout } = CONFIG.mutation
