@@ -82,20 +82,37 @@ Done when the run's result is in.
 
 1. Save the spans: `node <tools>/.claude/workflows/red-green/trace.mjs <wf dir> > <run>/trace.jsonl`
    ([`tracing.md`](../../docs/red-green/tracing.md)).
-2. Read the result ([`result.md`](../../docs/red-green/result.md)): `verdicts` holds no `DIED` or `SILENT`, and
-   `failures` is empty.
-3. Read every commit on `wf/<name>` and re-run the gates in the worktree.
-4. Green (2 and 3 pass), and the user did not ask to hold: fast-forward `<branch>` to `wf/<name>`. Otherwise leave
-   both branches and say why.
-5. Remove the worktree (`git worktree remove <repo>`), delete every directory under `run` (keeping its top-level files,
-   `trace.jsonl` and `gates.json` among them), then `git worktree prune`.
+2. Read the result ([`result.md`](../../docs/red-green/result.md)) and every commit on `wf/<name>`.
+3. Delete from the worktree each `path` in `stray_proofs`: an uncommitted proof left by the run. Its `stray proof` entry
+   in `failures` then no longer counts against the fast-forward; every other entry does.
+4. Run the acceptance gates from the worktree, from scratch, with a Bash timeout of 10 minutes:
 
-Done when `trace.jsonl` and `gates.json` are in `run`, `run` holds no directory, the worktree is removed, and the
-branch is fast-forwarded or the reason it is not is in the report.
+   `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
+
+   Exit 3: run it again. Blocking: a row with status `red` or `not_run`, or exit 2. A `known_red` row is reported and not
+   blocking.
+5. Fast-forward `<branch>` to `wf/<name>` when all of these hold and the user did not ask to hold:
+   - `failures` holds nothing but the `stray proof` entries of step 3;
+   - `verdicts` holds no `DIED` or `SILENT`;
+   - `leftover_findings` holds no blocking finding: `severity: major` or `status: unmet`. A leftover minor or `unverified`
+     row goes in the report and does not stop it;
+   - step 4 found nothing blocking.
+6. Otherwise both branches stay. A red `acceptance` gate may first be run on base: in a temporary worktree at `base`,
+   given the gitignored files the gates read, with `--gates` holding that gate and `--dir <run>/base`, then removed. Red
+   there too is an old breakage, and you report it as one. Show the user the findings and wait for the choice:
+   - accept: fast-forward as in step 5;
+   - fix: make the fixes on `wf/<name>` in the worktree, then repeat from step 4;
+   - new run: it takes a `<name>` of its own, since `wf/<name>` stays.
+7. After the fast-forward or the user's decision, and only then: remove the worktree (`git worktree remove <repo>`),
+   delete every directory under `run` (keeping its top-level files, `trace.jsonl` and `gates.json` among them), then
+   `git worktree prune`.
+
+Done when `trace.jsonl` and `gates.json` are in `run`, the branch is fast-forwarded or the user has decided with the
+reason in the report, `run` holds no directory, and the worktree is removed.
 
 ## 6. Report
 
-To the user: `status`, the commits, `leftover_findings`, `verify_launch` (checks only a person can make), the open
+To the user: `status`, the commits, the acceptance rows, the strays deleted, `leftover_findings`, `verify_launch` (checks only a person can make), the open
 questions per stage, and the tokens per block from `trace.mjs --table`.
 
 Done when the report names each of them, `none` where one is empty.
