@@ -43,7 +43,7 @@ Approach fields, for a block with more than one way to work:
 
 | field | type | approach |
 |---|---|---|
-| `blocks.gates.gates` | `{name, command}[]`, names must be unique (not checked) | declared: the code-writing agents' preamble and the gates step; absent: gates discovery finds them |
+| `blocks.gates.gates` | `{name, command, fast?}[]`, names must be unique (not checked); `fast: true` marks a gate the writers also run after each red-green cycle, missing is slow | declared: the code-writing agents' preamble and the gates step; absent: gates discovery finds them |
 | `blocks.mutation.build`, `.test`, `.timeout` | string, string, seconds | generated mutants, run under these commands; `timeout` 300 by default |
 | `blocks.mutation.tool` | string | the project's own tool, in words, instead of `build` and `test` (both given: a config error) |
 
