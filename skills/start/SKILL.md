@@ -45,10 +45,17 @@ Done when `baseline` and `gates.json` have an entry per declared gate, each with
 
 ## 4. Run
 
-Launch by `scriptPath`, which reads the scripts from disk (a launch by `name` runs them as they were at session
-start):
+Pick the launch before calling. The Workflow tool refuses a `scriptPath` outside the session's working directory (not
+`repo`), so:
 
-`Workflow({scriptPath: '<tools>/.claude/workflows/red-green.js', args: {target, repo, branch, tools: '<tools>', run, base, baseline, profile}})`
+- `<tools>` inside the session's working directory: `Workflow({scriptPath: '<tools>/.claude/workflows/red-green.js', args})`,
+  which reads the scripts from disk.
+- Any other case, a `<tools>` added with `/add-dir` included: `Workflow({name: 'red-green:red-green-workflow', args})`,
+  and tell the user the run uses the scripts as they were at session start.
+
+`args` is `{target, repo, branch, tools: '<tools>', run, base, baseline, profile}` in both.
+
+A refused launch is not retried unchanged.
 
 The run goes on in the background. A detail the user adds meanwhile goes to the run's mailbox
 ([`mailbox.md`](../../docs/red-green/mailbox.md)), and the run keeps going.
