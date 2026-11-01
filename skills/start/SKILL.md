@@ -16,15 +16,27 @@ You are the main thread: you prepare the run, launch it, accept it and report. T
 - `<name>`: a short slug of the ticket's file name.
 - `<branch>`: the branch the user is on; `base`: its HEAD.
 - `run`: a fresh scratchpad directory.
-- `profile`: the contents of the project's profile file `.claude/red-green/profile.json`, else `{}`; the run then
-  discovers the gates itself ([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)).
+- `profile`: the contents of the project's profile file `.claude/red-green/profile.json`, else `{}`
+  ([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)).
 
 With a profile file, check it: `node <tools>/.claude/workflows/red-green/template/render.mjs --check
 .claude/red-green/profile.json`. Exit 1: stop here and give the user the check's stderr and the file's path; the
 worktree and the run wait for a profile that passes.
 
-Done when the check exits 0 (or there is no profile file) and every arg in `args-and-profile.md`'s required rows has a
-value or a step below that gives it.
+With no declared gates (`profile.blocks.gates.gates` absent or empty), find them here; a run refuses to start without:
+
+1. Find candidates: the repo's agent instructions, then CI config, then the task runner; the first source that names
+   gates wins. A gate: a command CI or those instructions require before a commit; runs with no human, network or
+   secrets; pass/fail by exit code; writes nothing to the tree.
+2. Ask the user to pick and name them, proposing a tier per pick: `fast` a static check that reads the source without
+   building it (lint, format check, typecheck); `round` a build, a test suite, or a gate you are unsure of; `acceptance`
+   one too heavy to run each iteration. A run needs at least one `fast` or `round` gate.
+3. Put the picks in `profile.blocks.gates.gates` as `{name, command, tier}`, for this run only: nothing is written to the
+   project unless the user asks.
+4. No candidate, or none picked: stop here and offer `/red-green:setup`.
+
+Done when the check exits 0 (or there is no profile file), `profile` declares a `fast` or `round` gate, and every arg in
+`args-and-profile.md`'s required rows has a value or a step below that gives it.
 
 ## 2. Worktree
 
@@ -35,13 +47,17 @@ Done when `repo` has `wf/<name>` checked out at `base` and every gitignored file
 
 ## 3. Baseline
 
-Run each declared gate (`profile.blocks.gates.gates`) in the worktree, its command's placeholders filled from the args
-([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)), and time it. Its summary line, and any failure
-already there with its cause, becomes `args.baseline[<gate name>]`. Write `<run>/gates.json` as
-`{<gate name>: {seconds, line}}` and give the user a line per gate: name, seconds, summary line. No declared gates:
-skip; the run discovers them and their baseline.
+Measure the `fast` and `round` gates with the runner, from the worktree, with a Bash timeout of 10 minutes:
 
-Done when `baseline` and `gates.json` have an entry per declared gate, each with its seconds in the report.
+`node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier round --no-cache`
+
+`<gates as JSON>` is `profile.blocks.gates.gates`, its commands' placeholders filled from the args
+([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)). Exit 3: run it again. Exit 2 or a `not_run` row: stop
+here and give the user the reason. Each printed row's `status` and `line` become `args.baseline[<gate name>]`. Write
+`<run>/gates.json` as `{<gate name>: {seconds, line}}` and give the user a line per gate: name, status, seconds, line.
+`acceptance` gates are not measured at base.
+
+Done when `baseline` and `gates.json` have an entry per `fast` and `round` gate, each with its seconds in the report.
 
 ## 4. Run
 

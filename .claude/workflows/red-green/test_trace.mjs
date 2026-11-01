@@ -77,8 +77,8 @@ test('TR05: an answer that is no object (text, null) is a died call with no metr
 })
 
 test('TR06: a label maps to its block and round', () => {
-  assert.deepEqual(['research:retry', 'replan', 'gates:discover', 'gates:r2:recheck', 'review:r1:code', 'review:fix:r2:1', 'fix:r1:review', 'fix:minor', 'mutation']
-    .map(blockOf), ['research', 'plan', 'gates', 'gates r2', 'review r1', 'fix-review r2', 'fix r1', 'minor-fix', 'mutation'])
+  assert.deepEqual(['research:retry', 'replan', 'gates:r2:recheck', 'gates:r2:retry', 'review:r1:code', 'review:fix:r2:1', 'fix:r1:review', 'fix:minor', 'mutation']
+    .map(blockOf), ['research', 'plan', 'gates r2', 'gates r2', 'review r1', 'fix-review r2', 'fix r1', 'minor-fix', 'mutation'])
 })
 
 test('TR07: the table sums calls and tokens per block and round, core time apart, and totals the run', () => {

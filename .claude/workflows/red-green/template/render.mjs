@@ -79,11 +79,10 @@ export function render(config) {
 
 // A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of the
 // declared gates, in order, in every gates step; results[label] is the recorded result of an earlier stage (null: the agent died).
-const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run', base: 'BASE', target: '/ticket.md', baseline: { gates: 'BASELINE' }, profile: { blocks: { gates: { gates: [{ name: 'gates', command: 'GATES' }] } } } }
+const STUB_ARGS = { repo: '/repo', branch: 'branch', tools: '/tools', run: '/run', base: 'BASE', target: '/ticket.md', baseline: { gates: { status: 'green', line: 'BASELINE' } }, profile: { blocks: { gates: { gates: [{ name: 'gates', command: 'GATES' }] } } } }
 const STUB_RESULTS = {
   research: { requirements: ['R1: the ticket'], facts: [], plan: [], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }] },
   plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }] },
-  'gates:discover': { gates: [{ name: 'gates', command: 'GATES', source: 'STUB', line: 'BASELINE' }], questions: [] },
   implement: { head: 'HEAD', checks: [{ kind: 'case', ref: 'C1', requirement: 'R1', test: { file: 'f', name: 't' } }], unverified: [], questions: [] },
 }
 
@@ -150,13 +149,16 @@ export async function conform(source, kase, label, output) {
   return report
 }
 
-// The profile check: the run's own config stage on a profile, with a baseline for each gate it declares. Resolves to
-// the run's `stage: config` note, or null once the run reaches its first agent.
+// The profile check: the run's own config stage on a profile, with a baseline for each gate it declares; a profile with
+// no gates gets a stub one, since the start skill finds them and only the run refuses none. Resolves to the run's
+// `stage: config` note, or null once the run reaches its first agent.
 export function check(source, profile) {
-  const gates = ((profile.blocks || {}).gates || {}).gates
-  const baseline = Object.fromEntries((Array.isArray(gates) ? gates : []).map(g => [(g || {}).name, 'BASELINE']))
+  const given = ((profile.blocks || {}).gates || {}).gates
+  const none = given == null || (Array.isArray(given) && !given.length)
+  const gates = none ? [{ name: 'stub', command: 'stub' }] : given
+  const baseline = Object.fromEntries((Array.isArray(gates) ? gates : []).map(g => [(g || {}).name, { status: 'green', line: 'BASELINE' }]))
   return new Promise((resolve, reject) => {
-    drive(source, { args: { profile, baseline } }, () => (resolve(null), true))
+    drive(source, { args: { profile: { ...profile, blocks: { ...profile.blocks, gates: { ...(profile.blocks || {}).gates, gates } } }, baseline } }, () => (resolve(null), true))
       .then(r => resolve(r && r.status === 'failed' && r.stage === 'config' ? r.note : null), reject)
   })
 }
