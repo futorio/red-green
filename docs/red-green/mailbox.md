@@ -14,8 +14,8 @@ Rules for every agent of this run:
 - For each entry you handle, append one line `<id> <your label> applied|rejected <why>` to `mailbox-acks.md` and list it in your result's `mailbox`.
 ```
 
-`to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`. `review` also reaches the
-fix-diff review (`review:fix:r<n>`); `fix` also reaches the minor fix (`fix:minor`) and `fix:r<n>:review`.
+`to:` stages: `research`, `plan`, `replan`, `implement`, `gates`, `review`, `fix`, `mutation`. `gates` and `fix` also reach
+the attempts on a red gate (`gates:r<n>:a<k>`, `fix:r<n>:a<k>`).
 
 An entry:
 
