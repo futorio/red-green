@@ -10,7 +10,8 @@ Checked here:
   claude     Claude Code CLI.
   git        the run works in a worktree of its own and commits there.
   node       setup and start check the profile (render.mjs --check); a run
-             mutates code (skills/mutate.mjs); start saves the spans (trace.mjs).
+             runs its gates (skills/run_gates.mjs); start saves the spans
+             (trace.mjs).
 
 Not checkable from a shell — confirm by hand:
   Workflow tool   gated per account; the red-green plugin provides the workflow.

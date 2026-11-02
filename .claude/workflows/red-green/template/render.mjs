@@ -116,11 +116,10 @@ export function stageCall(source, kase, label) {
 
 // The conformance check: a block's real output, given as the result of the agent labelled <label>, through a run whose
 // other blocks answer clean from their calls' values: review lenses with a met row per requirement id and no finding,
-// the mutation step not applying, each fix rejecting every finding it is sent and deleting its proofs. Reports the
-// output's schema errors (against the schema that agent gets), every finding the script sent to a fix (`sent_to`: its
-// label), and the run's result: its status, failures, verdicts, leftover and advisory findings, mutation, research
-// issues and unverified list; a run the output breaks reports the error as crash. It passes when there is no schema
-// error, failure or crash.
+// each fix rejecting every finding it is sent and deleting its proofs. Reports the output's schema errors (against the
+// schema that agent gets), every finding the script sent to a fix (`sent_to`: its label), and the run's result: its
+// status, failures, verdicts, leftover and advisory findings, research issues and unverified list; a run the output
+// breaks reports the error as crash. It passes when there is no schema error, failure or crash.
 export async function conform(source, kase, label, output) {
   const { schema } = await stageCall(source, kase, label)
   const sent = []
@@ -130,7 +129,6 @@ export async function conform(source, kase, label, output) {
       return { verdict: 'clean', findings: [], checked: ids.map(item => ({ item, evidence: 'stub', status: 'met', promise: 'stub', counterexample: 'stub' })) }
     }
     if (l.startsWith('review:')) return { verdict: 'clean', findings: [], checked: [{ item: 'stub', evidence: 'stub' }] }
-    if (l.startsWith('mutation:')) return { applies: false, ran: false, mutants: [] }
     if (!l.startsWith('fix:')) return null
     const given = values.findings
     sent.push(...given.map(f => Object.assign({ sent_to: l }, f)))
@@ -139,7 +137,7 @@ export async function conform(source, kase, label, output) {
   const report = { label, schema_errors: validate(schema, output) }
   try {
     const r = await drive(source, Object.assign({}, kase, { results: Object.assign({}, kase.results, { [label]: output }) }), () => false, answer)
-    Object.assign(report, { findings: sent, status: r.status, failures: r.failures }, ...['note', 'verdicts', 'leftover_findings', 'advisory', 'mutation', 'research_issues', 'unverified'].filter(k => k in r).map(k => ({ [k]: r[k] })))
+    Object.assign(report, { findings: sent, status: r.status, failures: r.failures }, ...['note', 'verdicts', 'leftover_findings', 'advisory', 'research_issues', 'unverified'].filter(k => k in r).map(k => ({ [k]: r[k] })))
   } catch (e) {
     // The script runs as an AsyncFunction body, two lines below the header the constructor adds.
     const at = /<anonymous>:(\d+):\d+/.exec(e.stack)

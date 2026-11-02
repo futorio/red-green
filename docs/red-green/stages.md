@@ -10,13 +10,13 @@ A run takes one path:
 research -> plan -> implement
   -> iteration x blocks.review.rounds:
        gates <-> fix (a red gate, up to blocks.gates.fix_attempts)
-       mutation (when the gates are green)
        review
        clean and round >= blocks.review.min: leave the loop
        fix (not in the last iteration)
 ```
 
-Acceptance follows, in the main thread ([`/red-green:start`](../../skills/start/SKILL.md)).
+Acceptance follows, in the main thread ([`/red-green:start`](../../skills/start/SKILL.md)). A run makes no mutants:
+mutation runs by hand, with [`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs).
 
 "Died" is a call with no answer. It lands in `failures`, or ends the run (`status: failed`) where the table says so.
 Each stage's questions go to the result as `<stage>_questions`, not to later prompts; one naming no known requirement
@@ -30,7 +30,6 @@ Labels are unique, since the core's stub tests key on them.
 | `plan` | `plan`, `replan` | read-only; died: the run fails (replan: the previous cases stand) |
 | `implement` | `implement`, `implement:retry` | writer; died: one retry, then the run fails |
 | `gates` | `gates:r<n>`, `gates:r<n>:a<k>`, either with `:retry` | read-only; only runs the gate runner; no result: one retry, then `failures` |
-| `mutation` | `mutation:r<n>` | read-only; died: `failures` |
 | `review` | `review:r<n>:checklist`, `review:r<n>:code` | read-only (the code lens may write uncommitted proofs, except in the last iteration) |
 | `fix` | `fix:r<n>`, `fix:r<n>:a<k>` | writer; died: `failures`, and an iteration's fix ends the loop |
 
@@ -104,14 +103,14 @@ agent runs the runner at tier `round`, calls it again on exit 3, and returns its
 - **`known_red`** is shown to the lenses and makes no finding.
 - **No result** (`not_run`, no row, the script's exit 2, a dead step) gets one `:retry` of the stage, which picks up finished
   gates. Still none: an entry in `failures` and no finding, and the next iteration runs the stage again though HEAD has not
-  moved. For mutation it counts as red. It does not keep an iteration from being clean, since `failures` stops the
+  moved. It does not keep an iteration from being clean, since `failures` stops the
   fast-forward.
 
 Lenses run no gate.
 
 ## Attempts on a red gate
 
-A red gate goes to `fix` at once as a major, before any mutation or review, and the gates stage runs again. This repeats up
+A red gate goes to `fix` at once as a major, before any review, and the gates stage runs again. This repeats up
 to `blocks.gates.fix_attempts` (2) per iteration and uses up no iteration. `fix_attempts: 0` sends a red gate straight to
 review.
 
@@ -123,34 +122,6 @@ recurs after two fixes.
 
 A gate still red goes on to the lenses with a note naming it and the attempts made on it so far in the run (the most of any
 gate named), and it stays a major, so the iteration is not clean.
-
-## Mutation
-
-Once per iteration, once the gates and attempts are done, on the diff from the HEAD last mutated to HEAD; the first step
-covers the diff from `base`. The HEAD last mutated advances on `ran: true` or `applies: false` (the range holds no covered
-file), so any other skipped step leaves its code to the next one.
-
-The script skips the step, with a log line and no call, with no `blocks.mutation`, with a gate `red` or with no result
-(`known_red` counts as green), or with HEAD already mutated.
-
-The generated form gets `from_head`, writes one patch per check whose test or code is in that diff, plus at most
-`blocks.mutation.edges` (5) on the diff's edges;
-[`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs) runs them. The runner first makes a control run,
-a mutant with no patch, and exits 2 if its build or test fails or times out; an empty mutant list makes no control run. The `{tool}` form names the same range by
-`{{mutate_from}}` and returns the same records. The script derives ids (`M<round>-<i>`), `file:line` and counts;
-`result.mutation` accumulates every step.
-
-- `applies` false: the step is skipped with a log line.
-- `ran` false, or `ran` true with no mutants and a non-blank `not_run`, counts as not run: the mutated HEAD stays, and any
-  mutants returned are still recorded and survivors returned. With mutants, a `not_run` beside `ran` true is the agent's
-  note on the run.
-- Not run with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
-  `result.mutation_skipped` holds the reason until a later step runs.
-- Any other not run, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
-- A `survived` mutant whose patch has no file header and hunk header counts as `not_run`; its `failures` entry names the
-  missing headers.
-- Every survivor is a major finding (`source: mutation`), fixed in an iteration with a fix and left over from the last. No
-  separate call rules on survivors.
 
 ## Review
 
@@ -171,8 +142,7 @@ again only with a `problem` that answers the fixer's `argument`.
 
 ## Fix
 
-Runs at the end of an iteration with a major or a survivor, unless it is the last. It gets majors, survivors and minors in
-one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. A finding that does not fit is rejected with an argument citing code, the ticket or the
+Runs at the end of an iteration with a major, unless it is the last. It gets majors and minors in one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. A finding that does not fit is rejected with an argument citing code, the ticket or the
 spec. Fixed and rejected findings, minors included, enter the earlier findings. `applied` findings with `head` unchanged are
 an entry in `failures`.
 
@@ -187,10 +157,10 @@ before acceptance.
 ## Loop exit
 
 `blocks.review.rounds` (3) iterations at most, a number fixed at the start, so at most `rounds - 1` fixes follow a review. A
-clean iteration (no major, no survivor, every lens answered) ends the loop at or past `blocks.review.min` (2). A clean
-iteration before `min` makes no fix, and the next one reviews the same code at no gate or mutation cost.
+clean iteration (no major, every lens answered) ends the loop at or past `blocks.review.min` (2). A clean
+iteration before `min` makes no fix, and the next one reviews the same code at no gate cost.
 
-The last iteration makes no fix: its majors, survivors and unmet requirements go to `leftover_findings`. Blocking there means
+The last iteration makes no fix: its majors and unmet requirements go to `leftover_findings`. Blocking there means
 `severity: major` or `status: unmet`; an `unverified` row is reported, not blocking. `advisory` holds the minors no fix
 applied, from any iteration. See
 [`template/core/orchestrator.js`](../../.claude/workflows/red-green/template/core/orchestrator.js).

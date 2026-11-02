@@ -7,9 +7,8 @@ drop a requirement or finish with red gates.
 - **Tests planned before code.** Research lists the ticket's requirements; the planner turns each into test cases, and
   a requirement no case covers sends the plan back, then shows up in the result instead of vanishing.
 - **Reviewed after every fix.** Two review lenses, one against the ticket and one on the code, run for at least two
-  iterations; a fix agent answers every major, the next iteration reviews it, and mutation testing checks the new tests
-  actually catch broken code.
-- **Configurable down to each prompt.** Every stage is a block you tune (model, rounds, gates, mutation tool) or replace
+  iterations; a fix agent answers every major, and the next iteration reviews it.
+- **Configurable down to each prompt.** Every stage is a block you tune (model, rounds, gates) or replace
   with your own prompt or skill, or start from a ready preset: `standard`, `hard`, `cheap`. Nothing is copied into the
   project, and every run can leave a trace of time and tokens per stage.
 
@@ -17,7 +16,7 @@ drop a requirement or finish with red gates.
 
 - Claude Code with the Workflow tool on the account (it is gated per account) and the opus, sonnet and haiku models.
 - `git`: a run works and commits in a worktree of its own.
-- `node`: setup and start check the profile, a run runs its gates and mutants, start saves the trace.
+- `node`: setup and start check the profile, a run runs its gates, start saves the trace.
 - Optional: `gh`, for the recent GitHub Actions durations setup shows.
 
 `/red-green:setup` checks the tools with `workflow-doctor.sh` and lists the rest to confirm by hand.
@@ -63,7 +62,7 @@ and `/red-green:start`.
    (launching the app, say). It fast-forwards your branch once its own checks pass and no major is left over; otherwise
    it asks you. Anything you do not like, ask it to fix in the same chat.
 
-To fit the run to the project, configure its stages (model, rounds, gates, mutation tool, your own prompt or skill)
+To fit the run to the project, configure its stages (model, rounds, gates, your own prompt or skill)
 or pick a model preset: [`args-and-profile.md`](docs/red-green/args-and-profile.md),
 [`blocks.md`](docs/red-green/blocks.md). A run needs declared gates; without a profile, `/red-green:start` finds them with you.
 
@@ -77,9 +76,8 @@ In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each 
 4. **Iterations**, at most `blocks.review.rounds` (3 by default), a number fixed at the start. Each one:
    - **Gates**, run by a script, each one's status its exit code. A red gate goes to a fix and the gates again, up to
      `blocks.gates.fix_attempts` (2) times, using up no iteration.
-   - **Mutation**, when the gates are green, on the code not yet mutated.
    - **Review**: both lenses. A clean iteration at or past `blocks.review.min` (2) ends the loop.
-   - **Fix** of majors, survivors and minors together, when there is a major or a survivor, and not in the last iteration:
+   - **Fix** of majors and minors together, when there is a major, and not in the last iteration:
      every fix is reviewed by the next one.
 5. **Acceptance**, in the main thread: the `acceptance` gates from scratch, then the fast-forward. A failure or a major left
    over stops it, and the agent asks you.

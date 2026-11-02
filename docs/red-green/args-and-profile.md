@@ -15,8 +15,9 @@
 | `replay` | harness-only (`render.mjs`): takes research's recorded output as given. A real run never sets it | `false` |
 
 The removed `models`, `rounds`, `extra_rounds`, `min_rounds`, `profile.gates`, `profile.mutation`, `profile.runtime`,
-`profile.research`, `blocks.review.extra`, `blocks.minor-fix`, `blocks.fix-review` and a gate's `fast` fail the run before
-any agent (`stage: config`); the note names where each went.
+`profile.research`, `blocks.review.extra`, `blocks.mutation`, `blocks.minor-fix`, `blocks.fix-review` and a gate's `fast`
+fail the run before any agent (`stage: config`); the note names where each went, `blocks.mutation` the by-hand mutant
+runner, `skills/mutate.mjs`.
 
 ## Model presets
 
@@ -40,16 +41,11 @@ Every field is optional.
 | `code_rules` | string[] | implement, fix, code lens: code rules |
 | `blocks` | `{<block>: {<field>: value}}` | each block's config over the defaults ([`blocks.md`](blocks.md)): model, knobs, approach, instructions; what fails the run is in the Config section there |
 
-Approach fields, for a block with more than one way to work:
+The gates a run declares:
 
 | field | type | approach |
 |---|---|---|
 | `blocks.gates.gates` | `{name, command, tier?}[]`, names must be unique; `tier` is `fast` (writers and every gates stage), `round` (every gates stage; the default) or `acceptance` (acceptance only) | required with at least one `fast` or `round` gate, else the run fails on config; with a profile declaring none, `/red-green:start` finds them with the user, for that run |
-| `blocks.mutation.build`, `.test`, `.timeout` | string, string, seconds | generated mutants, run under these commands; `timeout` 300 by default |
-| `blocks.mutation.tool` | string | the project's own tool, in words, instead of `build` and `test` (both given: a config error); may name `{{mutate_from}}`, filled per step with the commit the step's diff starts from |
-
-Without `profile.blocks.mutation` the step is skipped with a log line. A `mutation` with neither `test` nor `tool`, or
-`build` without `test`, is a config error.
 
 ## Placeholders
 
@@ -63,7 +59,7 @@ Any string in `profile` may name a run value; the core fills it in from `args` b
 | `{{tools}}` | `args.tools` |
 
 `"make -C {{repo}} lint"` as a gate command runs in the worktree. A `blocks.<name>.prompt` also keeps its registry paths,
-`{{default}}` among them ([`blocks.md`](blocks.md)). `blocks.mutation.tool` also keeps `{{mutate_from}}`. Any other `{{...}}` fails the run before any agent (`stage: config`,
+`{{default}}` among them ([`blocks.md`](blocks.md)). Any other `{{...}}` fails the run before any agent (`stage: config`,
 the note naming where it is: `profile.code_rules[0]: unknown placeholder {{nope}}`).
 
 ## Profile check

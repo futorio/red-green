@@ -21,7 +21,7 @@ no-code one.
 
 **Defaults** are Markdown, `template/defaults/<block>.md`, inlined by render. A file holds parts, each opened by a
 `<!-- @part <name> -->` line and kept verbatim, last newline dropped: the instructions of each call (`plan` and
-`replan`, a lens by its key, a mutation approach), notes, and text other parts include with
+`replan`, a lens by its key), notes, and text other parts include with
 `{{> <block> <part>}}`. **A note part** is a part named like the registry value it fills (`retry_note`, `duty.order`, ...): the core passes `true`
 when it applies and the part is filled, `false` and it is `''`. Editing a default edits the prompt ([`maintaining.md`](maintaining.md)).
 

@@ -23,7 +23,7 @@ const REGISTRY = Object.assign({
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
   // planned rounds, and text the core builds from the run (a list, a command).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
-  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
+  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, test_ids: STRING, check_ids: STRING, code_rules: STRING,
   // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
   previous_notes: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
@@ -38,11 +38,10 @@ const REGISTRY = Object.assign({
   'config.rounds': INTEGER, 'config.min': INTEGER, 'config.fix_attempts': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
-  'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
-  // The approach fields (gates declared; mutants generated and run under build and test, or a tool) and
-  // the plug-in fields every block takes.
+  'config.runtime': OPTIONAL,
+  // The gates declared and the plug-in fields every block takes.
   'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING, tier: { type: 'string', enum: ['fast', 'round', 'acceptance'] } }, required: ['name', 'command'] } }, { type: 'null' }] },
-  'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
+  'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
   // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,
 }, BLOCK_PATHS)
