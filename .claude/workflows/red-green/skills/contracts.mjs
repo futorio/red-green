@@ -7,17 +7,34 @@
 // nothing written (stderr names each); 2 it could not run. With --check it writes nothing and also exits 1 when <path>
 // differs from what it would write.
 //
+// run is the property runner for a project with no framework. A contract whose next line is a `domain: <json>` marker
+// gets --examples examples (100 by default) generated from --seed (1 by default) and its id, written as a JSON array to
+// $PROPERTY_DIR/<id>.json; the example id is its index. It runs <test command> once, with PROPERTY_DIR, PROPERTY_SEED and
+// PROPERTY_EXAMPLES set. A test reads its contract's file and, when the file is absent, does nothing; before running an
+// example it prints `property: <id> <example id>` and flushes; at the end it writes the ids of the failed examples, one per
+// line, to $PROPERTY_DIR/<id>.failed, empty when all passed. Exit 0 all passed; 1 red: a failed example, a non-zero
+// exit, or no <id>.failed after one (red on the last example printed); 2 an error: a bad marker or domain, no <id>.failed
+// after a clean exit, an id in <id>.failed not in <id>.json, or the command could not start. stderr names the seed and
+// each failed example.
+//
+// The domain language, by key: {"int": [lo, hi]}; {"bytes": [min, max]}, a list of byte values that long;
+// {"string": [min, max], "chars"?: "<alphabet>"}, printable ASCII by default; {"list": <domain>, "len": [min, max]};
+// {"tuple": [<domain>, ...]}; {"oneof": [<domain>, ...]}; {"const": <json>}. Bounds are integers, inclusive.
+//
 //     node contracts.mjs doc <path> [--check]
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
-import { dirname } from 'node:path'
+//     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 const die = why => { process.stderr.write(`contracts: ${why}\n`); process.exit(2) }
 const LIMIT = 255
 const MARKER = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)?\s*contract:(.*)$/
 const CONTRACT = /^\s*([\w-]+(?:\.[\w-]+)*):\s+(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
-const DOMAIN = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)?\s*domain:(.*)$/
+const DOMAIN = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)?\s*domain:(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
 
 // Every marker in the tracked files: {contracts: [{id, statement, file, line, domain}], problems: [string]}. `domain` is
 // the raw text of a `domain:` marker on the next line, or null.
@@ -56,20 +73,115 @@ const render = contracts => {
   return out.join('\n') + '\n'
 }
 
+const doc = (path, check) => {
+  const { contracts, problems } = scan()
+  const text = render(contracts)
+  if (check) {
+    let old = null
+    try { old = readFileSync(path, 'utf8') } catch {}
+    if (old !== text) problems.push(`${path}: ${old === null ? 'missing' : 'stale'}, run contracts.mjs doc ${path}`)
+  }
+  if (problems.length) { process.stderr.write(problems.join('\n') + '\n'); process.exit(1) }
+  if (!check) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text) }
+}
+
+// A seeded generator (mulberry32): next() is uniform in [0, 1).
+const random = key => {
+  let s = createHash('sha256').update(key).digest().readUInt32LE(0)
+  return () => {
+    s = (s + 0x6d2b79f5) | 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32
+  }
+}
+// An integer in [lo, hi], each bound one time in 16.
+const int = (next, lo, hi) => {
+  const x = next()
+  if (x < 1 / 16) return lo
+  if (x < 1 / 8) return hi
+  return Math.min(hi, lo + Math.floor((next() + next() / 2 ** 32) * (hi - lo + 1)))
+}
+const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
+const TYPES = { int: [], bytes: [], string: ['chars'], list: ['len'], tuple: [], oneof: [], const: [] }
+
+// A domain to a generator: next => example. Throws on what the language cannot state.
+const compile = d => {
+  const bad = why => { throw new Error(`${why}: ${JSON.stringify(d)}`) }
+  const kind = d && typeof d === 'object' && !Array.isArray(d) && Object.keys(TYPES).find(k => k in d)
+  if (!kind || Object.keys(d).some(k => k !== kind && !TYPES[kind].includes(k))) bad(`want one of ${Object.keys(TYPES).join(', ')}`)
+  const range = (r, min) => Array.isArray(r) && r.length === 2 && r.every(Number.isSafeInteger) && min <= r[0] && r[0] <= r[1]
+    ? r : bad(`want [lo, hi], integers with ${min === 0 ? '0 <= ' : ''}lo <= hi`)
+  const many = (len, one) => { const [a, b] = range(len, 0); return next => Array.from({ length: int(next, a, b) }, () => one(next)) }
+  const domains = () => Array.isArray(d[kind]) && (kind === 'tuple' || d[kind].length) ? d[kind].map(compile) : bad(`want a list of domains`)
+  switch (kind) {
+    case 'int': { const [lo, hi] = range(d.int, -Infinity); return next => int(next, lo, hi) }
+    case 'bytes': return many(d.bytes, next => int(next, 0, 255))
+    case 'string': {
+      const cs = d.chars === undefined ? ASCII : typeof d.chars === 'string' && d.chars ? [...d.chars] : bad('chars: want a non-empty string')
+      const g = many(d.string, next => cs[int(next, 0, cs.length - 1)])
+      return next => g(next).join('')
+    }
+    case 'list': return many(d.len, compile(d.list))
+    case 'tuple': { const gs = domains(); return next => gs.map(g => g(next)) }
+    case 'oneof': { const gs = domains(); return next => gs[int(next, 0, gs.length - 1)](next) }
+    case 'const': return () => d.const
+  }
+}
+
+const run = (command, seed, count) => {
+  const { contracts, problems } = scan()
+  const props = []
+  for (const c of contracts.filter(c => c.domain !== null)) {
+    try {
+      const g = compile(JSON.parse(c.domain)), next = random(`${seed}:${c.id}`)
+      props.push({ ...c, examples: Array.from({ length: count }, () => g(next)) })
+    } catch (e) { problems.push(`${c.file}:${c.line + 1}: ${c.id}: domain: ${e.message}`) }
+  }
+  if (problems.length) { process.stderr.write(problems.join('\n') + '\n'); process.exit(2) }
+  const dir = mkdtempSync(join(tmpdir(), 'contracts-'))
+  try {
+    for (const p of props) writeFileSync(join(dir, `${p.id}.json`), JSON.stringify(p.examples))
+    const r = spawnSync(command[0], command.slice(1), { encoding: 'utf8', maxBuffer: 1 << 30,
+      env: { ...process.env, PROPERTY_DIR: dir, PROPERTY_SEED: String(seed), PROPERTY_EXAMPLES: String(count) } })
+    process.stdout.write(r.stdout ?? '')
+    process.stderr.write(r.stderr ?? '')
+    if (r.error) die(`${command[0]}: ${r.error.message}`)
+    const exit = r.status ?? r.signal, output = r.stdout + r.stderr
+    const reds = [], errors = []
+    for (const { id, examples } of props) {
+      const show = (i, what = '') => `example ${i}${what}, seed ${seed}: ${JSON.stringify(examples[i])}`
+      let failed
+      try { failed = readFileSync(join(dir, `${id}.failed`), 'utf8') } catch {
+        if (exit === 0) { errors.push(`${id}: no ${id}.failed after a clean exit`); continue }
+        const last = [...output.matchAll(new RegExp(`property: ${id.replace(/[.]/g, '\\.')} (\\d+)`, 'g'))].at(-1)?.[1]
+        reds.push(`${id}: red on ${last === undefined ? 'no printed example' : show(last)}; the command exited ${exit} with no ${id}.failed`)
+        continue
+      }
+      for (const s of failed.split(/\s+/).filter(Boolean)) {
+        if (!/^\d+$/.test(s) || Number(s) >= examples.length) errors.push(`${id}: ${id}.failed names example ${s}, not in ${id}.json`)
+        else reds.push(`${id}: ${show(Number(s), ' failed')}`)
+      }
+    }
+    if (exit !== 0 && !reds.length) reds.push(`the command exited ${exit}`)
+    process.stderr.write([...errors, ...reds].map(l => `contracts: ${l}\n`).join(''))
+    process.exitCode = errors.length ? 2 : reds.length ? 1 : 0
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+}
+
+const argv = process.argv.slice(2), dash = argv.indexOf('--')
 let o
-try { o = parseArgs({ allowPositionals: true, options: { check: { type: 'boolean' } } }) } catch (e) { die(e.message) }
-const [cmd, path, ...rest] = o.positionals
-if (cmd !== 'doc' || !path || rest.length) die('usage: contracts.mjs doc <path> [--check]')
-let found
-try { found = scan() } catch (e) { die(e.message) }
-const { contracts, problems } = found
-const text = render(contracts)
-if (o.values.check) {
-  let old = null
-  try { old = readFileSync(path, 'utf8') } catch {}
-  if (old !== text) problems.push(`${path}: ${old === null ? 'missing' : 'stale'}, run contracts.mjs doc ${path}`)
+try {
+  o = parseArgs({ args: dash < 0 ? argv : argv.slice(0, dash), allowPositionals: true,
+    options: { check: { type: 'boolean' }, seed: { type: 'string' }, examples: { type: 'string' } } })
+} catch (e) { die(e.message) }
+const [cmd, ...rest] = o.positionals
+const number = (k, d) => {
+  const n = Number(o.values[k] ?? d)
+  return Number.isSafeInteger(n) && n >= 0 ? n : die(`--${k} ${o.values[k]}: not a whole number`)
 }
-if (problems.length) { process.stderr.write(problems.join('\n') + '\n'); process.exit(1) }
-if (!o.values.check) {
-  try { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text) } catch (e) { die(e.message) }
-}
+try {
+  if (cmd === 'doc' && rest.length === 1 && dash < 0) doc(rest[0], o.values.check)
+  else if (cmd === 'run' && !rest.length && dash >= 0 && argv.length > dash + 1) run(argv.slice(dash + 1), number('seed', 1), number('examples', 100))
+  else die('usage: contracts.mjs doc <path> [--check] | run [--seed <n>] [--examples <n>] -- <test command>')
+} catch (e) { die(e.message) }

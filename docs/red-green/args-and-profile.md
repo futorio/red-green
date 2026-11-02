@@ -56,6 +56,28 @@ characters, a duplicate id, a malformed marker or a doc that differs from what i
 {"name": "contracts", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs doc docs/contracts.md --check", "tier": "fast"}
 ```
 
+With no property framework declared, property cases run through `run`, the same way for every language, and the project
+declares that gate too, with its test command after `--` (a pipeline goes through `sh -c`):
+
+```json
+{"name": "properties", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs run --examples 100 -- make test"}
+```
+
+A property test's marker has a second line, `domain: <json>`, in the runner's domain language: `{"int": [lo, hi]}`,
+`{"bytes": [min, max]}` (byte values as a list), `{"string": [min, max], "chars": "<alphabet>"}` (`chars` optional,
+printable ASCII by default), `{"list": <domain>, "len": [min, max]}`, `{"tuple": [<domain>, ...]}`,
+`{"oneof": [<domain>, ...]}` and `{"const": <json>}`; bounds are inclusive integers. `run` generates the examples from
+`--seed` (1 by default, so a gate is stable) and writes each contract's as a JSON array to `$PROPERTY_DIR/<id>.json`,
+sets `PROPERTY_SEED` and `PROPERTY_EXAMPLES` (`--examples`, 100 by default) and runs the command once. The test:
+
+- does nothing when its file is absent;
+- prints `property: <id> <index>` and flushes before running each example, so an abnormal exit still names it;
+- writes the indexes of its failed examples, one per line, to `$PROPERTY_DIR/<id>.failed`, empty when all passed.
+
+`run` exits 0 when all pass; 1 on a failed example, a non-zero exit, or a missing `<id>.failed` after one, red on the
+last example printed; 2 on a bad marker or domain, a missing `<id>.failed` after a clean exit, or an index not in
+`<id>.json`. stderr names the seed and each failed example.
+
 ## Placeholders
 
 Any string in `profile` may name a run value; the core fills it in from `args` before the config merge:

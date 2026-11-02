@@ -93,3 +93,100 @@ test('C06: --check passes on the doc that doc wrote, and fails on a stale or mis
   assert.equal(missing.status, 1)
   assert.match(missing.stderr, /other\.md: missing/)
 })
+
+// A repository whose test command is `node t.mjs`: it holds a contract `id` with `domain` (a JSON value, or a raw
+// string) and, when its examples file is there, copies the file to $OUT and runs `body` (examples in `ex`, failed ids
+// pushed onto `failed`), then writes `<id>.failed` unless `body` returns false.
+const property = (domain, body = '', id = 'p.a') => setup({ 't.mjs': `// contract: ${id}: a property
+// domain: ${typeof domain === 'string' ? domain : JSON.stringify(domain)}
+import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
+const file = process.env.PROPERTY_DIR + '/${id}.json'
+if (existsSync(file)) {
+  const ex = JSON.parse(readFileSync(file, 'utf8')), failed = []
+  if (process.env.OUT) copyFileSync(file, process.env.OUT)
+  const write = (() => { ${body} })()
+  if (write !== false) writeFileSync(process.env.PROPERTY_DIR + '/${id}.failed', failed.join('\\n'))
+}
+` })
+const run = (repo, args = [], env = {}) =>
+  spawnSync('node', [CLI, 'run', ...args, '--', 'node', 't.mjs'], { cwd: repo, encoding: 'utf8', env: { ...process.env, ...env } })
+const examples = (domain, args = []) => {
+  const repo = property(domain), out = join(repo, '.out.json')
+  const r = run(repo, args, { OUT: out })
+  assert.equal(r.status, 0, r.stderr)
+  return JSON.parse(readFileSync(out, 'utf8'))
+}
+
+test('R01: the same seed gives the same examples, another seed others; the count is 100 unless given', () => {
+  const d = { list: { int: [0, 1000] }, len: [0, 5] }
+  const a = examples(d)
+  assert.equal(a.length, 100)
+  assert.deepEqual(examples(d), a)
+  assert.deepEqual(examples(d, ['--seed', '7']), examples(d, ['--seed', '7']))
+  assert.notDeepEqual(examples(d, ['--seed', '7']), a)
+  assert.equal(examples(d, ['--examples', '3']).length, 3)
+})
+
+test('R02: the command sees the seed and the examples count in their variables', () => {
+  const repo = property({ int: [0, 1] }, `writeFileSync(process.env.OUT + '.env', process.env.PROPERTY_SEED + ' ' + process.env.PROPERTY_EXAMPLES)`)
+  const r = run(repo, ['--seed', '42', '--examples', '5'], { OUT: join(repo, 'o') })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(readFileSync(join(repo, 'o.env'), 'utf8'), '42 5')
+})
+
+test('R03: each domain type is generated within its bounds', () => {
+  const each = (domain, ok) => { for (const v of examples(domain)) assert.ok(ok(v), `${JSON.stringify(domain)}: ${JSON.stringify(v)}`) }
+  const ints = examples({ int: [-3, 3] })
+  assert.ok(ints.every(v => Number.isInteger(v) && v >= -3 && v <= 3), ints)
+  assert.deepEqual([...new Set(ints)].sort(), [-1, -2, -3, 0, 1, 2, 3])
+  each({ bytes: [2, 4] }, v => Array.isArray(v) && v.length >= 2 && v.length <= 4 && v.every(b => Number.isInteger(b) && b >= 0 && b <= 255))
+  each({ string: [0, 3] }, v => typeof v === 'string' && v.length <= 3 && /^[\x20-\x7e]*$/.test(v))
+  each({ string: [1, 2], chars: 'ab' }, v => /^[ab]{1,2}$/.test(v))
+  each({ list: { int: [5, 6] }, len: [1, 3] }, v => v.length >= 1 && v.length <= 3 && v.every(x => x === 5 || x === 6))
+  each({ tuple: [{ int: [0, 0] }, { string: [1, 1], chars: 'z' }] }, v => v.length === 2 && v[0] === 0 && v[1] === 'z')
+  const picks = examples({ oneof: [{ int: [0, 0] }, { const: 'x' }] })
+  assert.deepEqual([...new Set(picks)].sort(), [0, 'x'])
+})
+
+test('R04: all examples passing exits 0; a contract with no domain gets no file', () => {
+  const repo = setup({ 'a.js': '// contract: q.none: no domain here\n' })
+  writeFileSync(join(repo, 't.mjs'), `import { readdirSync } from 'node:fs'\nif (readdirSync(process.env.PROPERTY_DIR).length) process.exit(9)\n`)
+  const r = run(repo)
+  assert.equal(r.status, 0, r.stderr)
+  const ok = run(property({ int: [0, 9] }))
+  assert.equal(ok.status, 0, ok.stderr)
+})
+
+test('R05: a failed example exits 1, naming the seed and the original example', () => {
+  const repo = property({ int: [0, 9] }, `ex.forEach((v, i) => { console.log('property: p.a ' + i); if (v === 7) failed.push(i) })`)
+  const r = run(repo, ['--seed', '3'])
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: example \d+ failed, seed 3: 7\n/)
+})
+
+test('R06: an abnormal exit with no results file is red on the last printed example', () => {
+  const repo = property({ int: [0, 9] }, `ex.forEach((v, i) => { console.log('property: p.a ' + i); if (v === 7) process.exit(134) })`)
+  const r = run(repo, ['--seed', '3'])
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: red on example \d+, seed 3: 7; the command exited 134 with no p\.a\.failed/)
+})
+
+test('R07: a clean exit with no results file is an error', () => {
+  const r = run(property({ int: [0, 9] }, 'return false'))
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /p\.a: no p\.a\.failed after a clean exit/)
+})
+
+test('R08: an example id in the results file that was not in the examples file is an error', () => {
+  const r = run(property({ int: [0, 9] }, 'failed.push(ex.length)'), ['--examples', '4'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /p\.a: p\.a\.failed names example 4, not in p\.a\.json/)
+})
+
+test('R09: a domain outside the language is an error naming its marker', () => {
+  for (const d of ['{"float": [0, 1]}', '{"int": [2, 1]}', 'not json']) {
+    const r = run(property(d))
+    assert.equal(r.status, 2, d)
+    assert.match(r.stderr, /t\.mjs:2: p\.a: domain/, d)
+  }
+})
