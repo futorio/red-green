@@ -38,10 +38,10 @@ Labels are unique, since the core's stub tests key on them.
 ## Gate runner
 
 [`skills/run_gates.mjs`](../../.claude/workflows/red-green/skills/run_gates.mjs) owns gate execution for the writers, the
-gates stage, the baseline and acceptance. It runs from the worktree:
+gates stage, the baseline and acceptance. It runs the gates in `--repo`, the working directory by default:
 
 ```
-node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
+node run_gates.mjs --gates <json> --dir <run dir> [--repo <path>] [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
 ```
 
 - **Tiers** are cumulative, `round` by default: `fast` runs fast gates, `round` fast and round gates, `acceptance` all.

@@ -28,7 +28,7 @@ const GATES_SCHEMA = { type: 'object', properties: {
 // gate with no result gets one retry of the step, which picks up finished gates from the runner's cache.
 async function runGates(label, at) {
   phase('Gates')
-  const step = stage => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
+  const step = stage => call('gates', NO_CODE_PRE, 'run', { HEAD: headNow, REPO, gate_command: `node ${RUN_GATES} --gates ${sq(JSON.stringify(GATES))} --dir ${RUN} --repo ${REPO} --tier round --baseline ${sq(JSON.stringify(BASELINE))}` }, contract(READ_ONLY,
     'head: `git rev-parse HEAD`. One row per gate; a row the script printed stays as printed.',
     died('Answer')), { schema: GATES_SCHEMA, phase: 'Gates', label: stage })
   const rowIn = (res, g) => res && res.gates.find(r => r.name === g.name)

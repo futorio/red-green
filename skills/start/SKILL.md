@@ -47,9 +47,9 @@ Done when `repo` has `wf/<name>` checked out at `base` and every gitignored file
 
 ## 3. Baseline
 
-Measure the `fast` and `round` gates with the runner, from the worktree, with a Bash timeout of 10 minutes:
+Measure the `fast` and `round` gates with the runner on the worktree, with a Bash timeout of 10 minutes:
 
-`node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier round --no-cache`
+`node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --repo <repo> --tier round --no-cache`
 
 `<gates as JSON>` is `profile.blocks.gates.gates`, its commands' placeholders filled from the args
 ([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)). Exit 3: run it again. Exit 2 or a `not_run` row: stop
@@ -107,9 +107,9 @@ Done when the run's result is in.
    in `failures` then no longer counts against the fast-forward; every other entry does. Then `git status --porcelain`
    in the worktree: acceptance measures the commit that lands, so anything left skips step 4 and stops the fast-forward;
    show it to the user at step 6.
-4. Run the acceptance gates from the worktree, from scratch, with a Bash timeout of 10 minutes:
+4. Run the acceptance gates on the worktree, from scratch, with a Bash timeout of 10 minutes:
 
-   `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
+   `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --repo <repo> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
 
    Exit 3: run it again. Blocking: a row with status `red` or `not_run`, or exit 2. A `known_red` row is reported and not
    blocking.

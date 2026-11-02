@@ -95,7 +95,7 @@ You do not edit ${TARGET} or the other ticket files.`
 // The writers' one gate rule, uncached and with no baseline; with no fast gate, no word on gates.
 const writerGates = () => {
   const fast = GATES.filter(g => g.tier === 'fast')
-  return fast.length ? `\n- Before each commit run, with a Bash timeout of 600000 ms: \`node ${RUN_GATES} --gates ${sq(JSON.stringify(fast))} --dir ${RUN} --tier fast --no-cache\`. Exit 3: run it again. Then commit as is, whatever it reports.` : ''
+  return fast.length ? `\n- Before each commit run, with a Bash timeout of 600000 ms: \`node ${RUN_GATES} --gates ${sq(JSON.stringify(fast))} --dir ${RUN} --repo ${REPO} --tier fast --no-cache\`. Exit 3: run it again. Then commit as is, whatever it reports.` : ''
 }
 const PRE = noted => `${CORE_PRE(noted)}${writerGates()}
 ${BG}

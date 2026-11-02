@@ -146,7 +146,7 @@ test('W49: the gates step runs the runner on the declared gates at tier round, a
   const { calls } = await runCore({ 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', 'green', 'b')) }, 1, twoGates)
   const call = calls.find(c => c.label === 'gates:r1')
   const stage = call.prompt.split('STAGE: gates')[1].split('MAILBOX')[0]
-  assert.ok(stage.includes(`node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify(twoGates.profile.blocks.gates.gates)}' --dir /run --tier round --baseline '${JSON.stringify(twoGates.baseline)}'`), stage)
+  assert.ok(stage.includes(`node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify(twoGates.profile.blocks.gates.gates)}' --dir /run --repo /r --tier round --baseline '${JSON.stringify(twoGates.baseline)}'`), stage)
   const item = call.opts.schema.properties.gates.items
   assert.deepEqual(item.properties.name.enum, ['A', 'B'])
   assert.deepEqual(item.properties.status.enum, ['green', 'red', 'known_red', 'not_run'])
@@ -218,7 +218,7 @@ const AB = { 'gates:r1': gatesAt('bbbb111', gate('A', 'green', 'a'), gate('B', '
 test('W108: with a fast gate, implement and fix run the runner at tier fast, uncached, before each commit and commit as is', async () => {
   const { calls, result } = await runCore(Object.assign({}, AB, fixed), 2, marked(true))
   assert.deepEqual(result.gates, [{ name: 'A', command: 'make a', tier: 'fast' }, { name: 'B', command: 'make b' }])
-  const runner = `node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify([{ name: 'A', command: 'make a', tier: 'fast' }])}' --dir /run --tier fast --no-cache`
+  const runner = `node /t/.claude/workflows/red-green/skills/run_gates.mjs --gates '${JSON.stringify([{ name: 'A', command: 'make a', tier: 'fast' }])}' --dir /run --repo /r --tier fast --no-cache`
   for (const label of ['implement', 'fix:r1']) {
     const text = prompt(calls, label)
     assert.ok(text.includes(runner), label)
