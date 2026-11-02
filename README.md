@@ -1,99 +1,90 @@
 <p align="center"><img src="docs/assets/logo.svg" width="160" alt="red-green logo"></p>
 
-# red-green: research, TDD, review loop
+# red-green
 
-A Claude Code Workflow that takes one ticket or spec and hands back commits on a branch: implemented test-first,
-reviewed and fixed. Each step is a separate agent whose output the script checks, so a run cannot quietly skip tests,
-drop a requirement or finish with red gates.
+**Give Claude a ticket, get back tested, reviewed commits. A script decides it's done, not the agent.**
 
-- **Tests planned before code.** Research lists the ticket's requirements; the planner turns each into test cases, and
-  a requirement no case covers sends the plan back, then shows up in the result instead of vanishing.
-- **Reviewed after every fix.** Two review lenses, one against the ticket and one on the code, run for at least two
-  iterations; a fix agent answers every major, and the next iteration reviews it.
-- **Property tests where examples fall short.** A claim over a domain too large to list becomes a property case: the
-  test runs the property over generated inputs and must reject the wrong outputs the plan names. A project with no
-  property framework gets one in the box, the contract CLI, which generates, shrinks and checks the
-  `contract: <id>: <statement>` markers. The idea follows Anthropic's
+Agents say "done" too early: tests skipped, a requirement forgotten, a red build called green. red-green is a Claude Code
+plugin that runs one ticket through research, test-first implementation and a review-and-fix loop, with each step a
+separate agent whose output a script checks before the next one starts.
+
+> Needs the Workflow tool in Claude Code. It is enabled per account and not on every account yet.
+
+- **Can't fake done.** Gates run by a script, their status is the exit code. A run does not end green on red gates.
+- **No requirement vanishes.** Research lists the ticket's requirements; a requirement no test case covers sends the
+  plan back, and if it stays uncovered, the result says so.
+- **Property tests where examples fall short.** A claim over inputs too many to list becomes a property test, with a
+  built-in generator and shrinker for projects without a framework. Based on Anthropic's
   [property-based testing research](https://www.anthropic.com/research/property-based-testing).
-- **Configurable down to each prompt.** Every stage is a block you tune (model, rounds, gates) or replace
-  with your own prompt or skill, or start from a ready preset: `standard`, `hard`, `cheap`. Nothing is copied into the
-  project, and every run can leave a trace of time and tokens per stage.
+- **Reviewed after every fix.** Two lenses, one against the ticket and one on the code, for at least two iterations.
+  Findings on one symbol reach the fixer as one group; the next iteration checks the fix.
+- **Your branch stays safe.** The run works in its own worktree; your branch is fast-forwarded only when acceptance
+  gates pass and no major is left.
+- **Asks, doesn't stall.** Open questions from research and planning reach you while the run goes on; your answer goes
+  into the live run.
+- **Tunable.** Presets `standard`, `hard`, `cheap`; any stage's model, rounds, gates or prompt can be swapped. Every run
+  leaves a time and token trace per stage.
 
-## Requirements
-
-- Claude Code with the Workflow tool on the account (it is gated per account) and the opus, sonnet and haiku models.
-- `git`: a run works and commits in a worktree of its own.
-- `node`: setup and start check the profile, a run runs its gates, start saves the trace.
-- Optional: `gh`, for the recent GitHub Actions durations setup shows.
-
-`/red-green:setup` checks the tools with `workflow-doctor.sh` and lists the rest to confirm by hand.
-
-## Install
-
-In the project, add this repository as a marketplace (a catalog the plugin is installed from), then install the
-plugin with project scope. Both land in the project's `.claude/settings.json`, so collaborators get the same plugin:
+## Quick start
 
 ```sh
 claude plugin marketplace add --scope project futorio/red-green
 claude plugin install --scope project red-green@red-green
 ```
 
-To pin a version, add `#<tag or branch>` to the repository: `futorio/red-green#<tag>`.
+Then, in Claude Code inside the project:
 
-The project's sessions then have the workflow `/red-green:red-green-workflow` and the skills `/red-green:setup`
-and `/red-green:start`.
+1. Write the ticket as a markdown file. Tickets from [mattpocock/skills](https://github.com/mattpocock/skills)
+   (`grill-me` → `to-spec` → `to-tickets`) work best; any task statement works.
+2. `/red-green:setup` once per project: picks the gates, code rules and model preset from your CI and build files.
+3. `/red-green:start <ticket path>`: starts the run, relays its questions, and reports when it ends.
 
-To work on the plugin itself, add a local checkout instead (`marketplace add --scope project /path/to/red-green`); it
-loads in place, and an edit reaches a run from the next session. The path means nothing on another machine, so keep
-that for yourself.
+The settings land in the project's `.claude/settings.json`, so collaborators get the same plugin. Pin a version with
+`futorio/red-green#<tag>`.
 
-## Getting started
+## What you get
 
-1. Write the ticket or spec in the project, a markdown file; its path is `args.target`. It works best with tickets
-   from [mattpocock/skills](https://github.com/mattpocock/skills): `grill-me`, then `to-spec`, then `to-tickets`.
-   Any other task statement works too.
-2. Once per project, run `/red-green:setup` ([`SKILL.md`](skills/setup/SKILL.md)): it reads the project's CI, build
-   and rule files, lets you pick the gates, code rules and model preset, and writes `.claude/red-green/profile.json`.
-   It also adds a `## red-green` section to `CLAUDE.md` or `AGENTS.md`, so the project's sessions know to run
-   `/red-green:start`. It runs none of the project's commands; run it again to change the profile.
-3. Open Claude Code in the project and run `/red-green:start <ticket path>`
-   ([`SKILL.md`](skills/start/SKILL.md)). The agent checks the profile file, asks you to pick the gates if it declares
-   none, makes a worktree, measures the project's gates and their seconds, starts the run and waits for it. As research
-   and planning end, it shows you their open questions; the run does not wait for answers. Something to add while
-   it runs, an answer included: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
-4. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
-   (launching the app, say). It fast-forwards your branch once its own checks pass and no major is left over; otherwise
-   it asks you. Anything you do not like, ask it to fix in the same chat.
+The end-of-run report (illustrative):
 
-To fit the run to the project, configure its stages (model, rounds, gates, your own prompt or skill)
-or pick a model preset: [`args-and-profile.md`](docs/red-green/args-and-profile.md),
-[`blocks.md`](docs/red-green/blocks.md). A run needs declared gates; without a profile, `/red-green:start` finds them with you.
+```text
+status: done
+commits: 4 on wf/add-retry, fast-forwarded into main
+acceptance: test ✓  lint ✓  typecheck ✓
+leftover_findings: none
+advisory: 1 minor (retry.ts: backoff constant could be named)
+verify_launch: run the CLI against a flaky endpoint and watch the retries
+questions: plan: "should a 4xx be retried?" (reading: no)
+tokens: research 41k · plan 28k · implement 190k · review 2×96k · fix 54k
+```
 
-## Shape
+## How a run goes
 
-In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each in detail):
+```text
+research -> plan -> implement
+  -> iteration x rounds (3):
+       gates <-> fix   (a red gate, up to 2 attempts)
+       review          (ticket lens + code lens)
+       clean and round >= 2: leave the loop
+       fix             (not in the last iteration)
+  -> acceptance gates from scratch -> fast-forward
+```
 
-1. **Research**: the ticket's requirements and the facts of the code.
-2. **Planning**: test cases for each requirement, property cases for large domains, then the coverage check.
-3. **Implementation**, test-first.
-4. **Iterations**, at most `blocks.review.rounds` (3 by default), a number fixed at the start. Each one:
-   - **Gates**, run by a script, each one's status its exit code. A red gate goes to a fix and the gates again, up to
-     `blocks.gates.fix_attempts` (2) times, using up no iteration.
-   - **Review**: both lenses. A clean iteration at or past `blocks.review.min` (2) ends the loop.
-   - **Fix** of majors and minors together, when there is a major, and not in the last iteration; findings on one
-     file and symbol reach it as one group. Every fix is reviewed by the next iteration.
-5. **Acceptance**, in the main thread: the `acceptance` gates from scratch, then the fast-forward. A failure or a major left
-   over stops it, and the agent asks you.
+Each stage in detail: [`stages.md`](docs/red-green/stages.md).
+
+## Requirements
+
+Claude Code with the Workflow tool and the opus, sonnet and haiku models; `git`; `node`. `/red-green:setup` checks them.
 
 ## Docs
 
-- [`args-and-profile.md`](docs/red-green/args-and-profile.md): `args`, `profile`, model presets.
+- [`args-and-profile.md`](docs/red-green/args-and-profile.md): `args`, `profile`, model presets, property tests.
+- [By-hand mutation](docs/red-green/args-and-profile.md#by-hand-mutation): mutants over a commit range, to test the tests.
 - [`stages.md`](docs/red-green/stages.md): what the script does with each stage's output.
 - [`blocks.md`](docs/red-green/blocks.md): block contract, plug-ins, conformance check.
 - [`mailbox.md`](docs/red-green/mailbox.md): clarifying a live run.
 - [`result.md`](docs/red-green/result.md): the result's fields.
 - [`tracing.md`](docs/red-green/tracing.md): `trace.mjs`.
-- [`maintaining.md`](docs/red-green/maintaining.md): tests, template, new blocks and fields, prompts.
+- [`maintaining.md`](docs/red-green/maintaining.md): working on the plugin, tests, template, prompts.
 
 ## License
 

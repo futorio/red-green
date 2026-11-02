@@ -2,6 +2,19 @@
 
 Run commands from `.claude/workflows/red-green/`; the rendered script is `.claude/workflows/red-green.js`, one level up.
 
+## Local checkout
+
+To work on the plugin, add a checkout as the marketplace instead of the GitHub repository:
+
+```sh
+claude plugin marketplace add --scope project /path/to/red-green
+claude plugin install --scope project red-green@red-green
+```
+
+It loads in place. A run launched by name uses the scripts as they were at session start, so an edit reaches it from
+the next session. The path is committed with the project's settings and means nothing on another machine, so keep it
+to yourself.
+
 ## Testing
 
 ```
