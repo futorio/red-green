@@ -78,13 +78,15 @@ Claude Code with the Workflow tool and the opus, sonnet and haiku models; `git`;
 ## Docs
 
 - [`args-and-profile.md`](docs/red-green/args-and-profile.md): `args`, `profile`, model presets, property tests.
-- [By-hand mutation](docs/red-green/args-and-profile.md#by-hand-mutation): mutants over a commit range, to test the tests.
 - [`stages.md`](docs/red-green/stages.md): what the script does with each stage's output.
 - [`blocks.md`](docs/red-green/blocks.md): block contract, plug-ins, conformance check.
 - [`mailbox.md`](docs/red-green/mailbox.md): clarifying a live run.
 - [`result.md`](docs/red-green/result.md): the result's fields.
 - [`tracing.md`](docs/red-green/tracing.md): `trace.mjs`.
 - [`maintaining.md`](docs/red-green/maintaining.md): working on the plugin, tests, template, prompts.
+
+Outside a run: [by-hand mutation](docs/red-green/args-and-profile.md#by-hand-mutation), a script that applies mutant
+patches you supply over a commit range and reports which ones the tests miss.
 
 ## License
 
