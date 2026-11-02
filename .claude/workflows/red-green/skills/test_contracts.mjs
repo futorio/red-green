@@ -307,3 +307,29 @@ test('C08: doc and doc --check accept a one-line and a multi-line domain', () =>
   const r = cli(repo, 'doc', 'CONTRACTS.md', '--check')
   assert.equal(r.status, 0, r.stderr)
 })
+
+test('C09: doc and doc --check reject an unterminated or invalid domain as a malformed marker naming its line, writing nothing', () => {
+  for (const domain of ['{"record": {\n//   "x": {"int": [0, 1]}', '{"int": [2, 1]}', 'not json']) {
+    const repo = setup({ 'a.js': `// contract: a.one: one\n// domain: ${domain}\n` })
+    for (const a of [['doc', 'CONTRACTS.md'], ['doc', 'CONTRACTS.md', '--check']]) {
+      const r = cli(repo, ...a)
+      assert.equal(r.status, 1, `${a} ${domain}`)
+      assert.match(r.stderr, /^a\.js:2: a\.one: domain: malformed marker: /m, r.stderr)
+    }
+    assert.ok(!existsSync(join(repo, 'CONTRACTS.md')))
+  }
+})
+
+test('C10: in a Markdown file only <!-- opens a marker; a bullet or a heading is prose', () => {
+  const repo = setup({ 'a.md': '* contract: x.bullet: prose\n# contract: x.heading: prose\n<!-- contract: a.md: a marker -->\n',
+    'b.py': '# contract: a.py: a marker\n' })
+  const text = doc(repo)
+  assert.ok(text.includes('`a.md`') && text.includes('`a.py`'), text)
+  assert.ok(!text.includes('x.'), text)
+})
+
+test('R17: a reduction stopped by the cap of 100 reruns says so', () => {
+  const r = run(property({ list: { int: [0, 1000] }, len: [120, 120] }, 'ex.forEach((v, i) => failed.push(i))'), ['--examples', '1'])
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: example 0 reduced in 100 reruns, stopped at the cap: \[/)
+})

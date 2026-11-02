@@ -51,8 +51,10 @@ A project that keeps property contracts declares their gate itself; the core add
 [`skills/contracts.mjs`](../../.claude/workflows/red-green/skills/contracts.mjs), reads the `contract: <id>: <statement>`
 markers in the files git tracks or does not ignore, so a new test file counts before it is added. A marker is a comment:
 `contract:` follows a comment opener (`//`, `#`, `--`, `;`, `%`, `/*`, `*`, `<!--` or `(*`) at the start of the line,
-after any indent; a `contract:` line with no opener is prose and is skipped. `doc <path>` writes the doc, grouped by id prefix, and `--check` fails on a statement over 255
-characters, a duplicate id, a malformed marker or a doc that differs from what it would write:
+after any indent; in a Markdown file (`.md`) the only opener is `<!--`, so a bullet or a heading is prose. A
+`contract:` line with no opener is prose and is skipped. `doc <path>` writes the doc, grouped by id prefix; it and
+`--check` fail on a statement over 255 characters, a duplicate id or a malformed marker (a `domain:` that `run` would
+reject included), and `--check` on a doc that differs from what it would write:
 
 ```json
 {"name": "contracts", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs doc docs/contracts.md --check", "tier": "fast"}
@@ -99,7 +101,8 @@ On red, `run` reduces each red contract's first failed example. Each rerun write
 the examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward
 the lower bound, earlier `oneof` choices, a tuple or record one element or field at a time), runs the command again
 with nothing rebuilt, and keeps the first that fails;
-it stops when none fails or after 100 reruns. stderr names `<id>: example <index> reduced in <n> reruns: <json>`.
+it stops when none fails or after 100 reruns. stderr names `<id>: example <index> reduced in <n> reruns: <json>`,
+with `, stopped at the cap` after `reruns` when the 100 ran out.
 
 ## By-hand mutation
 

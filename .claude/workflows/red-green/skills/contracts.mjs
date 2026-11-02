@@ -1,11 +1,12 @@
 // Property contracts: reads the `contract: <id>: <statement>` markers in the files under the working directory that git
 // tracks or does not ignore, as text in any language. A marker is a line holding only a comment opener (// # -- ; % /* *
-// <!-- (*), then `contract:`; a closer (*/ --> *)) at its end is dropped. A `contract:` line with no opener is prose. An id is dot-separated segments of letters, digits, _ and -;
-// contracts are grouped by its first segment. A statement is 255 characters at most.
+// <!-- (*), in a Markdown file <!-- alone, then `contract:`; a closer (*/ --> *)) at its end is dropped. A `contract:`
+// line with no opener is prose. An id is dot-separated segments of letters, digits, _ and -; contracts are grouped by
+// its first segment. A statement is 255 characters at most.
 //
 // doc writes the contract doc to <path>. Exit 0 done; 1 an over-limit statement, a duplicate id or a malformed marker,
 // nothing written (stderr names each); 2 it could not run. With --check it writes nothing and also exits 1 when <path>
-// differs from what it would write.
+// differs from what it would write. A `domain:` marker that does not parse or that run would reject is malformed.
 //
 // run is the property runner for a project with no framework. A contract whose next line is a `domain: <json>` marker
 // gets --examples examples (100 by default) generated from --seed (1 by default) and its id, written as a JSON array to
@@ -20,7 +21,8 @@
 // A red contract's first failed example is then reduced: each rerun writes only that contract's file, holding the
 // examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward the
 // lower bound, earlier oneof choices, a tuple or record one element or field at a time), runs the command again and
-// keeps the first that fails, until none does or 100 reruns. stderr then names `<id>: example <example id> reduced in <n> reruns: <json>`.
+// // keeps the first that fails, until none does or 100 reruns. stderr then names `<id>: example <example id> reduced in
+// <n> reruns: <json>`, with `, stopped at the cap` after `reruns` when the 100 ran out.
 //
 // The domain language, by key: {"int": [lo, hi]}; {"bytes": [min, max]}, a list of byte values that long;
 // {"string": [min, max], "chars"?: "<alphabet>"}, printable ASCII by default; {"list": <domain>, "len": [min, max]};
@@ -30,21 +32,30 @@
 //
 //     node contracts.mjs doc <path> [--check]
 //     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
+//
+// Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile into the core's plan check.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
 const die = why => { process.stderr.write(`contracts: ${why}\n`); process.exit(2) }
-const LIMIT = 255, SHOWN = 3
-const MARKER = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)\s*contract:(.*)$/
-const CONTRACT = /^\s*([\w-]+(?:\.[\w-]+)*):\s+(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
-const COMMENT = /^\s*(\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
+export const LIMIT = 255
+const SHOWN = 3
+// A contract id: dot-separated segments of letters, digits, _ and -.
+export const ID = /[\w-]+(?:\.[\w-]+)*/
+const CONTRACT = new RegExp(String.raw`^\s*(${ID.source}):\s+(.*?)\s*(?:\*\/|-->|\*\))?\s*$`)
+// A comment line in a file: its opener, then its text with any closer dropped. A Markdown file's only opener is <!--,
+// since its bullets and headings start with * and #.
+const OPENER = String.raw`\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*`
+const COMMENT = new RegExp(String.raw`^\s*(${OPENER})(.*?)\s*(?:\*\/|-->|\*\))?\s*$`)
+const MD_COMMENT = new RegExp(COMMENT.source.replace(OPENER, '<!--'))
 // The raw text of a `domain:` marker at lines[i], or null. It continues over the following comment lines with the same
-// opener until it parses as JSON; one that never does is returned whole, for run to reject.
-const domainAt = (lines, i) => {
+// opener until it parses as JSON; one that never does is returned whole, for scan to reject.
+const domainAt = (lines, i, COMMENT) => {
   const m = COMMENT.exec(lines[i] ?? ''), d = m && /^\s*domain:(.*)$/.exec(m[2])
   if (!d) return null
   let text = d[1].trim()
@@ -57,7 +68,7 @@ const domainAt = (lines, i) => {
 }
 
 // Every marker in the tracked and unignored files: {contracts: [{id, statement, file, line, domain}], problems: [string]}. `domain` is
-// the raw text of a `domain:` marker on the next line, or null.
+// the parsed `domain:` marker on the next line, or null; one that does not parse or compile is a problem.
 const scan = () => {
   const contracts = [], problems = []
   const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean)
@@ -65,18 +76,22 @@ const scan = () => {
     let text
     try { text = readFileSync(file, 'utf8') } catch { continue } // deleted in the tree, or a submodule
     if (text.includes('\0')) continue
-    const lines = text.split(/\r?\n/)
+    const lines = text.split(/\r?\n/), comment = file.endsWith('.md') ? MD_COMMENT : COMMENT
     lines.forEach((l, i) => {
-      const m = MARKER.exec(l)
-      if (!m) return
+      const m = comment.exec(l), body = m && /^\s*contract:(.*)$/.exec(m[2])
+      if (!body) return
       const where = `${file}:${i + 1}`
-      const c = CONTRACT.exec(m[1])
+      const c = CONTRACT.exec(body[1])
       if (!c || !c[2]) return problems.push(`${where}: malformed marker, want contract: <id>: <statement>`)
       const [, id, statement] = c
       if ([...statement].length > LIMIT) problems.push(`${where}: ${id}: statement is ${[...statement].length} characters, over ${LIMIT}`)
       const twin = contracts.find(x => x.id === id)
       if (twin) problems.push(`${where}: ${id}: duplicate id, also at ${twin.file}:${twin.line}`)
-      contracts.push({ id, statement, file, line: i + 1, domain: domainAt(lines, i + 1) })
+      let domain = domainAt(lines, i + 1, comment)
+      if (domain !== null) {
+        try { domain = JSON.parse(domain); compile(domain) } catch (e) { problems.push(`${file}:${i + 2}: ${id}: domain: malformed marker: ${e.message}`) }
+      }
+      contracts.push({ id, statement, file, line: i + 1, domain })
     })
   }
   return { contracts, problems }
@@ -123,13 +138,18 @@ const int = (next, lo, hi) => {
   return Math.min(hi, lo + Math.floor((next() + next() / 2 ** 32) * (hi - lo + 1)))
 }
 const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
-const TYPES = { int: [], bytes: [], string: ['chars'], list: ['len'], tuple: [], record: [], oneof: [], const: [] }
+// Each domain kind: the other keys it takes, and its form as the plan prompt shows it.
+export const KINDS = {
+  int: [[], '{"int":[lo,hi]}'], bytes: [[], '{"bytes":[min,max]}'], string: [['chars'], '{"string":[min,max],"chars":"<alphabet>"}'],
+  list: [['len'], '{"list":<domain>,"len":[min,max]}'], tuple: [[], '{"tuple":[<domain>,...]}'], record: [[], '{"record":{"<name>":<domain>,...}}'],
+  oneof: [[], '{"oneof":[<domain>,...]}'], const: [[], '{"const":<json>}'],
+}
 
 // A domain to a generator: next => example. Throws on what the language cannot state.
-const compile = d => {
+export const compile = d => {
   const bad = why => { throw new Error(`${why}: ${JSON.stringify(d)}`) }
-  const kind = d && typeof d === 'object' && !Array.isArray(d) && Object.keys(TYPES).find(k => k in d)
-  if (!kind || Object.keys(d).some(k => k !== kind && !TYPES[kind].includes(k))) bad(`want one of ${Object.keys(TYPES).join(', ')}`)
+  const kind = d && typeof d === 'object' && !Array.isArray(d) && Object.keys(KINDS).find(k => k in d)
+  if (!kind || Object.keys(d).some(k => k !== kind && !KINDS[kind][0].includes(k))) bad(`want one of ${Object.keys(KINDS).join(', ')}`)
   const range = (r, min) => Array.isArray(r) && r.length === 2 && r.every(Number.isSafeInteger) && min <= r[0] && r[0] <= r[1]
     ? r : bad(`want [lo, hi], integers with ${min === 0 ? '0 <= ' : ''}lo <= hi`)
   const many = (len, one) => { const [a, b] = range(len, 0); return next => Array.from({ length: int(next, a, b) }, () => one(next)) }
@@ -219,11 +239,11 @@ const outcome = (id, n, dir, r) => {
 const RERUNS = 100 // ponytail: a fixed cap on reruns; make it a flag if real reductions stop short of it
 const reduce = (command, seed, p, example) => {
   const dir = mkdtempSync(join(tmpdir(), 'contracts-')), file = join(dir, `${p.id}.json`)
-  let reruns = 0
+  let reruns = 0, capped = false
   try {
-    while (reruns < RERUNS) {
+    for (;;) {
       const next = smaller(p.domain, example)
-      if (!next.length) break
+      if (!next.length || (capped = reruns === RERUNS)) break
       rmSync(join(dir, `${p.id}.failed`), { force: true })
       writeFileSync(file, JSON.stringify(next))
       const r = exec(command, dir, seed, next.length)
@@ -234,19 +254,17 @@ const reduce = (command, seed, p, example) => {
       example = next[i]
     }
   } finally { rmSync(dir, { recursive: true, force: true }) }
-  return { example, reruns }
+  return { example, reruns, capped }
 }
 
 const run = (command, seed, count) => {
   const { contracts, problems } = scan()
   const props = []
-  for (const c of contracts.filter(c => c.domain !== null)) {
-    try {
-      const domain = JSON.parse(c.domain), g = compile(domain), next = random(`${seed}:${c.id}`)
-      props.push({ ...c, domain, examples: Array.from({ length: count }, () => g(next)) })
-    } catch (e) { problems.push(`${c.file}:${c.line + 1}: ${c.id}: domain: ${e.message}`) }
-  }
   if (problems.length) { process.stderr.write(problems.join('\n') + '\n'); process.exit(2) }
+  for (const c of contracts.filter(c => c.domain !== null)) {
+    const g = compile(c.domain), next = random(`${seed}:${c.id}`)
+    props.push({ ...c, examples: Array.from({ length: count }, () => g(next)) })
+  }
   const dir = mkdtempSync(join(tmpdir(), 'contracts-'))
   try {
     for (const p of props) writeFileSync(join(dir, `${p.id}.json`), JSON.stringify(p.examples))
@@ -271,8 +289,8 @@ const run = (command, seed, count) => {
         if (!o.unknown.length) first = o.failed[0]
       }
       if (first === undefined) continue
-      const { example, reruns } = reduce(command, seed, p, examples[first])
-      reds.push(`${id}: example ${first} reduced in ${reruns} reruns: ${JSON.stringify(example)}`)
+      const { example, reruns, capped } = reduce(command, seed, p, examples[first])
+      reds.push(`${id}: example ${first} reduced in ${reruns} reruns${capped ? ', stopped at the cap' : ''}: ${JSON.stringify(example)}`)
     }
     if (exit !== 0 && !reds.length) reds.push(`the command exited ${exit}`)
     process.stderr.write([...errors, ...reds].map(l => `contracts: ${l}\n`).join(''))
@@ -280,19 +298,22 @@ const run = (command, seed, count) => {
   } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
-const argv = process.argv.slice(2), dash = argv.indexOf('--')
-let o
-try {
-  o = parseArgs({ args: dash < 0 ? argv : argv.slice(0, dash), allowPositionals: true,
-    options: { check: { type: 'boolean' }, seed: { type: 'string' }, examples: { type: 'string' } } })
-} catch (e) { die(e.message) }
-const [cmd, ...rest] = o.positionals
-const number = (k, d) => {
-  const n = Number(o.values[k] ?? d)
-  return Number.isSafeInteger(n) && n >= 0 ? n : die(`--${k} ${o.values[k]}: not a whole number`)
+const main = () => {
+  const argv = process.argv.slice(2), dash = argv.indexOf('--')
+  let o
+  try {
+    o = parseArgs({ args: dash < 0 ? argv : argv.slice(0, dash), allowPositionals: true,
+      options: { check: { type: 'boolean' }, seed: { type: 'string' }, examples: { type: 'string' } } })
+  } catch (e) { die(e.message) }
+  const [cmd, ...rest] = o.positionals
+  const number = (k, d) => {
+    const n = Number(o.values[k] ?? d)
+    return Number.isSafeInteger(n) && n >= 0 ? n : die(`--${k} ${o.values[k]}: not a whole number`)
+  }
+  try {
+    if (cmd === 'doc' && rest.length === 1 && dash < 0) doc(rest[0], o.values.check)
+    else if (cmd === 'run' && !rest.length && dash >= 0 && argv.length > dash + 1) run(argv.slice(dash + 1), number('seed', 1), number('examples', 100))
+    else die('usage: contracts.mjs doc <path> [--check] | run [--seed <n>] [--examples <n>] -- <test command>')
+  } catch (e) { die(e.message) }
 }
-try {
-  if (cmd === 'doc' && rest.length === 1 && dash < 0) doc(rest[0], o.values.check)
-  else if (cmd === 'run' && !rest.length && dash >= 0 && argv.length > dash + 1) run(argv.slice(dash + 1), number('seed', 1), number('examples', 100))
-  else die('usage: contracts.mjs doc <path> [--check] | run [--seed <n>] [--examples <n>] -- <test command>')
-} catch (e) { die(e.message) }
+if (process.argv[1] === fileURLToPath(import.meta.url)) main()
