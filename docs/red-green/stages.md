@@ -88,9 +88,11 @@ for the framework; a domain `run` cannot state keeps the case literal) and `mut`
 statement names. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`, the
 one exception to one Act and single literals. It may go through a lower seam than `how` names when that one costs too
 much per example, saying so; a literal case keeps the named seam. The script accepts as `source` only a requirement id
-or a listed fact's `where` (any one location of a list). A bad source or an over-limit statement joins the replan's
-reasons, the latter told to split into flat property contracts sharing an id prefix; a case still failing after the
-replan is dropped (logged), and what it leaves uncovered goes to `uncovered_requirements`. Research does not change.
+or a listed fact's `where` (any one location of a list), and checks the rest by the contract CLI's own id pattern,
+limit and domain compiler. A bad source, an id outside the marker form, an over-limit or multi-line statement, a domain
+`run` would reject (with no framework) or an empty `mut` joins the replan's reasons, an over-limit statement told to
+split into flat property contracts sharing an id prefix; a case still failing after the replan is dropped (logged), and
+what it leaves uncovered goes to `uncovered_requirements`. Research does not change.
 
 **Limit on tests:** plan's rules and the code lens hold one list, the `plan` default's `limit` part. Worth testing:
 requirement behaviour, invariant, boundary, error, regression. Banned: doc and message wording, constants, private

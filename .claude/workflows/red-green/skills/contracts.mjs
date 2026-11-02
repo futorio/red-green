@@ -33,7 +33,8 @@
 //     node contracts.mjs doc <path> [--check]
 //     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
 //
-// Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile into the core's plan check.
+// Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile (with int and ASCII) into the core's plan
+// check.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -51,17 +52,17 @@ const CONTRACT = new RegExp(String.raw`^\s*(${ID.source}):\s+(.*?)\s*(?:\*\/|-->
 // A comment line in a file: its opener, then its text with any closer dropped. A Markdown file's only opener is <!--,
 // since its bullets and headings start with * and #.
 const OPENER = String.raw`\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*`
-const COMMENT = new RegExp(String.raw`^\s*(${OPENER})(.*?)\s*(?:\*\/|-->|\*\))?\s*$`)
-const MD_COMMENT = new RegExp(COMMENT.source.replace(OPENER, '<!--'))
+const comment = opener => new RegExp(String.raw`^\s*(${opener})(.*?)\s*(?:\*\/|-->|\*\))?\s*$`)
+const COMMENT = comment(OPENER), MD_COMMENT = comment('<!--')
 // The raw text of a `domain:` marker at lines[i], or null. It continues over the following comment lines with the same
 // opener until it parses as JSON; one that never does is returned whole, for scan to reject.
-const domainAt = (lines, i, COMMENT) => {
-  const m = COMMENT.exec(lines[i] ?? ''), d = m && /^\s*domain:(.*)$/.exec(m[2])
+const domainAt = (lines, i, re) => {
+  const m = re.exec(lines[i] ?? ''), d = m && /^\s*domain:(.*)$/.exec(m[2])
   if (!d) return null
   let text = d[1].trim()
   for (let j = i + 1; ; j++) {
     try { JSON.parse(text); return text } catch {}
-    const c = COMMENT.exec(lines[j] ?? '')
+    const c = re.exec(lines[j] ?? '')
     if (!c || c[1] !== m[1]) return text
     text += '\n' + c[2]
   }
@@ -76,9 +77,9 @@ const scan = () => {
     let text
     try { text = readFileSync(file, 'utf8') } catch { continue } // deleted in the tree, or a submodule
     if (text.includes('\0')) continue
-    const lines = text.split(/\r?\n/), comment = file.endsWith('.md') ? MD_COMMENT : COMMENT
+    const lines = text.split(/\r?\n/), re = file.endsWith('.md') ? MD_COMMENT : COMMENT
     lines.forEach((l, i) => {
-      const m = comment.exec(l), body = m && /^\s*contract:(.*)$/.exec(m[2])
+      const m = re.exec(l), body = m && /^\s*contract:(.*)$/.exec(m[2])
       if (!body) return
       const where = `${file}:${i + 1}`
       const c = CONTRACT.exec(body[1])
@@ -87,7 +88,7 @@ const scan = () => {
       if ([...statement].length > LIMIT) problems.push(`${where}: ${id}: statement is ${[...statement].length} characters, over ${LIMIT}`)
       const twin = contracts.find(x => x.id === id)
       if (twin) problems.push(`${where}: ${id}: duplicate id, also at ${twin.file}:${twin.line}`)
-      let domain = domainAt(lines, i + 1, comment)
+      let domain = domainAt(lines, i + 1, re)
       if (domain !== null) {
         try { domain = JSON.parse(domain); compile(domain) } catch (e) { problems.push(`${file}:${i + 2}: ${id}: domain: malformed marker: ${e.message}`) }
       }
@@ -131,13 +132,13 @@ const random = key => {
   }
 }
 // An integer in [lo, hi], each bound one time in 16.
-const int = (next, lo, hi) => {
+export const int = (next, lo, hi) => {
   const x = next()
   if (x < 1 / 16) return lo
   if (x < 1 / 8) return hi
   return Math.min(hi, lo + Math.floor((next() + next() / 2 ** 32) * (hi - lo + 1)))
 }
-const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
+export const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
 // Each domain kind: the other keys it takes, and its form as the plan prompt shows it.
 export const KINDS = {
   int: [[], '{"int":[lo,hi]}'], bytes: [[], '{"bytes":[min,max]}'], string: [['chars'], '{"string":[min,max],"chars":"<alphabet>"}'],

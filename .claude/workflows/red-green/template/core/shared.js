@@ -22,7 +22,7 @@ function validate(schema, value) {
     const out = []
     if (s.enum && !s.enum.includes(v)) out.push(`${at}: ${JSON.stringify(v)} not in ${JSON.stringify(s.enum)}`)
     if (typeof v === 'string' && s.pattern && !new RegExp(s.pattern).test(v)) out.push(`${at}: ${JSON.stringify(v)} does not match ${s.pattern}`)
-    if (typeof v === 'string' && v.length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
+    if (typeof v === 'string' && [...v].length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
     if (kind === 'array') {
       if (v.length < s.minItems) out.push(`${at}: fewer than ${s.minItems} items`)
       if (s.items) v.forEach((x, i) => out.push(...errors(s.items, x, `${at}[${i}]`)))

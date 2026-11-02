@@ -8,6 +8,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ASCII, ID, KINDS, LIMIT, compile, int } from '../skills/contracts.mjs'
 
 const here = name => new URL(name, import.meta.url)
 
@@ -54,6 +55,11 @@ export function defaults(dir) {
     [b, Object.fromEntries(Object.entries(parts).map(([p, text]) => [p, expand(text, [`${b} ${p}`])]))]))
 }
 const CORE_DIR = fileURLToPath(here('core/'))
+const CONTRACTS = `(() => {
+  const ASCII = ${JSON.stringify(ASCII)}, KINDS = ${JSON.stringify(KINDS)}, int = ${int}
+  const compile = ${compile}
+  return { LIMIT: ${LIMIT}, ID: new RegExp(${JSON.stringify(`^(?:${ID.source})$`)}), KINDS, compile }
+})()`
 const TEMPLATE = template(CORE_DIR)
 const DEFAULT_TEXTS = defaults(fileURLToPath(here('defaults/')))
 // Code of the core's own, the code the script runs: its validator, for the tests and the conformance check, and its
@@ -67,14 +73,14 @@ export const REGISTRY = fromCore(['shared validate', 'research schema', 'plan sc
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
-// The render-time slots are {{blocks}} and {{defaults}}, the inlined default instructions; every other {{path}} is a
-// run-time template variable.
+// The render-time slots are {{blocks}}, {{defaults}}, the inlined default instructions, and {{contracts}}, the contract
+// CLI's statement limit, id pattern, domain kinds and domain compiler; every other {{path}} is a run-time template variable.
 export function render(config) {
   for (const k of Object.keys(config)) if (!(k in DEFAULT)) throw new Error(`unknown config key: ${k}`)
   const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks, REGISTRY)
   if (errors.length) throw new Error(errors.join('; '))
-  const slots = { blocks: merged, defaults: DEFAULT_TEXTS }
-  return TEMPLATE.replace(/\{\{(blocks|defaults)\}\}/g, (_, slot) => JSON.stringify(slots[slot]))
+  const slots = { blocks: JSON.stringify(merged), defaults: JSON.stringify(DEFAULT_TEXTS), contracts: CONTRACTS }
+  return TEMPLATE.replace(/\{\{(blocks|defaults|contracts)\}\}/g, (_, slot) => slots[slot])
 }
 
 // A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of the

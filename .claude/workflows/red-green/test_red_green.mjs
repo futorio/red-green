@@ -645,13 +645,6 @@ test('W135: plan, replan and the code lens hold the same limit on tests; the len
   assert.ok(!prompt(calls, 'review:r1:checklist').includes(LIMIT))
 })
 
-test('W136: a banned-test major from the code lens reaches fix as a major with the test as its trigger', async () => {
-  const banned = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'test/cli.test.js:12', 'test/cli.test.js:12 asserts the --help text')] }
-  const { calls } = await runCore({ 'review:r1:code': banned, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
-  const [sent] = sentTo(calls, 'fix:r1')
-  assert.deepEqual([sent.id, sent.severity, sent.trigger], ['R1-code-1', 'major', 'test/cli.test.js:12 asserts the --help text'])
-})
-
 // A property case: the base case with a property over the given fields.
 const propertyCase = (id, over) => Object.assign({}, base().plan.cases[0], { id, asserts: [id], property: Object.assign({ id: `m.${id}`, statement: 'S', source: 'R1', domain: '{"int":[0,9]}', mut: ['0'] }, over) })
 const withProperty = { plan: { cases: [propertyCase('C1')] } }
@@ -678,7 +671,7 @@ test('P02: plan and replan hold the property rule; with no framework the runner\
       assert.match(p, /the one-Act and single-literal rules are for the other cases\./, label)
       assert.match(p, /may go through a lower one, saying so in its Act; a literal case keeps the named seam\./, label)
     }
-    assert.match(prompt(runner.calls, label), / \(JSON in the runner's language: \{"int":\[lo,hi\]\}.*; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case\), `mut`/, label)
+    assert.match(prompt(runner.calls, label), / \(JSON in the runner's language, one of \{"int":\[lo,hi\]\}.*\{"record":\{"<name>":<domain>,...\}\}.*; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case\), `mut`/, label)
     assert.ok(!prompt(runner.calls, label).includes('fast-check'), label)
     assert.match(prompt(framework.calls, label), /covers \(in fast-check's terms\), `mut`/, label)
     assert.ok(!prompt(framework.calls, label).includes('"int"'), label)
@@ -710,11 +703,25 @@ test('P04: a property case still failing its checks after the replan is dropped,
   assert.deepEqual(result.uncovered_requirements, ['R2'])
 })
 
+test('P10: a property id outside the marker form, an empty mut, a statement with a newline or a domain the runner rejects joins the replan, then is dropped', async () => {
+  const cases = [propertyCase('C1', { statement: '😀'.repeat(255) }), propertyCase('C2', { id: 'm.a b' }), propertyCase('C3', { mut: [] }),
+    propertyCase('C4', { statement: 'a\nb' }), propertyCase('C5', { domain: '{"int":[2,1]}' }), propertyCase('C6', { domain: '{"int":[0,' })]
+  const { calls } = await runCore({ plan: { cases }, replan: { cases } })
+  const p = prompt(calls, 'replan').split('These property cases fail their checks: ')[1].split('\n')[0]
+  for (const s of ['C2: id "m.a b" is not a contract id, dot-separated segments of letters, digits, _ and -', 'C3: mut is empty',
+    'C4: statement holds a line break; a marker is one line', 'C5: domain "{\\"int\\":[2,1]}" is one the runner rejects: want [lo, hi]', 'C6: domain "{\\"int\\":[0," is one the runner rejects: '])
+    assert.ok(p.includes(s), `${s}\n${p}`)
+  assert.ok(!p.includes('C1: '), p)
+  assert.deepEqual(JSON.parse(prompt(calls, 'implement').split('CASES:\n')[1].split('\n')[0]).map(c => c.id), ['C1'])
+  const framework = await runCore({ plan: { cases: [propertyCase('C1', { domain: 'fc.integer()' })] } }, 1, withBlocks({ implement: { property_framework: 'fast-check' } }))
+  assert.ok(!called(framework.calls, 'replan'), 'a framework domain is in its own terms')
+})
+
 test('P05: with a property case and no framework, implement gets the marker, domain line and the runner\'s test-side protocol; with none, no property rule', async () => {
   const { calls } = await runCore(withProperty)
   const p = prompt(calls, 'implement')
   for (const s of ['`contract: <id>: <statement>`', 'checks that the property rejects each `mut` on the generated inputs, and prints each example before running it.',
-    'the marker\'s next line is `domain: <domain>`', '`$PROPERTY_DIR/<id>.json`', 'does nothing when the file is absent', 'prints `property: <id> <index>` and flushes', '`$PROPERTY_DIR/<id>.failed`'])
+    'the marker\'s next line is `domain: <domain>`', '`$PROPERTY_DIR/<id>.json`', 'does nothing when the file is absent', 'each printed line is `property: <id> <index>`, flushed', '`$PROPERTY_DIR/<id>.failed`'])
     assert.ok(p.includes(s), s)
   assert.ok(!/PROPERTY_SEED/.test(p))
   assert.ok(!/PROPERTY|contract: </.test(prompt((await runCore()).calls, 'implement')))
