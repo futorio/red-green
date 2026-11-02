@@ -44,11 +44,13 @@ test('C01: doc reads the marker in several comment forms and groups contracts by
   at('`parse.int`: parse accepts every decimal integer (a.js)')
 })
 
-test('C02: a marker in an untracked file is ignored', () => {
-  const repo = setup({ 'a.js': '// contract: a.kept: kept\n' }, { 'b.js': '// contract: a.untracked: not tracked\n' })
+test('C02: a marker in an untracked file is read; one in an ignored file is not', () => {
+  const repo = setup({ 'a.js': '// contract: a.kept: kept\n', '.gitignore': 'out/\n' },
+    { 'b.js': '// contract: a.untracked: not tracked\n', 'out/c.js': '// contract: a.ignored: ignored\n' })
   const text = doc(repo)
   assert.ok(text.includes('`a.kept`'), text)
-  assert.ok(!text.includes('a.untracked'), text)
+  assert.ok(text.includes('`a.untracked`'), text)
+  assert.ok(!text.includes('a.ignored'), text)
 })
 
 test('C03: a statement of 255 characters passes; one of 256 fails, writing nothing', () => {
@@ -92,6 +94,13 @@ test('C06: --check passes on the doc that doc wrote, and fails on a stale or mis
   const missing = cli(repo, 'doc', 'other.md', '--check')
   assert.equal(missing.status, 1)
   assert.match(missing.stderr, /other\.md: missing/)
+})
+
+test('C07: a contract: line with no comment opener is prose, not a marker', () => {
+  const repo = setup({ 'a.md': 'The renderer keeps one\ncontract:\nwith its caller.\n  contract: x.y: also prose\n', 'b.js': '// contract: a.one: one\n' })
+  const text = doc(repo)
+  assert.ok(text.includes('`a.one`'), text)
+  assert.ok(!text.includes('x.y'), text)
 })
 
 // A repository whose test command is `node t.mjs`: it holds a contract `id` with `domain` (a JSON value, or a raw
@@ -189,4 +198,11 @@ test('R09: a domain outside the language is an error naming its marker', () => {
     assert.equal(r.status, 2, d)
     assert.match(r.stderr, /t\.mjs:2: p\.a: domain/, d)
   }
+})
+
+test('R10: a red run names the first 3 failed examples of a contract and counts the rest', () => {
+  const r = run(property({ int: [0, 9] }, 'ex.forEach((v, i) => failed.push(i))'), ['--examples', '10'])
+  assert.equal(r.status, 1, r.stderr)
+  assert.equal(r.stderr.match(/p\.a: example \d+ failed/g).length, 3, r.stderr)
+  assert.match(r.stderr, /p\.a: 7 more failed examples\n/)
 })

@@ -49,7 +49,9 @@ The gates a run declares:
 
 A project that keeps property contracts declares their gate itself; the core adds none. The contract CLI,
 [`skills/contracts.mjs`](../../.claude/workflows/red-green/skills/contracts.mjs), reads the `contract: <id>: <statement>`
-markers in tracked files; `doc <path>` writes the doc, grouped by id prefix, and `--check` fails on a statement over 255
+markers in the files git tracks or does not ignore, so a new test file counts before it is added. A marker is a comment:
+`contract:` follows a comment opener (`//`, `#`, `--`, `;`, `%`, `/*`, `*`, `<!--` or `(*`) at the start of the line,
+after any indent; a `contract:` line with no opener is prose and is skipped. `doc <path>` writes the doc, grouped by id prefix, and `--check` fails on a statement over 255
 characters, a duplicate id, a malformed marker or a doc that differs from what it would write:
 
 ```json
@@ -78,7 +80,7 @@ sets `PROPERTY_SEED` and `PROPERTY_EXAMPLES` (`--examples`, 100 by default) and 
 
 `run` exits 0 when all pass; 1 on a failed example, a non-zero exit, or a missing `<id>.failed` after one, red on the
 last example printed; 2 on a bad marker or domain, a missing `<id>.failed` after a clean exit, or an index not in
-`<id>.json`. stderr names the seed and each failed example.
+`<id>.json`. stderr names the seed and the first 3 failed examples of each contract, then counts the rest.
 
 ## By-hand mutation
 
