@@ -3,7 +3,11 @@
  "findings": [
   {
    "severity": "major",
-   "where": "docs/adr/0003-model-intel-rsqrtss.md (not in the diff); docs/coop/data-setup.md:40",
+   "where": {
+    "file": "docs/coop/data-setup.md",
+    "symbol": "",
+    "lines": "40"
+   },
    "problem": "Nothing in the diff records the RSQRTSS measurement or the full x86_64 P0 result. ADR 0003 is untouched and has no x86_64 with-model / without-model result. No retail N of 108 for x86_64 is stated anywhere, and no failing fixture is named. data-setup.md:40 still says 'the full corpus passes 108 of 108' without naming the build that result came from. The gate lines show only `check-p0.py --sample --seed 1` (17 of 17) on x86_64, and /work/run holds no corpus output.",
    "trigger": "Ticket checklist items 'RSQRTSS measurement: the full corpus on x86_64 with and without the model … otherwise the model stays and the result is recorded in ADR 0003' and 'Full P0 check suite on x86_64: … retail result stated as N of 108 with every failing fixture named'. Read ADR 0003 at HEAD 071900d.",
    "consequence": "The ticket ships without its keep-or-retire decision for the model, with nothing to back it. The claim that every fixture passing on i386 also passes on x86_64 is never shown, so the upstream native-layout ECL push copy (EclRunHigh.inl:569-572, 0x228 of 0x280 bytes) could cost fixtures and nobody would see it.",
@@ -11,7 +15,11 @@
   },
   {
    "severity": "minor",
-   "where": "scripts/coop/build-arch.sh:12",
+   "where": {
+    "file": "scripts/coop/build-arch.sh",
+    "symbol": "",
+    "lines": "12"
+   },
    "problem": "`TH08_PORTABLE_BUILD_DIR` from the caller's environment takes precedence over the `TH08_LINUX_BUILD_DIR` that mutate.py and coverage-map.py pass. With it exported, those tools build somewhere else and then read a missing `build/mutate` or `build/coverage` binary.",
    "trigger": "`export TH08_PORTABLE_BUILD_DIR=build/foo; python3 scripts/coop/coverage-map.py`",
    "consequence": "coverage-map runs a binary that does not exist and gives every fixture no entry; mutate.py's shutil.copy raises.",

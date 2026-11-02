@@ -10,7 +10,7 @@ whitespace: some notes start with a space or a blank line, the test-case review 
 {{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.
 {{> review frame}}
 <!-- @part head -->
-STAGE: review, round {{round}} of at most {{rounds}}. Lens:
+STAGE: review, round {{round}} of at most {{rounds}}.{{retry_note}} Lens:
 <!-- @part frame -->
 The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}
 GATES:
@@ -18,6 +18,8 @@ GATES:
 Compare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.
 {{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}
 {{> research section}}
+<!-- @part retry_note -->
+ A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed.
 <!-- @part verify_review_note -->
  These have no test and are checked only by you: {{verify_review}}.
 <!-- @part unverified_note -->

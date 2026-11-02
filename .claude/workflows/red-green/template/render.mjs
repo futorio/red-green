@@ -139,7 +139,7 @@ export async function conform(source, kase, label, output) {
     if (!l.startsWith('fix:')) return null
     const given = values.findings
     sent.push(...given.map(f => Object.assign({ sent_to: l }, f)))
-    return { applied: [], rejected: given.map(f => ({ id: f.id, argument: 'conformance stub' })), proofs: given.filter(f => f.proof).map(f => ({ id: f.id, path: f.proof.path, outcome: 'deleted' })), head: 'HEAD' }
+    return { applied: [], rejected: given.map(f => ({ id: f.id, argument: 'conformance stub' })), proofs: given.flatMap(f => (f.views || [f]).filter(v => v.proof).map(v => ({ id: f.id, path: v.proof.path, outcome: 'deleted' }))), head: 'HEAD' }
   }
   const report = { label, schema_errors: validate(schema, output) }
   try {

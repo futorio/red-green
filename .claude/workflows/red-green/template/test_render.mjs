@@ -183,8 +183,8 @@ test('T19: --conform passes a recorded real output and reports what the script m
   assert.deepEqual(report.schema_errors, [])
   assert.deepEqual(report.failures, [])
   assert.equal(report.status, 'done')
-  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id, f.severity, f.where]), [['fix:r1', 'R1-code-1', 'major', 'docs/adr/0003-model-intel-rsqrtss.md (not in the diff); docs/coop/data-setup.md:40'],
-    ['fix:r1', 'R1-code-2', 'minor', 'scripts/coop/build-arch.sh:12']])
+  assert.deepEqual(report.findings.map(f => [f.sent_to, f.id, f.severity, f.where]), [['fix:r1', 'R1-code-1', 'major', { file: 'docs/coop/data-setup.md', symbol: '', lines: '40' }],
+    ['fix:r1', 'R1-code-2', 'minor', { file: 'scripts/coop/build-arch.sh', symbol: '', lines: '12' }]])
   assert.deepEqual(report.advisory.map(f => f.id), ['R1-code-2'])
   assert.deepEqual(report.verdicts.filter(v => v.lens === 'code').map(v => [v.round, v.verdict, v.count]), [[1, 'findings', 2], [2, 'clean', 0]])
 })
@@ -198,8 +198,8 @@ test('T20: --conform fails a drifted output, naming its schema errors and what t
   assert.equal(code, 1)
   assert.deepEqual(report.schema_errors, ['$.findings[0].severity: "blocker" not in ["major","minor"]'])
   assert.equal(report.status, 'done_with_failures')
-  // The blocker reaches the fix's input check, which fails that fix before its call.
-  assert.deepEqual(report.failures, ['review r1 code silent: no checked rows', 'fix:r1 input: $.findings[0].severity: "blocker" not in ["major","minor"]', 'fix r1'])
+  // The blocker reaches the fix's input check, a finding or a group, which fails that fix before its call.
+  assert.deepEqual(report.failures, ['review r1 code silent: no checked rows', 'fix:r1 input: $.findings[0]: matches no anyOf branch', 'fix r1'])
   // A renamed field the script reads: the run itself breaks, and the report says where.
   const renamed = recorded()
   renamed.rows = renamed.checked
@@ -226,36 +226,36 @@ test('T21: --conform reads a fix\'s findings and the checklist\'s ids from the c
 // (a prompt wrapping {{default}}).
 const G = [{ name: 'gates', command: 'GATES' }]
 const met = id => ({ verdict: 'clean', findings: [], checked: [{ item: id, evidence: 'e', status: 'met', promise: 'p', counterexample: 'c' }] })
-const said = (severity, where, proof) => Object.assign({ severity, where, problem: `P-${where}`, trigger: 't', consequence: 'c', fix: 'f' }, proof && { proof: { path: `t/${where}.test`, command: 'npm t', red: 'red' } })
+const said = (severity, where, proof) => Object.assign({ severity, where: { file: where, symbol: '' }, problem: `P-${where}`, trigger: 't', consequence: 'c', fix: 'f' }, proof && { proof: { path: `t/${where}.test`, command: 'npm t', red: 'red' } })
 const findings = (...fs) => ({ verdict: 'findings', findings: fs, checked: [{ item: 'x', evidence: 'e' }] })
 const fixedAt = (id, what, head, proof) => ({ applied: [{ id, what }], rejected: [], proofs: proof ? [{ id, path: proof, outcome: 'deleted' }] : [], head })
 const propertyCase = over => ({ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'], property: Object.assign({ id: 'm.p', statement: 'S', source: 'R1', domain: '{"int":[0,9]}', mut: ['0'] }, over) })
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: cleanRounds },
-    { research: '6911c78e1828d634', plan: 'f7c0efecb35779d6', implement: 'b70304504af9e0b3', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': '3e3bf11d116926dd',
-      'review:r1:code': '67fc9466f40aa44a', 'review:r2:checklist': 'b3b8c70f59dd4595', 'review:r2:code': '8c46768874fa9b3d' }],
+    { research: '6911c78e1828d634', plan: 'f7c0efecb35779d6', implement: 'b70304504af9e0b3', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': '56cbb614083a8e75',
+      'review:r1:code': 'd023e561fe1501a9', 'review:r2:checklist': '3d84f4320d0e730c', 'review:r2:code': 'ba1baae727d60632' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
   results: { 'review:r1:checklist': met('R1'), 'review:r1:code': findings(said('major', 'a.js:1', true), said('minor', 'b.js:2')),
     'fix:r1': fixedAt('R1-code-1', 'w', 'H2', 't/a.js:1.test'), 'review:r2:checklist': met('R1'), 'review:r2:code': findings(said('major', 'c.js:3', true)),
     'fix:r2': fixedAt('R2-code-1', 'w2', 'H3', 't/c.js:3.test'), 'review:r3:checklist': met('R1'), 'review:r3:code': met('x') } },
-  { research: 'dfecb403802054b6', implement: '9fa45e6e544de090', 'review:r1:code': '449f317414f53ed9', 'fix:r1': '634c0a64f4b2b9c8', 'gates:r2': 'ec557ef7a7440410',
-    'review:r2:checklist': 'c859c83537130992', 'review:r2:code': '0ec1a28b969e581e', 'fix:r2': '576fd3df0faaf430', 'gates:r3': '55ddb5b9561e34cc',
-    'review:r3:checklist': '790e387cee27a7ba', 'review:r3:code': 'ea600bd08c7758c0' }],
+  { research: 'dfecb403802054b6', implement: '9fa45e6e544de090', 'review:r1:code': 'eb703b722c326922', 'fix:r1': '3ef8011dbf879897', 'gates:r2': 'ec557ef7a7440410',
+    'review:r2:checklist': 'c001419e6ff632fd', 'review:r2:code': '8ad2162c4edc431c', 'fix:r2': '6ce207b5e6e2027d', 'gates:r3': '55ddb5b9561e34cc',
+    'review:r3:checklist': '0338a57dbd846f80', 'review:r3:code': '1351e757a7f7dfda' }],
   replan: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: {
     research: { requirements: ['R1: one', 'R2: two', 'R3: three'], facts: [], plan: ['step'], test_harness: [{ requirement: 'R1', by: 'test', how: 'h' }, { requirement: 'R2', by: 'test', how: 'h' }, { requirement: 'R3', by: 'review', how: 'h' }] },
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: '4a0e88ce1b221151', 'implement:retry': '02123538d71a26a0', 'review:r1:checklist': '3cdbad0e09563efa', 'review:r1:code': '8ef453d1628e5c58' }],
+  { replan: '4a0e88ce1b221151', 'implement:retry': '02123538d71a26a0', 'review:r1:checklist': '821196ceab8323ca', 'review:r1:code': '98608e2f09eec21a' }],
   property: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: Object.assign({ plan: { cases: [propertyCase({ source: 'nowhere' })], questions: [] },
     replan: { cases: [propertyCase({})], questions: [] } }, cleanRounds) },
-  { replan: '7c1759791a729ec7', implement: '779061f7ae5bc281', 'review:r1:code': '0ecbd15abf491805' }],
+  { replan: '7c1759791a729ec7', implement: '779061f7ae5bc281', 'review:r1:code': '9a1f80727c2870b0' }],
   framework: [{ args: { profile: { blocks: { gates: { gates: G }, implement: { property_framework: 'fast-check' } } } }, results: Object.assign({ plan: { cases: [propertyCase({})], questions: [] } }, cleanRounds) },
     { plan: '27ab49ac00f35b66', implement: '96c71bddd5bfe627' }],
   order: [{ args: { profile: { blocks: { gates: { gates: G }, review: { duties: { order: true } } } } }, results: cleanRounds },
-    { 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:code': 'aef39699277e3be5' }],
+    { 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:code': '05f6d3773c0b0504' }],
 }
 
 test('T22: the default render\'s prompts are these', async () => {
