@@ -10,6 +10,11 @@ drop a requirement or finish with red gates.
   a requirement no case covers sends the plan back, then shows up in the result instead of vanishing.
 - **Reviewed after every fix.** Two review lenses, one against the ticket and one on the code, run for at least two
   iterations; a fix agent answers every major, and the next iteration reviews it.
+- **Property tests where examples fall short.** A claim over a domain too large to list becomes a property case: the
+  test runs the property over generated inputs and must reject the wrong outputs the plan names. A project with no
+  property framework gets one in the box, the contract CLI, which generates, shrinks and checks the
+  `contract: <id>: <statement>` markers. The idea follows Anthropic's
+  [property-based testing research](https://www.anthropic.com/research/property-based-testing).
 - **Configurable down to each prompt.** Every stage is a block you tune (model, rounds, gates) or replace
   with your own prompt or skill, or start from a ready preset: `standard`, `hard`, `cheap`. Nothing is copied into the
   project, and every run can leave a trace of time and tokens per stage.
@@ -26,26 +31,21 @@ drop a requirement or finish with red gates.
 ## Install
 
 In the project, add this repository as a marketplace (a catalog the plugin is installed from), then install the
-plugin with project scope. Both land in the project's `.claude/settings.json`.
-
-Local, from a checkout on this machine; the plugin loads in place. A run launched by name from another project uses the
-scripts as they were at session start, so an edit to the checkout reaches it from the next session. The path is committed with the settings and means nothing on another machine, so this is for yourself:
+plugin with project scope. Both land in the project's `.claude/settings.json`, so collaborators get the same plugin:
 
 ```sh
-claude plugin marketplace add --scope project /path/to/red-green
+claude plugin marketplace add --scope project futorio/red-green
 claude plugin install --scope project red-green@red-green
 ```
 
-Remote, from the git repository; Claude Code clones it, and collaborators get the same plugin. Pin a version with
-`#<tag or branch>`:
-
-```sh
-claude plugin marketplace add --scope project <git url or owner/repo>#<tag or branch>
-claude plugin install --scope project red-green@red-green
-```
+To pin a version, add `#<tag or branch>` to the repository: `futorio/red-green#<tag>`.
 
 The project's sessions then have the workflow `/red-green:red-green-workflow` and the skills `/red-green:setup`
 and `/red-green:start`.
+
+To work on the plugin itself, add a local checkout instead (`marketplace add --scope project /path/to/red-green`); it
+loads in place, and an edit reaches a run from the next session. The path means nothing on another machine, so keep
+that for yourself.
 
 ## Getting started
 
@@ -58,8 +58,9 @@ and `/red-green:start`.
    `/red-green:start`. It runs none of the project's commands; run it again to change the profile.
 3. Open Claude Code in the project and run `/red-green:start <ticket path>`
    ([`SKILL.md`](skills/start/SKILL.md)). The agent checks the profile file, asks you to pick the gates if it declares
-   none, makes a worktree, measures the project's gates and their seconds, starts the run and waits for it. Something to add while
-   it runs: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
+   none, makes a worktree, measures the project's gates and their seconds, starts the run and waits for it. As research
+   and planning end, it shows you their open questions; the run does not wait for answers. Something to add while
+   it runs, an answer included: tell the agent, it passes it on ([`mailbox.md`](docs/red-green/mailbox.md)).
 4. When the run ends, the agent reports the commits, any finding left over and the checks only a person can make
    (launching the app, say). It fast-forwards your branch once its own checks pass and no major is left over; otherwise
    it asks you. Anything you do not like, ask it to fix in the same chat.
@@ -73,14 +74,14 @@ or pick a model preset: [`args-and-profile.md`](docs/red-green/args-and-profile.
 In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each in detail):
 
 1. **Research**: the ticket's requirements and the facts of the code.
-2. **Planning**: test cases for each requirement, then the coverage check.
+2. **Planning**: test cases for each requirement, property cases for large domains, then the coverage check.
 3. **Implementation**, test-first.
 4. **Iterations**, at most `blocks.review.rounds` (3 by default), a number fixed at the start. Each one:
    - **Gates**, run by a script, each one's status its exit code. A red gate goes to a fix and the gates again, up to
      `blocks.gates.fix_attempts` (2) times, using up no iteration.
    - **Review**: both lenses. A clean iteration at or past `blocks.review.min` (2) ends the loop.
-   - **Fix** of majors and minors together, when there is a major, and not in the last iteration:
-     every fix is reviewed by the next one.
+   - **Fix** of majors and minors together, when there is a major, and not in the last iteration; findings on one
+     file and symbol reach it as one group. Every fix is reviewed by the next iteration.
 5. **Acceptance**, in the main thread: the `acceptance` gates from scratch, then the fast-forward. A failure or a major left
    over stops it, and the agent asks you.
 
