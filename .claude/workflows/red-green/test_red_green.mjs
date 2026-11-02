@@ -1808,15 +1808,11 @@ test('MU09: the mutated HEAD advances on ran: true, not on ran: false or a dead 
   assert.match(prompt(dead.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
 })
 
-test('MU17: ran true with a non-blank not_run counts as not run: in failures, HEAD not advanced, mutants still recorded', async () => {
+test('MU17: ran true with a non-blank not_run and no mutants counts as not run: in failures, HEAD not advanced', async () => {
   const gap = { applies: true, ran: true, not_run: ' coverage gap, not a pass ', mutants: [] }
   const empty = await runCore({ 'mutation:r1': gap }, 2)
   assert.ok(empty.result.failures.includes('mutation not run: coverage gap, not a pass'))
   assert.match(prompt(empty.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
-  const some = await runCore({ 'mutation:r1': Object.assign({}, gap, { mutants: [mutant(1), mutant(2, 'killed')] }), 'fix:r1': applied('M1-1', 'cccc222') }, 2)
-  assert.deepEqual(sentTo(some.calls, 'fix:r1').map(f => f.id), ['M1-1'])
-  assert.deepEqual(some.result.mutation.mutants.slice(0, 2).map(m => [m.id, m.status]), [['M1-1', 'survived'], ['M1-2', 'killed']])
-  assert.match(prompt(some.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
 })
 
 test('MU18: ran true with a blank or missing not_run is a run: no failure, HEAD advanced', async () => {
@@ -1825,6 +1821,15 @@ test('MU18: ran true with a blank or missing not_run is a run: no failure, HEAD 
     assert.deepEqual(result.failures, [])
     assert.ok(!called(calls, 'mutation:r2'))
   }
+})
+
+test('MU21: ran true with mutants treats not_run as a note: no failure, HEAD advanced, mutants recorded', async () => {
+  const noted = { applies: true, ran: true, not_run: 'Tests used: tests.coop.test_baton', mutants: [mutant(1), mutant(2, 'killed')] }
+  const { result, calls } = await runCore({ 'mutation:r1': noted, 'fix:r1': applied('M1-1', 'cccc222') }, 2)
+  assert.deepEqual(result.failures, [])
+  assert.deepEqual(sentTo(calls, 'fix:r1').map(f => f.id), ['M1-1'])
+  assert.deepEqual(result.mutation.mutants.slice(0, 2).map(m => [m.id, m.status]), [['M1-1', 'survived'], ['M1-2', 'killed']])
+  assert.match(prompt(calls, 'mutation:r2'), /git diff --name-only bbbb111\.\.HEAD/)
 })
 
 test('MU19: ran true with not_run keeps mutation_skipped, and takes the known_red skip if it names the control run', async () => {
