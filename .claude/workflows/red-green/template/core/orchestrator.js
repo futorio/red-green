@@ -101,16 +101,13 @@ function silence(res, ids) {
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
 }
-// A finding still without a place after the retry is dropped and reported; a major with no trigger is a minor; a lens
-// keeps at most review.minors minors, and a dropped one's proof is a stray.
+// A finding still without a place after the retry stays, alone, and is logged; a major with no trigger is a minor; a
+// lens keeps at most review.minors minors, and a dropped one's proof is a stray.
 function tidy(findings, idBase) {
   let minors = 0
-  findings.forEach((f, k) => {
-    const errors = placeErrors(f, k)
-    if (errors.length) failures.push(`${idBase}: dropped a finding with no place: ${errors.join('; ')}`)
-    if (errors.length && f.proof) stray({ id: `${idBase}-unplaced-${k + 1}`, proof: f.proof })
-  })
-  const out = findings.filter(f => !placeErrors(f).length).map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
+  const unplaced = findings.flatMap(placeErrors)
+  if (unplaced.length) log(`${idBase}: findings without a place, each kept alone: ${unplaced.join('; ')}`)
+  const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
   const kept = out.filter(f => f.severity !== 'minor' || ++minors <= CONFIG.review.minors)
   out.filter(f => !kept.includes(f) && f.proof).forEach((f, i) => stray({ id: `${idBase}-dropped-${i + 1}`, proof: f.proof }))
   const down = out.filter(f => f.downgraded).length
@@ -157,10 +154,10 @@ const gateRejected = {}
 const gateAttempts = {}
 // A finding is the same finding by what it says, not by its positional id: by source, place and problem (a rejection
 // without a place by its id).
-const sameKey = f => f.where ? `${f.source}|${JSON.stringify(f.where)}|${f.problem}` : f.id
+const sameKey = f => f.where ? `${f.source}|${placeKey(f.where)}|${f.problem}` : f.id
 const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
 // An earlier minor a fix already answered, under this id or as a repeat of it.
-const answered = f => history.some(h => h.id === f.id || (JSON.stringify(h.where) === JSON.stringify(f.where) && h.problem === f.problem))
+const answered = f => history.some(h => h.id === f.id || (placeKey(h.where) === placeKey(f.where) && h.problem === f.problem))
 const FIX_ATTEMPTS = CONFIG.gates.fix_attempts
 // What any fix leaves behind, whether an attempt on a red gate or the fix ending an iteration.
 function settleFix(sent, fix, at) {

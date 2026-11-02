@@ -20,7 +20,8 @@ const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id
 // Findings on one place, as fix gets them: each view is one finding's, its lens in place of its id, source and place.
 const VIEW = { type: 'object', properties: Object.assign({ lens: STRING }, Object.fromEntries(Object.entries(FINDING.properties).filter(([k]) => k !== 'where'))),
   required: ['lens'].concat(FINDING.required.filter(k => k !== 'where')) }
-const GROUP = { type: 'object', properties: { id: STRING, where: WHERE, views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'where', 'views'] }
+const GROUP = { type: 'object', properties: { id: STRING, ids: Object.assign({ minItems: 2 }, LIST), severity: FINDING.properties.severity, where: WHERE,
+  views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'ids', 'severity', 'where', 'views'] }
 const REGISTRY = Object.assign({
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,

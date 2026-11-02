@@ -1,5 +1,5 @@
 // Block fix: its schema, runFix and fixContract, and its inputs. Its only interface is the include order: it reads
-// IMPLEMENT_SKILL, CODE_RULES, research, fixed, PRE, call, contract, writer, died, phase, and INPUTS, BLOCK_PATHS,
+// IMPLEMENT_SKILL, CODE_RULES, research, fixed, PRE, call, contract, writer, died, phase, placeErrors, placeKey, and INPUTS, BLOCK_PATHS,
 // STRING, INTEGER; it declares FIX_SCHEMA, grouped, runFix and fixContract for later parts.
 // @part schema
 
@@ -10,17 +10,21 @@ const FIX_SCHEMA = { type: 'object', properties: {
   head: { type: 'string' },
 }, required: ['applied', 'rejected', 'proofs', 'head'] }
 // @part run
-// Findings of any lens on one file and symbol are one item: its id joins theirs with +, each finding a view. A gate's
-// or a requirement's finding names no symbol and stays alone.
-const placeOf = f => f.where && typeof f.where === 'object' ? `${f.where.file}\n${f.where.symbol}` : f
+// Findings of any lens on one file and symbol are one item: the first one's id, every member's in ids, the highest
+// severity, each finding a view. One without a valid place (a gate's, a requirement's, a lens's that failed the place
+// check) stays alone, keyed by its id.
+const placeOf = f => placeErrors(f).length ? `id ${f.id}` : placeKey(f.where)
 function grouped(findings) {
   const at = new Map()
   findings.forEach(f => at.set(placeOf(f), (at.get(placeOf(f)) || []).concat(f)))
-  return [...at.values()].map(fs => fs.length < 2 ? fs[0]
-    : { id: fs.map(f => f.id).join('+'), where: fs[0].where, views: fs.map(({ id, source, where, ...view }) => Object.assign({ lens: source }, view)) })
+  return [...at.values()].map(fs => fs.length < 2 ? fs[0] : { id: fs[0].id, ids: fs.map(f => f.id), severity: fs.some(f => f.severity === 'major') ? 'major' : 'minor',
+    where: fs[0].where, views: fs.map(({ id, source, where, ...view }) => Object.assign({ lens: source }, view)) })
 }
 // Fix answers an item once; its answer holds for each finding in it, under the finding's id.
-const perFinding = (xs, items) => xs.flatMap(x => items.some(i => i.views && i.id === x.id) ? x.id.split('+').map(id => Object.assign({}, x, { id })) : [x])
+const perFinding = (xs, items) => xs.flatMap(x => {
+  const group = items.find(i => i.ids && i.ids.includes(x.id))
+  return group ? group.ids.map(id => Object.assign({}, x, { id })) : [x]
+})
 async function runFix(round, toFix, label) {
   phase('Fix')
   const items = grouped(toFix)

@@ -2,11 +2,14 @@
 // call, and its inputs. Its only interface is the include order: it reads CONFIG, TARGET, BASE, IMPLEMENT_SKILL,
 // CODE_RULES, research, plan, impl, checkIds and, in the round loop, round, N, active, gated, attempts, history and lastFix; NO_CODE_PRE,
 // READ_ONLY, TARGETED, call, contract, died, parallel, retryValues, validate, log, and INPUTS, BLOCK_PATHS, STRING, INTEGER, LIST. It declares
-// WHERE, FINDING, REVIEW_SCHEMA, LENSES, SEVERITY, CHECKED, placeErrors, misplaced and lensResults for later parts.
+// WHERE, placeKey, FINDING, REVIEW_SCHEMA, LENSES, SEVERITY, CHECKED, placeErrors, misplaced and lensResults for later parts.
 // @part schema
 
-// A finding's place: the file, the symbol in it (the function, class or section; '' for the whole file) and its lines.
-const WHERE = { type: 'object', properties: { file: { type: 'string', pattern: '\\S' }, symbol: { type: 'string' }, lines: { type: 'string' } }, required: ['file', 'symbol'] }
+// A finding's place: the file, the symbol in it (the function, class or section) and its lines.
+const WHERE = { type: 'object', properties: { file: { type: 'string', pattern: '\\S' }, symbol: { type: 'string', pattern: '\\S' }, lines: { type: 'string' } }, required: ['file', 'symbol'] }
+// A place's identity, the one every comparison of places uses: a WHERE by its file and symbol, a gate's name or a
+// requirement's line as given.
+const placeKey = w => w && typeof w === 'object' ? JSON.stringify([w.file, w.symbol]) : String(w)
 const FINDING = { type: 'object', properties: {
   severity: { type: 'string', enum: ['major', 'minor'] },
   where: WHERE, problem: { type: 'string' },
@@ -34,14 +37,14 @@ const LENSES = [
 // @part rules
 
 // The output rules every review stage gets in its contract part; the minors cap is the review block's config.
-const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. \`where.symbol\` is the enclosing function or class as declared (\`Class::method\`); '' for the whole file. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. \`where.symbol\` is the enclosing function or class as declared (\`Class::method\`), or a document's section. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
 // what: the rows' subject; none when the job already says what a row is. Its last sentence is what counts as died.
 const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\`evidence\` is one sentence naming the file, test or command output that settled it. ${died('Return at least one checked row and verdict `clean` exactly when findings is empty and no row is `unmet`')}`
 // The schema's place check, which the script holds: a finding's errors, and a lens result's.
 const placeErrors = (f, k = 0) => validate(WHERE, f.where).map(e => `findings[${k}].where${e.slice(1)}`)
 const misplaced = res => res ? res.findings.flatMap(placeErrors) : []
 // @part call
-  // A lens whose finding has no valid place gets one retry with the errors; tidy drops a finding still without one.
+  // A lens whose finding has no valid place gets one retry with the errors; tidy keeps a finding still without one alone.
   const lensCall = (l, errors, label) => call('review', NO_CODE_PRE, l.key, Object.assign({
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
@@ -66,8 +69,9 @@ const misplaced = res => res ? res.findings.flatMap(placeErrors) : []
 // @part inputs
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
 // earlier findings and their outcomes, each finding the last fix was sent with its outcome.
-// A sent finding's place: a lens finding's WHERE, a gate's name or a requirement's line.
-const PLACE = { anyOf: [STRING, WHERE] }
+// A sent finding's place: a lens finding's as the lens gave it (one that fails the place check goes on alone), a gate's
+// name or a requirement's line.
+const PLACE = { anyOf: [STRING, { type: 'object', properties: { file: STRING, symbol: STRING, lines: STRING } }] }
 INPUTS.review = ['round', 'retry_note', 'previous_notes', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'property_note', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,

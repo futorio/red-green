@@ -160,9 +160,10 @@ again only with a `problem` that answers the fixer's `argument`.
 - **The last fix:** after a fix, each lens gets `from_head` and the outcomes of every fix since the last review, and verifies
   on `git diff {{from_head}}..HEAD` that each `fixed` finding is fixed, that each rejection's argument holds and that no test
   was weakened. A claim that fails is a new major. A rejection no lens raises again is accepted.
-- **Place:** a finding's `where` is `{file, symbol, lines?}`, `symbol` the enclosing function or class as declared, `''`
-  for a whole file. A finding without a `file` gets the lens one `:retry` with the errors; one still without is dropped,
-  its proof a stray, and is an entry in `failures`.
+- **Place:** a finding's `where` is `{file, symbol, lines?}`, `symbol` the enclosing function or class as declared, or a
+  document's section. The script's place check: `where` is an object with a non-empty `file` and a non-empty `symbol`
+  (`symbol: ''` fails). A lens with a finding that fails it gets one `:retry` with the errors; a finding that still
+  fails is kept, goes to fix and the result as its own item, keyed by its id, and is reported in the run log.
 - **Severity:** the script turns a major with an empty `trigger` into a minor and keeps at most `blocks.review.minors`
   (2) minors per lens; a dropped minor's proof is a stray.
 - **Silence is not clean:** `verdict` is `clean` exactly when `findings` is empty and no row is `unmet`. No rows, or a
@@ -172,9 +173,10 @@ again only with a `problem` that answers the fixer's `argument`.
 ## Fix
 
 Runs at the end of an iteration with a major, unless it is the last. It gets majors and minors in one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. Findings of either lens on one `file` and `symbol` (exact strings) reach it as one item
-`{id, where, views}`, its id the members' joined by `+`, a view per finding: `lens` and the finding's fields but its id
-and place. Fix answers the item once; the answer holds for each member, under its own id, in the history and the outcomes.
-A gate's finding (a gate name) and an unmet row (a requirement line) name no symbol and stay alone. A finding that does not fit is rejected with an argument citing code, the ticket or the
+`{id, ids, severity, where, views}`: `id` the first member's, `ids` every member's, `severity` the highest of theirs, a
+view per finding: `lens` and the finding's fields but its id and place. Fix answers the item once, by any member's id;
+the answer holds for each member, under its own id, in the history and the outcomes. A finding that fails the place
+check, a gate's finding (a gate name) and an unmet row (a requirement line) stay alone. A finding that does not fit is rejected with an argument citing code, the ticket or the
 spec. Fixed and rejected findings, minors included, enter the earlier findings. `applied` findings with `head` unchanged are
 an entry in `failures`.
 

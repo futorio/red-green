@@ -5,7 +5,7 @@
    "severity": "major",
    "where": {
     "file": "docs/coop/data-setup.md",
-    "symbol": "",
+    "symbol": "Data hashes",
     "lines": "40"
    },
    "problem": "Nothing in the diff records the RSQRTSS measurement or the full x86_64 P0 result. ADR 0003 is untouched and has no x86_64 with-model / without-model result. No retail N of 108 for x86_64 is stated anywhere, and no failing fixture is named. data-setup.md:40 still says 'the full corpus passes 108 of 108' without naming the build that result came from. The gate lines show only `check-p0.py --sample --seed 1` (17 of 17) on x86_64, and /work/run holds no corpus output.",
@@ -17,7 +17,7 @@
    "severity": "minor",
    "where": {
     "file": "scripts/coop/build-arch.sh",
-    "symbol": "",
+    "symbol": "x86_64",
     "lines": "12"
    },
    "problem": "`TH08_PORTABLE_BUILD_DIR` from the caller's environment takes precedence over the `TH08_LINUX_BUILD_DIR` that mutate.py and coverage-map.py pass. With it exported, those tools build somewhere else and then read a missing `build/mutate` or `build/coverage` binary.",

@@ -80,7 +80,8 @@ const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 // A JSON Schema validator for the keywords the core's schemas use; it throws on any other keyword anywhere in the
-// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid.
+// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid; a
+// value no anyOf branch takes gets the errors of the branch with the fewest (the first on a tie).
 const KEYWORDS = ['type', 'properties', 'required', 'items', 'enum', 'pattern', 'anyOf', 'minItems', 'maxLength']
 function validate(schema, value) {
   const check = (s, at) => {
@@ -105,7 +106,10 @@ function validate(schema, value) {
       ;(s.required || []).filter(k => v[k] === undefined).forEach(k => out.push(`${at}: ${k} missing`))
       Object.entries(s.properties || {}).filter(([k]) => v[k] !== undefined).forEach(([k, p]) => out.push(...errors(p, v[k], `${at}.${k}`)))
     }
-    if (s.anyOf && !s.anyOf.some(b => !errors(b, v, at).length)) out.push(`${at}: matches no anyOf branch`)
+    if (s.anyOf) {
+      const branches = s.anyOf.map(b => errors(b, v, at))
+      if (branches.every(e => e.length)) out.push(...branches.reduce((a, b) => b.length < a.length ? b : a))
+    }
     return out
   }
   check(schema, '$')
@@ -217,8 +221,11 @@ const IMPL_SCHEMA = { type: 'object', properties: {
   notes: { type: 'string' },
 }, required: ['head', 'checks', 'unverified', 'questions'] }
 
-// A finding's place: the file, the symbol in it (the function, class or section; '' for the whole file) and its lines.
-const WHERE = { type: 'object', properties: { file: { type: 'string', pattern: '\\S' }, symbol: { type: 'string' }, lines: { type: 'string' } }, required: ['file', 'symbol'] }
+// A finding's place: the file, the symbol in it (the function, class or section) and its lines.
+const WHERE = { type: 'object', properties: { file: { type: 'string', pattern: '\\S' }, symbol: { type: 'string', pattern: '\\S' }, lines: { type: 'string' } }, required: ['file', 'symbol'] }
+// A place's identity, the one every comparison of places uses: a WHERE by its file and symbol, a gate's name or a
+// requirement's line as given.
+const placeKey = w => w && typeof w === 'object' ? JSON.stringify([w.file, w.symbol]) : String(w)
 const FINDING = { type: 'object', properties: {
   severity: { type: 'string', enum: ['major', 'minor'] },
   where: WHERE, problem: { type: 'string' },
@@ -278,8 +285,9 @@ Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE }, property_exa
 INPUTS.gates = ['HEAD', 'REPO', 'gate_command']
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
 // earlier findings and their outcomes, each finding the last fix was sent with its outcome.
-// A sent finding's place: a lens finding's WHERE, a gate's name or a requirement's line.
-const PLACE = { anyOf: [STRING, WHERE] }
+// A sent finding's place: a lens finding's as the lens gave it (one that fails the place check goes on alone), a gate's
+// name or a requirement's line.
+const PLACE = { anyOf: [STRING, { type: 'object', properties: { file: STRING, symbol: STRING, lines: STRING } }] }
 INPUTS.review = ['round', 'retry_note', 'previous_notes', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'property_note', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,
@@ -298,7 +306,8 @@ const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id
 // Findings on one place, as fix gets them: each view is one finding's, its lens in place of its id, source and place.
 const VIEW = { type: 'object', properties: Object.assign({ lens: STRING }, Object.fromEntries(Object.entries(FINDING.properties).filter(([k]) => k !== 'where'))),
   required: ['lens'].concat(FINDING.required.filter(k => k !== 'where')) }
-const GROUP = { type: 'object', properties: { id: STRING, where: WHERE, views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'where', 'views'] }
+const GROUP = { type: 'object', properties: { id: STRING, ids: Object.assign({ minItems: 2 }, LIST), severity: FINDING.properties.severity, where: WHERE,
+  views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'ids', 'severity', 'where', 'views'] }
 const REGISTRY = Object.assign({
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
@@ -446,7 +455,7 @@ const GATES_SCHEMA = { type: 'object', properties: {
 }, required: ['head', 'gates'] }
 
 // The output rules every review stage gets in its contract part; the minors cap is the review block's config.
-const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. \`where.symbol\` is the enclosing function or class as declared (\`Class::method\`); '' for the whole file. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. \`where.symbol\` is the enclosing function or class as declared (\`Class::method\`), or a document's section. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
 // what: the rows' subject; none when the job already says what a row is. Its last sentence is what counts as died.
 const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\`evidence\` is one sentence naming the file, test or command output that settled it. ${died('Return at least one checked row and verdict `clean` exactly when findings is empty and no row is `unmet`')}`
 // The schema's place check, which the script holds: a finding's errors, and a lens result's.
@@ -462,16 +471,13 @@ function silence(res, ids) {
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
 }
-// A finding still without a place after the retry is dropped and reported; a major with no trigger is a minor; a lens
-// keeps at most review.minors minors, and a dropped one's proof is a stray.
+// A finding still without a place after the retry stays, alone, and is logged; a major with no trigger is a minor; a
+// lens keeps at most review.minors minors, and a dropped one's proof is a stray.
 function tidy(findings, idBase) {
   let minors = 0
-  findings.forEach((f, k) => {
-    const errors = placeErrors(f, k)
-    if (errors.length) failures.push(`${idBase}: dropped a finding with no place: ${errors.join('; ')}`)
-    if (errors.length && f.proof) stray({ id: `${idBase}-unplaced-${k + 1}`, proof: f.proof })
-  })
-  const out = findings.filter(f => !placeErrors(f).length).map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
+  const unplaced = findings.flatMap(placeErrors)
+  if (unplaced.length) log(`${idBase}: findings without a place, each kept alone: ${unplaced.join('; ')}`)
+  const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
   const kept = out.filter(f => f.severity !== 'minor' || ++minors <= CONFIG.review.minors)
   out.filter(f => !kept.includes(f) && f.proof).forEach((f, i) => stray({ id: `${idBase}-dropped-${i + 1}`, proof: f.proof }))
   const down = out.filter(f => f.downgraded).length
@@ -682,17 +688,21 @@ async function runGates(label, at) {
     id: `G${at}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
     consequence: 'the gate fails', fix: 'make the gate pass' })) }
 }
-// Findings of any lens on one file and symbol are one item: its id joins theirs with +, each finding a view. A gate's
-// or a requirement's finding names no symbol and stays alone.
-const placeOf = f => f.where && typeof f.where === 'object' ? `${f.where.file}\n${f.where.symbol}` : f
+// Findings of any lens on one file and symbol are one item: the first one's id, every member's in ids, the highest
+// severity, each finding a view. One without a valid place (a gate's, a requirement's, a lens's that failed the place
+// check) stays alone, keyed by its id.
+const placeOf = f => placeErrors(f).length ? `id ${f.id}` : placeKey(f.where)
 function grouped(findings) {
   const at = new Map()
   findings.forEach(f => at.set(placeOf(f), (at.get(placeOf(f)) || []).concat(f)))
-  return [...at.values()].map(fs => fs.length < 2 ? fs[0]
-    : { id: fs.map(f => f.id).join('+'), where: fs[0].where, views: fs.map(({ id, source, where, ...view }) => Object.assign({ lens: source }, view)) })
+  return [...at.values()].map(fs => fs.length < 2 ? fs[0] : { id: fs[0].id, ids: fs.map(f => f.id), severity: fs.some(f => f.severity === 'major') ? 'major' : 'minor',
+    where: fs[0].where, views: fs.map(({ id, source, where, ...view }) => Object.assign({ lens: source }, view)) })
 }
 // Fix answers an item once; its answer holds for each finding in it, under the finding's id.
-const perFinding = (xs, items) => xs.flatMap(x => items.some(i => i.views && i.id === x.id) ? x.id.split('+').map(id => Object.assign({}, x, { id })) : [x])
+const perFinding = (xs, items) => xs.flatMap(x => {
+  const group = items.find(i => i.ids && i.ids.includes(x.id))
+  return group ? group.ids.map(id => Object.assign({}, x, { id })) : [x]
+})
 async function runFix(round, toFix, label) {
   phase('Fix')
   const items = grouped(toFix)
@@ -725,10 +735,10 @@ const gateRejected = {}
 const gateAttempts = {}
 // A finding is the same finding by what it says, not by its positional id: by source, place and problem (a rejection
 // without a place by its id).
-const sameKey = f => f.where ? `${f.source}|${JSON.stringify(f.where)}|${f.problem}` : f.id
+const sameKey = f => f.where ? `${f.source}|${placeKey(f.where)}|${f.problem}` : f.id
 const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
 // An earlier minor a fix already answered, under this id or as a repeat of it.
-const answered = f => history.some(h => h.id === f.id || (JSON.stringify(h.where) === JSON.stringify(f.where) && h.problem === f.problem))
+const answered = f => history.some(h => h.id === f.id || (placeKey(h.where) === placeKey(f.where) && h.problem === f.problem))
 const FIX_ATTEMPTS = CONFIG.gates.fix_attempts
 // What any fix leaves behind, whether an attempt on a red gate or the fix ending an iteration.
 function settleFix(sent, fix, at) {
@@ -763,7 +773,7 @@ while (round < N) {
   }
   phase('Review')
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  // A lens whose finding has no valid place gets one retry with the errors; tidy drops a finding still without one.
+  // A lens whose finding has no valid place gets one retry with the errors; tidy keeps a finding still without one alone.
   const lensCall = (l, errors, label) => call('review', NO_CODE_PRE, l.key, Object.assign({
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),

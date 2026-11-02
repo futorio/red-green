@@ -9,7 +9,7 @@
 | `uncovered_requirements`, `dropped_facts`, `unresearched_requirements`, `research_issues` | test ids no case covers, a dropped property case's included; research repairs |
 | `verify_launch` | `{requirement, how}` each: a notice for the operator, does not change `status` |
 | `verify_review`, `unverified` | requirements checked by name; implement's list with its check rows folded in |
-| `leftover_findings` | unfixed majors of the last iteration or a dead fix, each once (by source, place and problem), those on one file and symbol as one group `{id, where, views}` as fix gets them, and every requirement not `met` after the last iteration. Blocking: `severity: major` or `status: unmet` |
+| `leftover_findings` | unfixed majors of the last iteration or a dead fix, each once (by source, place and problem), those on one file and symbol as one group `{id, ids, severity, where, views}` as fix gets them (its `severity` the highest of its members'), and every requirement not `met` after the last iteration. Blocking: `severity: major` or `status: unmet` |
 | `advisory` | the minors no fix applied, from any iteration, each once: a clean iteration's and a fix's rejected ones included |
 | `stray_proofs` | `{id, path}` of unaccounted proofs |
 | `implement`, `mailbox`, `failures` | `{checks, notes}`, a property case's row with its `contract` id; every receipt with its agent label; every failure |

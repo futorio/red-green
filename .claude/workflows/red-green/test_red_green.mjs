@@ -15,8 +15,8 @@ let core = coreOf(SOURCE)
 const clone = x => JSON.parse(JSON.stringify(x))
 const row = (item, extra) => Object.assign({ item, evidence: 'e' }, extra)
 const clean = rows => ({ verdict: 'clean', findings: [], checked: rows })
-// A finding at a place: a string names its file, the whole file.
-const finding = (severity, where, trigger) => ({ severity, where: typeof where === 'string' ? { file: where, symbol: '' } : where, trigger, problem: 'p', consequence: 'c', fix: 'f' })
+// A finding at a place: a string names its file, symbol S.
+const finding = (severity, where, trigger) => ({ severity, where: typeof where === 'string' ? { file: where, symbol: 'S' } : where, trigger, problem: 'p', consequence: 'c', fix: 'f' })
 // A sent finding's place as its file or, for a gate or a requirement, its name.
 const fileOf = f => f.where.file || f.where
 const TESTS = [{ name: 'tests', command: 'npm test' }]
@@ -515,7 +515,7 @@ test('W58: no rulings: a rejected finding reaches the next lens prompt in EARLIE
   for (const l of ['review:r1:checklist', 'review:r1:code']) assert.ok(!('rulings' in calls.find(c => c.label === l).opts.schema.properties), l)
   const second = prompt(calls, 'review:r2:code')
   const past = JSON.parse(second.split('EARLIER FINDINGS')[1].split('\n')[1])
-  assert.deepEqual(past, [{ id: 'R1-code-1', round: 1, where: { file: 'a:1', symbol: '' }, problem: 'p', outcome: 'rejected', argument: 'ARGUMENT-TEXT' }])
+  assert.deepEqual(past, [{ id: 'R1-code-1', round: 1, where: { file: 'a:1', symbol: 'S' }, problem: 'p', outcome: 'rejected', argument: 'ARGUMENT-TEXT' }])
   assert.match(second, /re-raise a rejected one only as a finding whose `problem` answers its `argument`/)
   assert.ok(!/REJECTED|insist/.test(second))
   assert.ok(!('accepted_rejections' in result))
@@ -1072,6 +1072,15 @@ test('V03: the validator names the place of each error', () => {
   assert.deepEqual(validate({ type: 'integer' }, 2.5), ['$: number, not integer'])
 })
 
+test('V04: a value no anyOf branch takes gets the errors of the branch it comes closest to', () => {
+  const finding = { type: 'object', properties: { id: { type: 'string' }, severity: { type: 'string', enum: ['major', 'minor'] }, problem: { type: 'string' } }, required: ['id', 'severity', 'problem'] }
+  const group = { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, minItems: 2 }, views: { type: 'array', items: finding } }, required: ['ids', 'views'] }
+  const s = { type: 'array', items: { anyOf: [finding, group] } }
+  assert.deepEqual(validate(s, [{ id: 'a', severity: 'blocker', problem: 'p' }]), ['$[0].severity: "blocker" not in ["major","minor"]'])
+  assert.deepEqual(validate(s, [{ ids: ['a', 'b'], views: [{ id: 'a', severity: 'major' }] }]), ['$[0].views[0]: problem missing'])
+  assert.deepEqual(validate({ anyOf: [{ type: 'string' }, { type: 'null' }] }, 3), ['$: number, not string'])
+})
+
 // A run that calls every block, each label once: replan, the implement retry, a fix with a minor, the next iteration.
 const everyBlock = () => {
   const green = gatesAt('bbbb111', gate('lint', 'green', 'l'), gate('test', 'green', 't'))
@@ -1140,7 +1149,7 @@ test('W89: a block config value off its registry schema fails the run before any
     [{ review: { minors: '2' } }, 'blocks.review.minors'], [{ review: { lenses: 'code' } }, 'blocks.review.lenses'],
     [{ review: { lenses: ['mechanics'] } }, 'blocks.review.lenses[0]'], [{ review: { duties: { order: 'yes' } } }, 'blocks.review.duties.order'],
     [{ research: { model: 3 } }, 'blocks.research.model'], [{ gates: { effort: 2 } }, 'blocks.gates.effort'],
-    [{ gates: { gates: [{ name: 'g' }] } }, 'blocks.gates.gates'],
+    [{ gates: { gates: [{ name: 'g' }] } }, 'blocks.gates.gates[0]'],
     [{ plan: { prompt: ['x'] } }, 'blocks.plan.prompt'], [{ fix: { skill: 1 } }, 'blocks.fix.skill'], [{ review: { runtime: 3 } }, 'blocks.review.runtime']]) {
     const { result, calls } = await runCore({}, 1, withBlocks(blocks))
     assert.equal(calls.length, 0, JSON.stringify(blocks))
@@ -1452,8 +1461,8 @@ test('L16: each lens gets from_head and the last fix\'s outcomes and is told to 
     assert.ok(p.includes('git diff bbbb111..HEAD'), l)
     assert.match(p, /a claim that fails is a new major/, l)
     assert.match(p, /weakened, deleted or left asserting nothing it promises is a new major/, l)
-    assert.deepEqual(JSON.parse(p.split('OUTCOMES:\n')[1].split('\n')[0]), [{ id: 'R1-code-1', where: { file: 'a:1', symbol: '' }, problem: 'p', outcome: 'fixed' },
-      { id: 'R1-code-2', where: { file: 'b:1', symbol: '' }, problem: 'p', outcome: 'rejected', argument: 'ARG-1' }], l)
+    assert.deepEqual(JSON.parse(p.split('OUTCOMES:\n')[1].split('\n')[0]), [{ id: 'R1-code-1', where: { file: 'a:1', symbol: 'S' }, problem: 'p', outcome: 'fixed' },
+      { id: 'R1-code-2', where: { file: 'b:1', symbol: 'S' }, problem: 'p', outcome: 'rejected', argument: 'ARG-1' }], l)
   }
   for (const l of lensesOf(1)) assert.ok(!/OUTCOMES:|claim that fails/.test(prompt(calls, l)), l)
   const off = await runCore({ 'review:r1:code': major, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2, withBlocks({ review: { duties: { test_case_review: false } } }))
@@ -1747,9 +1756,9 @@ test('GR01: two lenses\' findings in different words on one file and symbol reac
   const { result, calls } = await runCore({
     'review:r1:checklist': { verdict: 'findings', checked: [row('R1', { status: 'met' })], findings: [placed(Object.assign({ lines: '178-188' }, ANCHOR), 'the anchor is set once per bench period', 'reset it')] },
     'review:r1:code': lensSaid(placed(ANCHOR, 'the playout anchor drifts', 'anchor per frame')),
-    'fix:r1': { applied: [{ id: 'R1-checklist-1+R1-code-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
+    'fix:r1': { applied: [{ id: 'R1-checklist-1', what: 'w' }], rejected: [], proofs: [], head: 'cccc222' },
   }, 2)
-  assert.deepEqual(sentTo(calls, 'fix:r1'), [{ id: 'R1-checklist-1+R1-code-1', where: Object.assign({ lines: '178-188' }, ANCHOR), views: [
+  assert.deepEqual(sentTo(calls, 'fix:r1'), [{ id: 'R1-checklist-1', ids: ['R1-checklist-1', 'R1-code-1'], severity: 'major', where: Object.assign({ lines: '178-188' }, ANCHOR), views: [
     { lens: 'checklist', severity: 'major', problem: 'the anchor is set once per bench period', trigger: 't', consequence: 'c', fix: 'reset it' },
     { lens: 'code', severity: 'major', problem: 'the playout anchor drifts', trigger: 't', consequence: 'c', fix: 'anchor per frame' }] }])
   assert.equal(result.rounds[0].major, 2, 'rounds count findings, not groups')
@@ -1767,18 +1776,37 @@ test('GR02: two findings on different symbols of one file stay apart', async () 
 test('GR03: a group left at the last iteration is one leftover item; a rejection applies to each member', async () => {
   const both = lensSaid(placed(ANCHOR, 'p1', 'f1'), placed(ANCHOR, 'p2', 'f2'))
   const { result } = await runCore({ 'review:r1:code': both })
-  assert.deepEqual(result.leftover_findings.map(f => [f.id, f.views.length]), [['R1-code-1+R1-code-2', 2]])
-  const rejected = await runCore({ 'review:r1:code': both, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-1+R1-code-2', argument: 'ARG' }], proofs: [], head: 'bbbb111' } }, 2)
+  assert.deepEqual(result.leftover_findings.map(f => [f.ids, f.views.length]), [[['R1-code-1', 'R1-code-2'], 2]])
+  // Fix answers a group by any member's id.
+  const rejected = await runCore({ 'review:r1:code': both, 'fix:r1': { applied: [], rejected: [{ id: 'R1-code-2', argument: 'ARG' }], proofs: [], head: 'bbbb111' } }, 2)
   assert.deepEqual(outcomesIn(rejected.calls, 'review:r2:code').map(o => [o.id, o.outcome, o.argument]), [['R1-code-1', 'rejected', 'ARG'], ['R1-code-2', 'rejected', 'ARG']])
 })
 
-test('GR04: a finding without a file gets one retry with the errors; one still without is dropped and reported', async () => {
+test('GR04: a finding without a file or symbol gets one retry with the errors; one still without stays alone and is logged', async () => {
   const noFile = placed({ symbol: 'x' }, 'p', 'f')
   const { result, calls } = await runCore({ 'review:r1:code': lensSaid(noFile), 'review:r1:code:retry': lensSaid(placed(ANCHOR, 'p', 'f')) })
   assert.match(prompt(calls, 'review:r1:code:retry'), /findings\[0\]\.where: file missing/)
   assert.deepEqual(result.leftover_findings.map(f => f.id), ['R1-code-1'])
-  const still = await runCore({ 'review:r1:code': lensSaid(noFile, placed(ANCHOR, 'q', 'f')), 'review:r1:code:retry': lensSaid(noFile, placed(ANCHOR, 'q', 'f')) })
-  assert.deepEqual(still.result.leftover_findings.map(f => f.problem), ['q'])
-  assert.ok(still.result.failures.some(f => /R1-code: dropped a finding with no place: .*file missing/.test(f)), still.result.failures.join('\n'))
+  const noSymbol = placed({ file: ANCHOR.file, symbol: '' }, 'r', 'f')
+  assert.match(prompt((await runCore({ 'review:r1:code': lensSaid(noSymbol), 'review:r1:code:retry': lensSaid(noSymbol) })).calls, 'review:r1:code:retry'), /findings\[0\]\.where\.symbol: .* does not match/)
+  const noFile2 = placed({ symbol: ANCHOR.symbol }, 'p2', 'f')
+  const unplaced = lensSaid(noFile, placed(ANCHOR, 'q', 'f'), noFile2)
+  const still = await runCore({ 'review:r1:code': unplaced, 'review:r1:code:retry': unplaced })
+  assert.deepEqual(still.result.leftover_findings.map(f => f.ids || f.id), ['R1-code-1', 'R1-code-2', 'R1-code-3'], 'each unplaced finding alone, by its id')
+  assert.deepEqual(still.result.failures, [])
+  assert.ok(still.logs.some(l => /R1-code: findings without a place, each kept alone: .*file missing/.test(l)), still.logs.join('\n'))
   assert.ok(!called((await runCore({ 'review:r1:code': lensSaid(placed(ANCHOR, 'q', 'f')) })).calls, 'review:r1:code:retry'))
+})
+
+// The start skill's fast-forward rule (result.md): an item blocks when its severity is major or its status unmet.
+const blocking = result => result.leftover_findings.filter(f => f.severity === 'major' || f.status === 'unmet')
+
+test('GR05: a leftover group carries its members\' ids and the highest severity, so grouped majors block', async () => {
+  const minor = Object.assign(placed(ANCHOR, 'p2', 'f2'), { severity: 'minor' })
+  const { result } = await runCore({ 'review:r1:checklist': { verdict: 'findings', checked: [row('R1', { status: 'met' })], findings: [placed(ANCHOR, 'p1', 'f1')] },
+    'review:r1:code': lensSaid(placed(ANCHOR, 'p3', 'f3')) })
+  assert.deepEqual(result.leftover_findings.map(f => [f.ids, f.severity]), [[['R1-checklist-1', 'R1-code-1'], 'major']])
+  assert.equal(blocking(result).length, 1)
+  const mixed = await runCore({ 'review:r1:code': lensSaid(minor, placed(ANCHOR, 'p3', 'f3')), 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
+  assert.deepEqual(sentTo(mixed.calls, 'fix:r1').map(f => [f.ids, f.severity]), [[['R1-code-2', 'R1-code-1'], 'major']])
 })
