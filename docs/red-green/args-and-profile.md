@@ -47,6 +47,15 @@ The gates a run declares:
 |---|---|---|
 | `blocks.gates.gates` | `{name, command, tier?}[]`, names must be unique; `tier` is `fast` (writers and every gates stage), `round` (every gates stage; the default) or `acceptance` (acceptance only) | required with at least one `fast` or `round` gate, else the run fails on config; with a profile declaring none, `/red-green:start` finds them with the user, for that run |
 
+A project that keeps property contracts declares their gate itself; the core adds none. The contract CLI,
+[`skills/contracts.mjs`](../../.claude/workflows/red-green/skills/contracts.mjs), reads the `contract: <id>: <statement>`
+markers in tracked files; `doc <path>` writes the doc, grouped by id prefix, and `--check` fails on a statement over 255
+characters, a duplicate id, a malformed marker or a doc that differs from what it would write:
+
+```json
+{"name": "contracts", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs doc docs/contracts.md --check", "tier": "fast"}
+```
+
 ## Placeholders
 
 Any string in `profile` may name a run value; the core fills it in from `args` before the config merge:

@@ -5,10 +5,10 @@ Run commands from `.claude/workflows/red-green/`; the rendered script is `.claud
 ## Testing
 
 ```
-node --test test_red_green.mjs template/test_render.mjs skills/test_mutate.mjs skills/test_run_gates.mjs test_trace.mjs
+node --test test_red_green.mjs template/test_render.mjs skills/test_mutate.mjs skills/test_run_gates.mjs skills/test_contracts.mjs test_trace.mjs
 ```
 
-A change to the core's control flow gets a case in `test_red_green.mjs`; one to the gate runner, in `skills/test_run_gates.mjs`. A change that alters the render re-records the
+A change to the core's control flow gets a case in `test_red_green.mjs`; one to the gate runner, in `skills/test_run_gates.mjs`; one to the contract CLI, in `skills/test_contracts.mjs`. A change that alters the render re-records the
 sha256 values in [`template/fixtures.json`](../../.claude/workflows/red-green/template/fixtures.json) and the prompt hashes in `template/test_render.mjs`.
 
 ## Template
