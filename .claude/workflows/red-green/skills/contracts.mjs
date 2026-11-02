@@ -17,6 +17,11 @@
 // after a clean exit, an id in <id>.failed not in <id>.json, or the command could not start. stderr names the seed and
 // the first 3 failed examples of each contract, then counts the rest.
 //
+// A red contract's first failed example is then reduced: each rerun writes only that contract's file, holding the
+// examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward the
+// lower bound, earlier oneof choices), runs the command again and keeps the first that fails, until none does or 100
+// reruns. stderr then names `<id>: example <example id> reduced in <n> reruns: <json>`.
+//
 // The domain language, by key: {"int": [lo, hi]}; {"bytes": [min, max]}, a list of byte values that long;
 // {"string": [min, max], "chars"?: "<alphabet>"}, printable ASCII by default; {"list": <domain>, "len": [min, max]};
 // {"tuple": [<domain>, ...]}; {"oneof": [<domain>, ...]}; {"const": <json>}. Bounds are integers, inclusive.
@@ -129,41 +134,120 @@ const compile = d => {
   }
 }
 
+// Reduction by a validated domain. A string is reduced as the list of its characters' places in the alphabet.
+const seq = d => {
+  if ('bytes' in d) return { len: d.bytes, el: { int: [0, 255] }, is: Array.isArray, from: v => v, to: a => a }
+  if ('list' in d) return { len: d.len, el: d.list, is: Array.isArray, from: v => v, to: a => a }
+  if (!('string' in d)) return null
+  const cs = d.chars === undefined ? ASCII : [...d.chars]
+  return { len: d.string, el: { int: [0, cs.length - 1] }, is: v => typeof v === 'string',
+    from: v => [...v].map(c => cs.indexOf(c)), to: a => a.map(i => cs[i]).join('') }
+}
+const has = (d, v) => {
+  const s = seq(d)
+  if (s) { const a = s.is(v) && s.from(v); return !!a && a.length >= s.len[0] && a.length <= s.len[1] && a.every(x => has(s.el, x)) }
+  if ('int' in d) return Number.isSafeInteger(v) && d.int[0] <= v && v <= d.int[1]
+  if ('tuple' in d) return Array.isArray(v) && v.length === d.tuple.length && d.tuple.every((e, i) => has(e, v[i]))
+  if ('oneof' in d) return d.oneof.some(e => has(e, v))
+  return JSON.stringify(v) === JSON.stringify(d.const)
+}
+const least = d => {
+  const s = seq(d)
+  if (s) return s.to(Array(s.len[0]).fill(least(s.el)))
+  if ('int' in d) return d.int[0]
+  if ('tuple' in d) return d.tuple.map(least)
+  if ('oneof' in d) return least(d.oneof[0])
+  return d.const
+}
+// The examples one step smaller than v, biggest steps first.
+const smaller = (d, v) => {
+  const s = seq(d)
+  if (s) {
+    const a = s.from(v), min = s.len[0], out = []
+    if (a.length > min) out.push(a.slice(0, min))
+    for (let k = a.length >> 1; k >= 1; k >>= 1)
+      for (let i = 0; i + k <= a.length && a.length - k >= min; i += k) out.push([...a.slice(0, i), ...a.slice(i + k)])
+    a.forEach((x, i) => { for (const y of smaller(s.el, x)) out.push(a.with(i, y)) })
+    return out.map(s.to)
+  }
+  if ('int' in d) { const out = []; for (let k = v - d.int[0]; k >= 1; k = Math.floor(k / 2)) out.push(v - k); return out }
+  if ('tuple' in d) return d.tuple.flatMap((e, i) => smaller(e, v[i]).map(y => v.with(i, y)))
+  if ('oneof' in d) { const j = d.oneof.findIndex(e => has(e, v)); return [...d.oneof.slice(0, j).map(least), ...smaller(d.oneof[j], v)] }
+  return []
+}
+
+const exec = (command, dir, seed, count) => spawnSync(command[0], command.slice(1), { encoding: 'utf8', maxBuffer: 1 << 30,
+  env: { ...process.env, PROPERTY_DIR: dir, PROPERTY_SEED: String(seed), PROPERTY_EXAMPLES: String(count) } })
+
+// What a run said of contract `id` with `n` examples: {failed: [example id], unknown: [string]} from its <id>.failed,
+// else {failed: null, last}, the last example printed before a non-zero exit.
+const outcome = (id, n, dir, r) => {
+  let text
+  try { text = readFileSync(join(dir, `${id}.failed`), 'utf8') } catch {
+    const last = r.status === 0 ? undefined : [...(r.stdout + r.stderr).matchAll(new RegExp(`property: ${id.replace(/[.]/g, '\\.')} (\\d+)`, 'g'))].at(-1)?.[1]
+    return { failed: null, last: last !== undefined && Number(last) < n ? Number(last) : undefined }
+  }
+  const ids = text.split(/\s+/).filter(Boolean), ok = s => /^\d+$/.test(s) && Number(s) < n
+  return { failed: ids.filter(ok).map(Number), unknown: ids.filter(s => !ok(s)) }
+}
+
+const RERUNS = 100 // ponytail: a fixed cap on reruns; make it a flag if real reductions stop short of it
+const reduce = (command, seed, p, example) => {
+  const dir = mkdtempSync(join(tmpdir(), 'contracts-')), file = join(dir, `${p.id}.json`)
+  let reruns = 0
+  try {
+    while (reruns < RERUNS) {
+      const next = smaller(p.domain, example)
+      if (!next.length) break
+      rmSync(join(dir, `${p.id}.failed`), { force: true })
+      writeFileSync(file, JSON.stringify(next))
+      const r = exec(command, dir, seed, next.length)
+      reruns++
+      if (r.error) break
+      const o = outcome(p.id, next.length, dir, r), i = o.failed ? o.failed[0] : o.last
+      if (i === undefined) break
+      example = next[i]
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+  return { example, reruns }
+}
+
 const run = (command, seed, count) => {
   const { contracts, problems } = scan()
   const props = []
   for (const c of contracts.filter(c => c.domain !== null)) {
     try {
-      const g = compile(JSON.parse(c.domain)), next = random(`${seed}:${c.id}`)
-      props.push({ ...c, examples: Array.from({ length: count }, () => g(next)) })
+      const domain = JSON.parse(c.domain), g = compile(domain), next = random(`${seed}:${c.id}`)
+      props.push({ ...c, domain, examples: Array.from({ length: count }, () => g(next)) })
     } catch (e) { problems.push(`${c.file}:${c.line + 1}: ${c.id}: domain: ${e.message}`) }
   }
   if (problems.length) { process.stderr.write(problems.join('\n') + '\n'); process.exit(2) }
   const dir = mkdtempSync(join(tmpdir(), 'contracts-'))
   try {
     for (const p of props) writeFileSync(join(dir, `${p.id}.json`), JSON.stringify(p.examples))
-    const r = spawnSync(command[0], command.slice(1), { encoding: 'utf8', maxBuffer: 1 << 30,
-      env: { ...process.env, PROPERTY_DIR: dir, PROPERTY_SEED: String(seed), PROPERTY_EXAMPLES: String(count) } })
+    const r = exec(command, dir, seed, count)
     process.stdout.write(r.stdout ?? '')
     process.stderr.write(r.stderr ?? '')
     if (r.error) die(`${command[0]}: ${r.error.message}`)
-    const exit = r.status ?? r.signal, output = r.stdout + r.stderr
+    const exit = r.status ?? r.signal
     const reds = [], errors = []
-    for (const { id, examples } of props) {
+    for (const p of props) {
+      const { id, examples } = p, o = outcome(id, examples.length, dir, r)
       const show = (i, what = '') => `example ${i}${what}, seed ${seed}: ${JSON.stringify(examples[i])}`
-      let failed
-      try { failed = readFileSync(join(dir, `${id}.failed`), 'utf8') } catch {
+      let first
+      if (!o.failed) {
         if (exit === 0) { errors.push(`${id}: no ${id}.failed after a clean exit`); continue }
-        const last = [...output.matchAll(new RegExp(`property: ${id.replace(/[.]/g, '\\.')} (\\d+)`, 'g'))].at(-1)?.[1]
-        reds.push(`${id}: red on ${last === undefined ? 'no printed example' : show(last)}; the command exited ${exit} with no ${id}.failed`)
-        continue
+        reds.push(`${id}: red on ${o.last === undefined ? 'no printed example' : show(o.last)}; the command exited ${exit} with no ${id}.failed`)
+        first = o.last
+      } else {
+        for (const s of o.unknown) errors.push(`${id}: ${id}.failed names example ${s}, not in ${id}.json`)
+        for (const i of o.failed.slice(0, SHOWN)) reds.push(`${id}: ${show(i, ' failed')}`)
+        if (o.failed.length > SHOWN) reds.push(`${id}: ${o.failed.length - SHOWN} more failed examples`)
+        if (!o.unknown.length) first = o.failed[0]
       }
-      let shown = 0
-      for (const s of failed.split(/\s+/).filter(Boolean)) {
-        if (!/^\d+$/.test(s) || Number(s) >= examples.length) errors.push(`${id}: ${id}.failed names example ${s}, not in ${id}.json`)
-        else if (++shown <= SHOWN) reds.push(`${id}: ${show(Number(s), ' failed')}`)
-      }
-      if (shown > SHOWN) reds.push(`${id}: ${shown - SHOWN} more failed examples`)
+      if (first === undefined) continue
+      const { example, reruns } = reduce(command, seed, p, examples[first])
+      reds.push(`${id}: example ${first} reduced in ${reruns} reruns: ${JSON.stringify(example)}`)
     }
     if (exit !== 0 && !reds.length) reds.push(`the command exited ${exit}`)
     process.stderr.write([...errors, ...reds].map(l => `contracts: ${l}\n`).join(''))

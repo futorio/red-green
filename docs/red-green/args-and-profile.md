@@ -82,6 +82,11 @@ sets `PROPERTY_SEED` and `PROPERTY_EXAMPLES` (`--examples`, 100 by default) and 
 last example printed; 2 on a bad marker or domain, a missing `<id>.failed` after a clean exit, or an index not in
 `<id>.json`. stderr names the seed and the first 3 failed examples of each contract, then counts the rest.
 
+On red, `run` reduces each red contract's first failed example. Each rerun writes only that contract's file, holding
+the examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward
+the lower bound, earlier `oneof` choices), runs the command again with nothing rebuilt, and keeps the first that fails;
+it stops when none fails or after 100 reruns. stderr names `<id>: example <index> reduced in <n> reruns: <json>`.
+
 ## By-hand mutation
 
 A run makes no mutants. A project owner runs them by hand over a commit range, such as a whole spec's, with a budget

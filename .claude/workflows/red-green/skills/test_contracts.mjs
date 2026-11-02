@@ -206,3 +206,56 @@ test('R10: a red run names the first 3 failed examples of a contract and counts 
   assert.equal(r.stderr.match(/p\.a: example \d+ failed/g).length, 3, r.stderr)
   assert.match(r.stderr, /p\.a: 7 more failed examples\n/)
 })
+
+// The reduced example a red run reports for `domain` when `bad` (a JS expression over `v`) names a failing example.
+const reduced = (domain, bad) => {
+  const r = run(property(domain, `ex.forEach((v, i) => { if (${bad}) failed.push(i) })`))
+  assert.equal(r.status, 1, r.stderr)
+  const m = /p\.a: example (\d+) failed, seed 1: .*\n(?:.*\n)*?contracts: p\.a: example (\d+) reduced in \d+ reruns: (.*)\n/.exec(r.stderr)
+  assert.ok(m, r.stderr)
+  assert.equal(m[2], m[1], 'the first failed example is the one reduced')
+  return JSON.parse(m[3])
+}
+
+test('R11: a failed example is reduced by its domain until no smaller example fails', () => {
+  assert.equal(reduced({ int: [0, 1000] }, 'v >= 37'), 37)
+  assert.equal(reduced({ int: [-50, 50] }, 'v >= -20'), -20)
+  assert.deepEqual(reduced({ bytes: [1, 8] }, 'v.some(b => b >= 200)'), [200])
+  assert.equal(reduced({ string: [0, 10] }, '/[x-~]/.test(v)'), 'x')
+  assert.equal(reduced({ string: [2, 6], chars: 'abc' }, 'true'), 'aa')
+  assert.deepEqual(reduced({ list: { int: [0, 100] }, len: [1, 6] }, 'v.length >= 3'), [0, 0, 0])
+  assert.deepEqual(reduced({ tuple: [{ int: [0, 9] }, { string: [0, 5], chars: 'ab' }] }, "v[0] >= 4 && v[1].includes('b')"), [4, 'b'])
+  const choice = { oneof: [{ const: 'none' }, { int: [0, 99] }] }
+  assert.equal(reduced(choice, 'true'), 'none')
+  assert.equal(reduced(choice, "v !== 'none' && v >= 10"), 10)
+})
+
+test('R12: a crash with no results file is reduced too', () => {
+  const r = run(property({ int: [0, 99] }, `ex.forEach((v, i) => { console.log('property: p.a ' + i); if (v >= 30) process.exit(134) })`))
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: red on example \d+, seed 1: \d+; the command exited 134 with no p\.a\.failed\n(?:.*\n)*contracts: p\.a: example \d+ reduced in \d+ reruns: 30\n/)
+})
+
+test('R13: a rerun writes only the reduced contract\'s file and runs the command again', () => {
+  const repo = setup({ 't.mjs': `// contract: p.a: a property
+// domain: {"int": [0, 99]}
+// contract: p.b: another property
+// domain: {"int": [0, 99]}
+import { existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from 'node:fs'
+const dir = process.env.PROPERTY_DIR
+appendFileSync('runs.log', readdirSync(dir).sort().join(' ') + '\\n')
+for (const id of ['p.a', 'p.b']) {
+  if (!existsSync(dir + '/' + id + '.json')) continue
+  const ex = JSON.parse(readFileSync(dir + '/' + id + '.json', 'utf8'))
+  writeFileSync(dir + '/' + id + '.failed', ex.flatMap((v, i) => id === 'p.a' && v >= 10 ? [i] : []).join('\\n'))
+}
+` })
+  const r = run(repo)
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: example \d+ reduced in \d+ reruns: 10\n/)
+  assert.doesNotMatch(r.stderr, /p\.b/)
+  const runs = readFileSync(join(repo, 'runs.log'), 'utf8').trim().split('\n')
+  assert.equal(runs[0], 'p.a.json p.b.json')
+  assert.ok(runs.length > 1)
+  for (const l of runs.slice(1)) assert.equal(l, 'p.a.json')
+})
