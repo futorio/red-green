@@ -19,7 +19,7 @@ Compare against the statement ({{TARGET}} and every document it points to, as wr
 {{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}
 {{> research section}}
 <!-- @part retry_note -->
- A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed.
+{{> shared failed_checks}}.
 <!-- @part verify_review_note -->
  These have no test and are checked only by you: {{verify_review}}.
 <!-- @part unverified_note -->
