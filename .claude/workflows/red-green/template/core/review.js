@@ -47,12 +47,13 @@ const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\
     unverified: impl.unverified, unverified_note: impl.unverified.length > 0,
     'config.runtime': CONFIG.review.runtime, runtime_note: !!CONFIG.review.runtime,
     'duty.order': CONFIG.review.duties.order, 'duty.test_case_review': CONFIG.review.duties.test_case_review,
+    property_note: plan.cases.some(c => c.property),
   }, contract(...l.rules(round === N), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
   { schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
 // @part inputs
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
 // earlier findings and their outcomes, each finding the last fix was sent with its outcome.
-INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
+INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'property_note', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,
   history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,

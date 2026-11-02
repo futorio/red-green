@@ -56,8 +56,10 @@ characters, a duplicate id, a malformed marker or a doc that differs from what i
 {"name": "contracts", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs doc docs/contracts.md --check", "tier": "fast"}
 ```
 
-With no property framework declared, property cases run through `run`, the same way for every language, and the project
-declares that gate too, with its test command after `--` (a pipeline goes through `sh -c`):
+With a property framework declared (`blocks.implement.property_framework`), a property test is written in it, runs in the
+project's ordinary test gate and reads `PROPERTY_SEED` (1 when unset) and `PROPERTY_EXAMPLES`
+(`blocks.implement.property_examples`, 100, when unset). With none declared, property cases run through `run`, the same
+way for every language, and the project declares that gate too, with its test command after `--` (a pipeline goes through `sh -c`):
 
 ```json
 {"name": "properties", "command": "node {{tools}}/.claude/workflows/red-green/skills/contracts.mjs run --examples 100 -- make test"}

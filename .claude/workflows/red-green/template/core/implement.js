@@ -1,6 +1,6 @@
 // Block implement: its schema, the call with its one retry, and its inputs. Its only interface is the include order: it
-// reads BASE, IMPLEMENT_SKILL, CODE_RULES, research, reqIds, cases, failures, PRE, call, contract, writer, died,
-// retryValues, idOf, log, phase, and INPUTS, BLOCK_PATHS, CASE; it declares IMPL_SCHEMA, impl, same and
+// reads BASE, IMPLEMENT_SKILL, CODE_RULES, CONFIG, research, reqIds, cases, frameworkValues, failures, PRE, call, contract,
+// writer, died, retryValues, idOf, log, phase, and INPUTS, BLOCK_PATHS, INTEGER, CASE; it declares IMPL_SCHEMA, impl, same and
 // implementQuestions for later parts.
 // @part schema
 
@@ -23,7 +23,8 @@ const IMPL_SCHEMA = { type: 'object', properties: {
 
 phase('Implement')
 const implementCall = (retry, label) => call('implement', PRE, 'implement',
-  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research }, retryValues(retry)), contract(writer('Commit your work as it stands.'),
+  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research, property_examples: CONFIG.implement.property_examples },
+    frameworkValues(cases.some(c => c.property)), retryValues(retry)), contract(writer('Commit your work as it stands.'),
   'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id; requirement: its id, e.g. R1) and per boundary phrase (ref: the ticket\'s words, quoted), a row with a test also `red`: the failure line it showed before the code; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open).',
   died(`Answer with a head past ${BASE}`)), { schema: IMPL_SCHEMA, phase: 'Implement', label })
 let impl = await implementCall(null, 'implement')
@@ -36,6 +37,8 @@ if (madeNothing(impl)) {
   impl = await implementCall(impl ? impl.notes || 'none' : 'agent died', 'implement:retry')
   if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts made no commit; nothing was reviewed', research, cases, failures }
 }
+// A property case's row names its contract id.
+impl.checks.forEach(r => { const c = r.kind === 'case' && cases.find(c => c.id === r.ref); if (c && c.property) r.contract = c.property.id })
 // A case with no case row, every row that says why it has no test, and a test with no red line join the free-text unverified list.
 const rowless = cases.filter(c => !impl.checks.some(r => r.kind === 'case' && r.ref === c.id)).map(c => `case ${c.id}: no check reported`)
 impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unverified).map(r => `${r.ref}: ${r.unverified}`),
@@ -44,6 +47,6 @@ log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without on
 // Implement questions go to the result alone, like research's.
 const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
 // @part inputs
-// Implement's inputs, and the path only it reads: the cases, requirement lines expanded.
-INPUTS.implement = ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research']
-Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE } })
+// Implement's inputs, and the paths only it reads: the cases, requirement lines expanded, and the examples a framework test runs.
+INPUTS.implement = ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'property_framework', 'property_examples', 'property_framework_note', 'property_runner_note', 'cases', 'research']
+Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE }, property_examples: INTEGER })

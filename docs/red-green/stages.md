@@ -81,6 +81,17 @@ sees and the result lists with research's `how`. Cases cite only `test` ids.
 and Act, case and whitespace folded) may sit in two cases. A miss sends the plan back once (`replan`) naming the
 uncovered ids and duplicates; what is still uncovered goes to the result.
 
+**Property cases:** a claim over a domain too large to enumerate may get a property case; a small finite domain is one
+case with a table of literal rows. Its optional `property` holds the property contract: `id`, `statement` (255 characters
+at most), `source`, `domain` (JSON in `run`'s domain language with no `blocks.implement.property_framework`, else text
+for the framework; a domain `run` cannot state keeps the case literal) and `mut`, one wrong output per input the
+statement names. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`, the
+one exception to one Act and single literals. It may go through a lower seam than `how` names when that one costs too
+much per example, saying so; a literal case keeps the named seam. The script accepts as `source` only a requirement id
+or a listed fact's `where` (any one location of a list). A bad source or an over-limit statement joins the replan's
+reasons, the latter told to split into flat property contracts sharing an id prefix; a case still failing after the
+replan is dropped (logged), and what it leaves uncovered goes to `uncovered_requirements`. Research does not change.
+
 **Limit on tests:** plan's rules and the code lens hold one list, the `plan` default's `limit` part. Worth testing:
 requirement behaviour, invariant, boundary, error, regression. Banned: doc and message wording, constants, private
 structure, the framework, getters, mock checks; an exact message only when a requirement names it. The code lens raises a
@@ -93,6 +104,12 @@ Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/impleme
 - **One gate rule for writers (implement, fix):** before each commit, run the runner at tier `fast` with `--no-cache`, then
   commit as is, whatever it reports. No stage reverts: the gates stage follows every writer. With no `fast` gate the prompt
   says nothing about gates.
+- **Property tests:** only when a case has a `property`, implement gets the rule: one test per property case, opening
+  with the marker `contract: <id>: <statement>` as a comment, running the property over the domain, checking that it
+  rejects each `mut`, and printing each example before running it. With no framework the marker's next line is
+  `domain: <json>` and the test follows `run`'s test-side protocol ([`args-and-profile.md`](args-and-profile.md));
+  with one it is written in it and reads `PROPERTY_SEED` and `PROPERTY_EXAMPLES`. The script adds the property contract's
+  id to that case's check row as `contract`.
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason; a row with a test also
   has `red`, the failure line it showed before the code. The script adds to `unverified`: `case <id>: no check reported` per
   case without a row, `<ref>: <reason>` per `unverified` row, and `<ref>: test <name> reported no red line` per test row
@@ -133,6 +150,8 @@ gate named), and it stays a major, so the iteration is not clean.
 Two lenses in parallel (`blocks.review.lenses`), given every earlier finding with its outcome; a rejected one is raised
 again only with a `problem` that answers the fixer's `argument`.
 
+- **Code lens:** with property cases in the plan it also raises a property test lacking the check that its property
+  rejects each named wrong output, as a major whose `trigger` is that test.
 - **Checklist lens:** one `checked` row per requirement id except `verify_launch` ones, `status`
   `met|unmet|unverified`; an id without a row is `unverified`. `unmet` becomes a major finding; `unverified` goes to
   `leftover_findings` and starts no fix.

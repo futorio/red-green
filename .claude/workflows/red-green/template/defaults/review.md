@@ -6,7 +6,7 @@ whitespace: some notes start with a space or a blank line, the test-case review 
 {{> review frame}}
 <!-- @part code -->
 {{> review head}} code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}
-{{> plan limit}} A test in the diff that breaks this is a major whose `trigger` is that test.
+{{> plan limit}} A test in the diff that breaks this is a major whose `trigger` is that test.{{property_note}}
 {{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.
 {{> review frame}}
 <!-- @part head -->
@@ -38,6 +38,8 @@ OUTCOMES:
 A test that diff {{> review weakened}} is a new major too.
 <!-- @part duty.order -->
  ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.
+<!-- @part property_note -->
+ A property test (one with a `contract:` marker) lacking the check that its property rejects each named wrong output is a major whose `trigger` is that test.
 <!-- @part runtime_note -->
  in {{config.runtime}}
 <!-- @part duty.test_case_review -->

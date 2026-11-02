@@ -1,7 +1,7 @@
 {
   "default": {
     "config": {},
-    "sha256": "c47cce3985530bb28a7535f31fc85482e27f8b40a75d00f92ed97c0db4a5fd34"
+    "sha256": "f570edfad0969fa25b7a7d01675ab047a4d4a264780c438ad4b6cab7e3fde224"
   },
   "duties.order": {
     "config": {
@@ -13,7 +13,7 @@
         }
       }
     },
-    "sha256": "59c6ea0e2edfb778dcbaa73e644cf045d289319271573698589f41742d356f0c"
+    "sha256": "d23ec7603ebe757309e34117e0439d76e4817d875877c918c0fc3d637755afc7"
   },
   "duties.test_case_review": {
     "config": {
@@ -25,7 +25,7 @@
         }
       }
     },
-    "sha256": "3eaece29d10d0a02b088cb53dc7b4dab1aac0ca814f9b9ca1919b3f980a23859"
+    "sha256": "17babab715d4dd052cbdcf27ca94f65afbba82af00eb0723a667dc54f1c6d428"
   },
   "duties.both": {
     "config": {
@@ -38,7 +38,7 @@
         }
       }
     },
-    "sha256": "53468070c3426a530f284966c63f6b053960f66fe2891ec7196dbdea087b22fc"
+    "sha256": "9e6a3033e8621a8ccf88a7a4dca36c6aedf341d27551829464385e88e442d29f"
   },
   "lenses.checklist": {
     "config": {
@@ -50,7 +50,7 @@
         }
       }
     },
-    "sha256": "e3d7d1855363ebc66dd183027a0c1385129a1b6e2c41270fd0fc8bbc92639562"
+    "sha256": "7876edfb1f31a3158acef7dd67eb6314b5ed1d5234bc5d1effe9e3d892c88d82"
   },
   "lenses.code": {
     "config": {
@@ -62,7 +62,7 @@
         }
       }
     },
-    "sha256": "14a3d01448ba73125d71250bb5bed3ed4d745b00fb3e54488e9f8654b6c50a60"
+    "sha256": "7ee4ce3daf307d4a2159e63547e2eda12c058c6b1e6416cc5aa03ad2bdf575eb"
   },
   "lenses.none": {
     "config": {
@@ -72,7 +72,7 @@
         }
       }
     },
-    "sha256": "8440f280f3e399f129c67b9199d7bc9bfcf7406b7cf60552a8662285507a173f"
+    "sha256": "0331f3188608926683c0989748320632bb46fa9cb679b68c5c43d023e5e3c74a"
   },
   "models.review": {
     "config": {
@@ -85,6 +85,6 @@
         }
       }
     },
-    "sha256": "adab60eb20c201d9ed10fd77940d0d412aab527faec270aa7303f2948c6a66ee"
+    "sha256": "b9a07005c717cd43702991eae61bbb43e4b394d43061dd5a2bcd9bb7e7a9c074"
   }
 }

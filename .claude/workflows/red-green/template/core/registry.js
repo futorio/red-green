@@ -26,9 +26,12 @@ const REGISTRY = Object.assign({
   gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, test_ids: STRING, check_ids: STRING, code_rules: STRING,
   // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
   previous_notes: STRING,
+  // The property framework plan and implement take, blocks.implement.property_framework.
+  property_framework: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
   earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING, last_fix_note: STRING, red_gates_note: STRING,
+  property_framework_note: STRING, property_runner_note: STRING, property_issues_note: STRING, property_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
@@ -38,7 +41,7 @@ const REGISTRY = Object.assign({
   'config.rounds': INTEGER, 'config.min': INTEGER, 'config.fix_attempts': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
-  'config.runtime': OPTIONAL,
+  'config.runtime': OPTIONAL, 'config.property_framework': OPTIONAL, 'config.property_examples': INTEGER,
   // The gates declared and the plug-in fields every block takes.
   'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING, tier: { type: 'string', enum: ['fast', 'round', 'acceptance'] } }, required: ['name', 'command'] } }, { type: 'null' }] },
   'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
@@ -49,9 +52,9 @@ const REGISTRY = Object.assign({
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
 // valid against its registry schema. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
-// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, any other value as
-// compact JSON.
-const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', ') }
+// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, property_issues
+// semicolon-separated, any other value as compact JSON.
+const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', '), property_issues: xs => xs.join('; ') }
 const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v)
 function fill(block, text, values) {
   const inputs = INPUTS[block].concat('default')

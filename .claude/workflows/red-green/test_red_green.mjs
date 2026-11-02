@@ -652,6 +652,107 @@ test('W136: a banned-test major from the code lens reaches fix as a major with t
   assert.deepEqual([sent.id, sent.severity, sent.trigger], ['R1-code-1', 'major', 'test/cli.test.js:12 asserts the --help text'])
 })
 
+// A property case: the base case with a property over the given fields.
+const propertyCase = (id, over) => Object.assign({}, base().plan.cases[0], { id, asserts: [id], property: Object.assign({ id: `m.${id}`, statement: 'S', source: 'R1', domain: '{"int":[0,9]}', mut: ['0'] }, over) })
+const withProperty = { plan: { cases: [propertyCase('C1')] } }
+
+test('P01: a case has an optional property: id, statement of at most 255 characters, source, domain and mut, a list', async () => {
+  const { calls } = await runCore()
+  const item = calls.find(c => c.label === 'plan').opts.schema.properties.cases.items
+  assert.ok(!item.required.includes('property'))
+  const p = item.properties.property
+  assert.deepEqual(p.required, ['id', 'statement', 'source', 'domain', 'mut'])
+  assert.equal(p.properties.statement.maxLength, 255)
+  assert.deepEqual(p.properties.mut, { type: 'array', items: { type: 'string' } })
+})
+
+test('P02: plan and replan hold the property rule; with no framework the runner\'s domain language, with one its name', async () => {
+  const c = base().plan.cases[0]
+  const dup = { plan: { cases: [c, Object.assign({}, c, { id: 'C2' })] }, replan: base().plan }
+  const runner = await runCore(dup)
+  const framework = await runCore(dup, 1, withBlocks({ implement: { property_framework: 'fast-check' } }))
+  for (const label of ['plan', 'replan']) {
+    for (const { calls } of [runner, framework]) {
+      const p = prompt(calls, label)
+      assert.match(p, /a claim over a domain too large to enumerate gets a property case; a small finite domain is one case asserting a table of literal rows\./, label)
+      assert.match(p, /the one-Act and single-literal rules are for the other cases\./, label)
+      assert.match(p, /may go through a lower one, saying so in its Act; a literal case keeps the named seam\./, label)
+    }
+    assert.match(prompt(runner.calls, label), / \(JSON in the runner's language: \{"int":\[lo,hi\]\}.*; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case\), `mut`/, label)
+    assert.ok(!prompt(runner.calls, label).includes('fast-check'), label)
+    assert.match(prompt(framework.calls, label), /covers \(in fast-check's terms\), `mut`/, label)
+    assert.ok(!prompt(framework.calls, label).includes('"int"'), label)
+  }
+})
+
+test('P03: a property source other than a requirement id or a listed fact\'s where, or a statement over 255, joins the one replan', async () => {
+  const facts = [fact('code', ['src/a.cpp:1-2', 'src/b.cpp:3'], 'R1'), fact('note', 'docs/x.md § Y', 'R1')]
+  const cases = [propertyCase('C1'), propertyCase('C2', { source: 'src/b.cpp:3', statement: 'x'.repeat(255) }), propertyCase('C3', { source: 'docs/x.md § Y' }),
+    propertyCase('C4', { source: 'plan step 1' }), propertyCase('C5', { statement: 'x'.repeat(256) })]
+  const { calls } = await runCore({ research: research({ facts }), plan: { cases }, replan: { cases: cases.slice(0, 3) } })
+  assert.equal(count(calls, 'replan'), 1)
+  const p = prompt(calls, 'replan')
+  assert.ok(p.includes('These property cases fail their checks: C4: source "plan step 1" is neither a requirement id nor a listed fact\'s `where`; C5: statement over 255 characters: split it into flat contracts sharing an id prefix, one case each.'), p)
+  assert.ok(!/C[123]: /.test(p.split('These property cases')[1].split('.')[0]))
+  assert.match(calls.find(k => k.label === 'replan').logged.at(-1), /; property cases failing their checks: C4, C5$/)
+  const ok = await runCore({ research: research({ facts }), plan: { cases: cases.slice(0, 3) } })
+  assert.ok(!called(ok.calls, 'replan'))
+})
+
+test('P04: a property case still failing its checks after the replan is dropped, and what it leaves uncovered is reported', async () => {
+  const bad = propertyCase('C2', { source: 'nowhere' })
+  const { result, calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'R2: two'], test_harness: [harness('R1'), harness('R2')] }),
+    plan: { cases: [base().plan.cases[0], Object.assign({}, bad, { requirement: 'R2' })] }, replan: { cases: [base().plan.cases[0], Object.assign({}, bad, { requirement: 'R2' })] },
+  })
+  assert.deepEqual(JSON.parse(prompt(calls, 'implement').split('CASES:\n')[1].split('\n')[0]).map(c => c.id), ['C1'])
+  assert.match(calls.find(k => k.label === 'implement').logged.join('\n'), /plan: dropped C2: source "nowhere"/)
+  assert.deepEqual(result.uncovered_requirements, ['R2'])
+})
+
+test('P05: with a property case and no framework, implement gets the marker, domain line and the runner\'s test-side protocol; with none, no property rule', async () => {
+  const { calls } = await runCore(withProperty)
+  const p = prompt(calls, 'implement')
+  for (const s of ['`contract: <id>: <statement>`', 'checks that the property rejects each `mut` on the generated inputs, and prints each example before running it.',
+    'the marker\'s next line is `domain: <domain>`', '`$PROPERTY_DIR/<id>.json`', 'does nothing when the file is absent', 'prints `property: <id> <index>` and flushes', '`$PROPERTY_DIR/<id>.failed`'])
+    assert.ok(p.includes(s), s)
+  assert.ok(!/PROPERTY_SEED/.test(p))
+  assert.ok(!/PROPERTY|contract: </.test(prompt((await runCore()).calls, 'implement')))
+})
+
+test('P06: with a declared framework, implement writes the property in it, reading the seed and examples variables with their defaults', async () => {
+  const { calls } = await runCore(withProperty, 1, withBlocks({ implement: { property_framework: 'fast-check', property_examples: 30 } }))
+  const p = prompt(calls, 'implement')
+  assert.ok(p.includes('Write it in fast-check\'s own idiom, seeded from `PROPERTY_SEED` (1 when unset) with `PROPERTY_EXAMPLES` examples (30 when unset).'), p)
+  assert.ok(p.includes('`contract: <id>: <statement>`'))
+  assert.ok(!/PROPERTY_DIR|domain: </.test(p))
+  const byDefault = await runCore(withProperty, 1, withBlocks({ implement: { property_framework: 'fast-check' } }))
+  assert.match(prompt(byDefault.calls, 'implement'), /`PROPERTY_EXAMPLES` examples \(100 when unset\)/)
+})
+
+test('P07: a property case\'s check row names its contract id', async () => {
+  const { result } = await runCore(withProperty)
+  assert.equal(result.implement.checks[0].contract, 'm.C1')
+  assert.ok(!('contract' in (await runCore()).result.implement.checks[0]))
+})
+
+test('P08: with property cases, the code lens raises a property test lacking its wrong-output check as a major', async () => {
+  const RULE = 'A property test (one with a `contract:` marker) lacking the check that its property rejects each named wrong output is a major whose `trigger` is that test.'
+  const { calls } = await runCore(withProperty)
+  assert.ok(prompt(calls, 'review:r1:code').includes(RULE))
+  assert.ok(!prompt(calls, 'review:r1:checklist').includes(RULE))
+  assert.ok(!prompt((await runCore()).calls, 'review:r1:code').includes('property test'))
+})
+
+test('P09: blocks.implement.property_framework is a string or null and property_examples an integer, else the run fails on config', async () => {
+  for (const [field, value] of [['property_framework', 3], ['property_examples', 'many']]) {
+    const { result, calls } = await runCore({}, 1, withBlocks({ implement: { [field]: value } }))
+    assert.equal(calls.length, 0, field)
+    assert.equal(result.stage, 'config', field)
+    assert.match(result.note, new RegExp(`blocks\\.implement\\.${field}`), field)
+  }
+})
+
 test('W47: the open questions of the planner reach the result with who settles each; one tied to no case is dropped', async () => {
   const q = { requirement: 'R1', question: 'which dir wins?', reading: 'the upstream one', cases: ['C1'], settles: 'owner' }
   const loose = Object.assign({}, q, { question: 'anything else?', cases: ['C9'] })
@@ -909,7 +1010,8 @@ const SAMPLES = {
     enum: edit(fullResearch, r => { r.facts[0].kind = 'guess' }),
     required: edit(fullResearch, r => { delete r.test_harness }),
   }],
-  plan: [{ cases: base().plan.cases, questions: [] }, { required: { cases: [] }, enum: { cases: [Object.assign({}, base().plan.cases[0], { requirement: 'R9' })], questions: [] } }],
+  plan: [{ cases: base().plan.cases, questions: [] }, { required: { cases: [] }, enum: { cases: [Object.assign({}, base().plan.cases[0], { requirement: 'R9' })], questions: [] },
+    maxLength: { cases: [Object.assign({}, base().plan.cases[0], { property: { id: 'm.p', statement: 'x'.repeat(256), source: 'R1', domain: '{}', mut: [] } })], questions: [] } }],
   implement: [base().implement, {
     anyOf: edit(base().implement, r => { delete r.checks[0].test }),
     enum: edit(base().implement, r => { r.checks[0].kind = 'other' }),
