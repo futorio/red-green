@@ -157,9 +157,9 @@ test('W49: the gates step runs the runner on the declared gates at tier round, a
   for (const s of ['COMMITS', 'Gates:', 'Over-built']) assert.ok(!call.prompt.includes(s), s)
 })
 
-test('W112: the gates prompt has no background rule, says to call again on exit 3 at most 6 calls, then not_run, and states the Bash timeout', async () => {
+test('W112: the gates prompt has no long-command rule, says to call again on exit 3 at most 6 calls, then not_run, and states the Bash timeout', async () => {
   const stage = prompt((await runCore({})).calls, 'gates:r1')
-  assert.ok(!/run_in_background/.test(stage))
+  assert.ok(!/A command over ~2 min/.test(stage))
   assert.match(stage, /Bash timeout of 600000 ms/)
   assert.match(stage, /Exit 3: .*again, at most 6 calls/)
   assert.match(stage, /after the 6th.*`not_run`/)
@@ -488,7 +488,7 @@ test('W39: the research asks for typed facts as JSON, and no prompt mentions res
   for (const s of ['- code and change-site:', '- note:', '`path § section`', '`$ command`', 'Every fact is shown by']) assert.ok(research.prompt.includes(s), s)
   assert.ok(!/Markdown/.test(research.prompt))
   // Research commits nothing and runs no gate: the preamble and the mailbox leave those rules out, later stages keep them.
-  for (const s of ['COMMITS', 'run_in_background', 'or commit']) {
+  for (const s of ['COMMITS', 'A command over ~2 min', 'or commit']) {
     assert.ok(!research.prompt.includes(s), s)
     assert.ok(prompt(calls, 'implement').includes(s), s)
   }
@@ -804,7 +804,7 @@ test('W44: plan and replan get the no-code preamble and the short mailbox checkp
   const { calls } = await runCore({ plan: { cases: [] }, replan: base().plan })
   for (const label of ['plan', 'replan']) {
     const p = prompt(calls, label)
-    for (const s of ['COMMITS', 'Gates:', 'run_in_background', 'Over-built', 'or commit']) assert.ok(!p.includes(s), `${label}: ${s}`)
+    for (const s of ['COMMITS', 'Gates:', 'A command over ~2 min', 'Over-built', 'or commit']) assert.ok(!p.includes(s), `${label}: ${s}`)
     assert.match(p, /read it at start and before returning, and follow its header/, label)
   }
 })

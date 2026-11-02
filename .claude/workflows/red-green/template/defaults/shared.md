@@ -2,4 +2,4 @@
 <!-- @part failed_checks -->
  A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed
 <!-- @part bg -->
-- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start.
+- A command over ~2 min: run it in the foreground with a Bash timeout of 600000 ms (10 minutes), once; one that needs longer is split or narrowed until each part fits.
