@@ -109,8 +109,8 @@ Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/impleme
 - **Property tests:** only when a case has a `property`, implement gets the rule: one test per property case, opening
   with the marker `contract: <id>: <statement>` as a comment, running the property over the domain, checking that it
   rejects each `mut`, and printing each example before running it. With no framework the marker's next line is
-  `domain: <json>` and the test follows `run`'s test-side protocol ([`args-and-profile.md`](args-and-profile.md));
-  with one it is written in it and reads `PROPERTY_SEED` and `PROPERTY_EXAMPLES`. The script adds the property contract's
+  `domain: <json>` and the test follows `run`'s test-side protocol ([`args-and-profile.md`](args-and-profile.md)),
+  shown one example of each case's domain that the script generates with `run`'s own generator (seed 1); with one it is written in it and reads `PROPERTY_SEED` and `PROPERTY_EXAMPLES`. The script adds the property contract's
   id to that case's check row as `contract`.
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason; a row with a test also
   has `red`, the failure line it showed before the code. The script adds to `unverified`: `case <id>: no check reported` per

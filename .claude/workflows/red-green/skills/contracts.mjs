@@ -34,7 +34,7 @@
 //     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
 //
 // Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile (with int and ASCII) into the core's plan
-// check.
+// check, and mulberry32 for implement's example of each domain.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -121,16 +121,14 @@ const doc = (path, check) => {
   if (!check) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text) }
 }
 
-// A seeded generator (mulberry32): next() is uniform in [0, 1).
-const random = key => {
-  let s = createHash('sha256').update(key).digest().readUInt32LE(0)
-  return () => {
-    s = (s + 0x6d2b79f5) | 0
-    let t = Math.imul(s ^ (s >>> 15), 1 | s)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32
-  }
+// A seeded generator (mulberry32): next() is uniform in [0, 1). random seeds it from a key.
+export const mulberry32 = s => () => {
+  s = (s + 0x6d2b79f5) | 0
+  let t = Math.imul(s ^ (s >>> 15), 1 | s)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32
 }
+const random = key => mulberry32(createHash('sha256').update(key).digest().readUInt32LE(0))
 // An integer in [lo, hi], each bound one time in 16.
 export const int = (next, lo, hi) => {
   const x = next()
