@@ -58,14 +58,69 @@ test('M02: a missing repository is exit 2 with the reason on stderr', () => {
 })
 
 test('M03: a build past the timeout is invalid; the test then never runs', () => {
-  const res = run(repo, MUTANTS.slice(0, 1), { build: 'node -e "for (;;);"', test: 'exit 0' })
+  const res = run(repo, MUTANTS.slice(0, 1), { build: 'grep -q "x + 2" a.js && node -e "for (;;);"; exit 0', test: 'exit 0' })
   assert.equal(res.status, 0, res.stderr)
   assert.equal(JSON.parse(res.stdout)[0].status, 'invalid')
 })
 
+// A log file, and a command that appends `what` and where it ran to the log, then ends with `rest`.
+const newLog = () => {
+  const log = join(tmp, `log-${Math.random()}`)
+  writeFileSync(log, '')
+  return log
+}
+const step = (log, what, rest = 'exit 0') => `echo "${what} $PWD $(git rev-parse HEAD) $(git status --porcelain | wc -l)" >> ${log}; ${rest}`
+const lines = log => readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => l.split(' '))
+const LOOP = 'node -e "for (;;);"'
+const assertRefused = (res, why) => {
+  assert.equal(res.status, 2)
+  assert.match(res.stderr, why)
+  assert.equal(res.stdout, '')
+  assert.equal(git('worktree', 'list').trim().split('\n').length, 1)
+}
+
+test('M05: the control is a mutant with no patch: a detached clean worktree at head, build then test', () => {
+  const log = newLog()
+  const res = run(repo, MUTANTS.slice(0, 1), { build: step(log, 'build'), test: step(log, 'test') })
+  assert.equal(res.status, 0, res.stderr)
+  const [[b, bdir, bsha, bdirty], [t, tdir, tsha, tdirty]] = lines(log)
+  assert.deepEqual([b, t], ['build', 'test'])
+  assert.equal(tdir, bdir)
+  assert.ok(bdir.startsWith(join(tmp, 'run', 'mutants')), bdir)
+  assert.deepEqual([bsha, tsha, bdirty, tdirty], [head, head, '0', '0'])
+  assert.equal(git('worktree', 'list').trim().split('\n').length, 1)
+})
+
+test('M09: an empty mutant list makes no control run, on a red tree too', () => {
+  const log = newLog()
+  const res = run(repo, [], { build: step(log, 'build'), test: step(log, 'test', 'exit 1') })
+  assert.equal(res.status, 0, res.stderr)
+  assert.deepEqual(JSON.parse(res.stdout), [])
+  assert.deepEqual(lines(log), [])
+})
+
+test('M06: a failing test in the control is exit 2 and tries no mutant', () => {
+  const log = newLog()
+  const res = run(repo, MUTANTS.slice(0, 2), { build: 'exit 0', test: step(log, 'test', 'exit 1') })
+  assertRefused(res, /^mutate: control run.*test/)
+  assert.equal(lines(log).length, 1)
+})
+
+test('M07: a failing build in the control is exit 2 and tries no mutant', () => {
+  const log = newLog()
+  const res = run(repo, MUTANTS.slice(0, 2), { build: step(log, 'build', 'exit 1'), test: step(log, 'test') })
+  assertRefused(res, /^mutate: control run.*build/)
+  assert.deepEqual(lines(log).map(l => l[0]), ['build'])
+})
+
+test('M08: a control past the timeout is exit 2', () => {
+  assertRefused(run(repo, MUTANTS.slice(0, 1), { test: LOOP }), /^mutate: control run.*test/)
+  assertRefused(run(repo, MUTANTS.slice(0, 1), { build: LOOP }), /^mutate: control run.*build/)
+})
+
 // Last: it leaves a locked worktree behind.
 test('M04: a worktree that cannot be removed is exit 2 with the reason on stderr', () => {
-  const res = run(repo, MUTANTS.slice(0, 1), { test: 'git worktree lock "$PWD"' })
+  const res = run(repo, MUTANTS.slice(0, 1), { test: 'grep -q "x + 2" a.js && git worktree lock "$PWD"; exit 0' })
   assert.equal(res.status, 2)
   assert.match(res.stderr, /^mutate: .*M-1/)
 })

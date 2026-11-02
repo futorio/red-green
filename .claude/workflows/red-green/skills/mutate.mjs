@@ -1,3 +1,5 @@
+// First a control run, a mutant with no patch: a failed or timed-out build or test there is exit 2 and tries no mutant.
+// An empty list makes no control run.
 // Runs each mutant [{target, patch}] in a detached worktree of its own at HEAD, one at a time, and prints the list
 // with a status each: not_run (the patch does not apply), invalid (build non-zero or past the timeout), killed (test
 // non-zero or past the timeout), survived. Build and test each get the full timeout. Exit 0 a completed run, 2 did
@@ -24,22 +26,27 @@ const sh = (cmd, cwd, ms) => new Promise(resolve => {
   p.on('exit', code => { clearTimeout(t); resolve(code) })
 })
 
-const out = []
-for (const [i, m] of mutants.entries()) {
-  const wt = join(o.dir, 'mutants', `M-${i + 1}`)
+// A status for one mutant in a worktree of its own named `name`; with no patch, nothing is applied.
+const attempt = async (name, patch) => {
+  const wt = join(o.dir, 'mutants', name)
   try { git('worktree', 'add', '-q', '--detach', '--force', wt, o.head) } catch (e) { die(`worktree ${wt}: ${e.message}`) }
   try {
-    const applied = await new Promise(resolve => {
+    const applied = patch === undefined || await new Promise(resolve => {
       const p = spawn('git', ['apply', '-'], { cwd: wt, stdio: ['pipe', 'ignore', 'ignore'] })
       p.on('error', e => die(`git apply in ${wt}: ${e.message}`))
       p.stdin.on('error', e => die(`git apply in ${wt}: ${e.message}`))
       p.on('exit', code => resolve(code === 0))
-      p.stdin.end(m.patch)
+      p.stdin.end(patch)
     })
-    const status = !applied ? 'not_run'
+    return !applied ? 'not_run'
       : o.build && await sh(o.build, wt, timeout) !== 0 ? 'invalid'
       : await sh(o.test, wt, timeout) !== 0 ? 'killed' : 'survived'
-    out.push(Object.assign({}, m, { status }))
   } finally { try { git('worktree', 'remove', '--force', wt) } catch (e) { die(`remove ${wt}: ${e.message}`) } }
 }
+
+const control = mutants.length ? await attempt('control') : 'survived'
+if (control !== 'survived') die(`control run at ${o.head}: ${control === 'invalid' ? 'build' : 'test'} failed or timed out`)
+
+const out = []
+for (const [i, m] of mutants.entries()) out.push(Object.assign({}, m, { status: await attempt(`M-${i + 1}`, m.patch) }))
 process.stdout.write(JSON.stringify(out, null, 1) + '\n')

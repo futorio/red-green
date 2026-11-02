@@ -89,7 +89,9 @@ export function claudeCodeSpans(dir, project = sessionProject(dir)) {
   return out
 }
 
-// A label's block, with its round when it has one. Labels whose first segment is not their block's name:
+// A label's block, with its round when it has one. Labels whose first segment is not their block's name: replan, and
+// review:fix and fix:minor, of blocks a run no longer has, kept so --table can still split the older runs new ones are
+// compared against.
 const ALIAS = { 'review:fix': 'fix-review', 'fix:minor': 'minor-fix', replan: 'plan' }
 export function blockOf(label) {
   const [first, second] = label.split(':')

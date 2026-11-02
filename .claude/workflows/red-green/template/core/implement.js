@@ -10,6 +10,7 @@ const IMPL_SCHEMA = { type: 'object', properties: {
   checks: { type: 'array', items: { type: 'object', properties: {
     kind: { type: 'string', enum: ['case', 'phrase'] }, ref: { type: 'string' }, requirement: { type: 'string' },
     test: { type: 'object', properties: { file: { type: 'string' }, name: { type: 'string' } }, required: ['file', 'name'] },
+    red: { type: 'string' },
     unverified: { type: 'string' },
   }, required: ['kind', 'ref', 'requirement'], anyOf: [{ required: ['test'] }, { required: ['unverified'] }] } },
   unverified: { type: 'array', items: { type: 'string' } },
@@ -22,8 +23,8 @@ const IMPL_SCHEMA = { type: 'object', properties: {
 
 phase('Implement')
 const implementCall = (retry, label) => call('implement', PRE, 'implement',
-  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research }, retryValues(retry)), contract(writer('Commit your work as it stands, even with a gate worse than its baseline.'),
-  'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id; requirement: its id, e.g. R1) and per boundary phrase (ref: the ticket\'s words, quoted); questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open).',
+  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research }, retryValues(retry)), contract(writer('Commit your work as it stands.'),
+  'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id; requirement: its id, e.g. R1) and per boundary phrase (ref: the ticket\'s words, quoted), a row with a test also `red`: the failure line it showed before the code; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open).',
   died(`Answer with a head past ${BASE}`)), { schema: IMPL_SCHEMA, phase: 'Implement', label })
 let impl = await implementCall(null, 'implement')
 const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a))
@@ -35,9 +36,10 @@ if (madeNothing(impl)) {
   impl = await implementCall(impl ? impl.notes || 'none' : 'agent died', 'implement:retry')
   if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts made no commit; nothing was reviewed', research, cases, failures }
 }
-// A case with no case row, and every row that says why it has no test, join the free-text unverified list.
+// A case with no case row, every row that says why it has no test, and a test with no red line join the free-text unverified list.
 const rowless = cases.filter(c => !impl.checks.some(r => r.kind === 'case' && r.ref === c.id)).map(c => `case ${c.id}: no check reported`)
-impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unverified).map(r => `${r.ref}: ${r.unverified}`))
+impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unverified).map(r => `${r.ref}: ${r.unverified}`),
+  impl.checks.filter(r => r.test && !r.unverified && !r.red).map(r => `${r.ref}: test ${r.test.name} reported no red line`))
 log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without one`)
 // Implement questions go to the result alone, like research's.
 const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
