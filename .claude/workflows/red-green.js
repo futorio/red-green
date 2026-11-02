@@ -20,7 +20,6 @@ const RUN = A.run
 const BASE = A.base
 const TARGET = A.target
 const IMPLEMENT_SKILL = `${TOOLS}/.claude/workflows/red-green/skills/implement.md`
-const MUTATE = `${TOOLS}/.claude/workflows/red-green/skills/mutate.mjs`
 const RUN_GATES = `${TOOLS}/.claude/workflows/red-green/skills/run_gates.mjs`
 // The profile, its strings' {{base}}, {{run}}, {{repo}} and {{tools}} filled from args; any other {{...}} stays as
 // given and is listed in UNFILLED as [where, placeholder, name] for the config check (docs/red-green/args-and-profile.md).
@@ -31,12 +30,68 @@ const fillRun = (v, at) => typeof v === 'string' ? v.replace(/\{\{([^{}]*)\}\}/g
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillRun(x, `${at}.${k}`)])) : v
 const P = fillRun(A.profile || {}, 'profile')
 // Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/red-green/blocks.md).
-const DEFAULTS = {"fix":{"fix":"STAGE: fix, round {{round}}. Read {{IMPLEMENT_SKILL}} and follow it, code rules included.{{code_rules}}\nVerify each finding first. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.\n\nFINDINGS:\n{{findings}}\n{{earlier_fixes}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","earlier_fixes":"\nEARLIER FIXES:\n{{fixed}}\n"},"gates":{"run":"STAGE: gates, HEAD {{HEAD}}.\nFrom {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):\n{{gate_command}}\nIt prints one JSON row per gate.\nExit 0: the report is complete, whatever the gates did; return its rows.\nExit 2: it could not run; a `not_run` row per gate, `line` its stderr.\nExit 3: gates are still running and survive the call; run the same command again, at most 6 calls in all. Still exit 3 after the 6th: a `not_run` row per gate, `line` saying it did not finish.\nDo not end your turn before one of these; judge no gate and read no log."},"implement":{"implement":"STAGE: implementation.{{retry_note}} Read {{IMPLEMENT_SKILL}} and follow it, with the tdd/ directory beside it.{{code_rules}}\nBuild on the research facts and plan: what they settle is settled.\n\nBefore reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row with a test at the seam its requirement's test_harness names; a phrase row is unverified only when this environment cannot run its test (no tool, no data, no binary). Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in `unverified`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.\n\nCASES:\n{{cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","retry_note":" A previous attempt at this stage made NO commit (HEAD still {{BASE}}); its notes: {{previous_notes}}. Implement the ticket now."},"mutation":{"generated":"STAGE: mutation, HEAD {{HEAD}}. Read `git diff {{from_head}}..HEAD` and {{TARGET}}. For each check below whose test or the code it pins is in that diff write one mutant that breaks the behaviour its test claims to pin (`target` its ref), then at most {{config.edges}} on edges in that diff the ticket does not state (`target` `edge: <short phrase>`). Each `patch` is a unified diff against HEAD that changes production source only, in one place, never a test. Write them as a JSON list of {target, patch} to {{RUN}}/mutants.json, then run once `{{mutate_command}}` and report its output list as `mutants`; exit 2 means it did not run: ran false, not_run its stderr.\n- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start.\nCHECKS:\n{{tested_checks}}","tool":"STAGE: mutation, HEAD {{HEAD}}. The project's mutation tool: {{config.tool}} Run it once on this HEAD and report every mutant it ran: `target` `operator`, or a check ref only when the tool names one; `patch` a unified diff against HEAD; `status`."},"plan":{"plan":"STAGE: test-case planning.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","replan":"STAGE: test-case planning, the one replan.{{uncovered_note}}{{duplicates_note}} Keep every other case as it is, same id.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\n\nYOUR PREVIOUS CASES:\n{{plan.cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","uncovered_note":" Your cases below leave {{uncovered}} uncovered: add cases for each.","duplicates_note":" These checks sit in several cases after the same Arrange and Act; keep each in one case. Each `check` reads `arrange | act | assert`: {{duplicates}}.","rules":"cases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case."},"research":{"research":"STAGE: research.{{retry_note}} Read {{TARGET}}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.","retry_note":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed; a plan step over its limit keeps its action and moves the details to the facts.","section":"RESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover."},"review":{"checklist":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: checklist. Review the change against its statement. For each requirement id — {{check_ids}} — the promise is the sentence of the statement it rests on, whatever the code, its docs or its tests say. Then find a counterexample: the input or path most likely to make the promise false on the diff `git diff {{BASE}}..HEAD` — a boundary, an empty or malformed input, an error path, an exit code, a second caller.{{verify_review_note}} Scope: a change the statement does not call for is a finding.{{unverified_note}}\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","code":"STAGE: review, round {{round}} of at most {{rounds}}. Lens: code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}\n{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","head":"STAGE: review, round {{round}} of at most {{rounds}}. Lens:","frame":"The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","verify_review_note":" These have no test and are checked only by you: {{verify_review}}.","unverified_note":" Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.","red_gates_note":" Still red after {{attempts_made}} attempts at a fix: {{red_gates}}. Weigh the code knowing that.","earlier_findings":"\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):\n{{history}}\n","last_fix_note":"THE LAST FIX: on `git diff {{from_head}}..HEAD`, verify that each `fixed` finding below is fixed and that each `rejected` one's `argument` holds against the code; a claim that fails is a new major.\nOUTCOMES:\n{{last_fix}}","duty.test_case_review_fix":"\nA test that diff weakened, deleted or left asserting nothing it promises is a new major too.","duty.order":" ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.","runtime_note":" in {{config.runtime}}","duty.test_case_review":"A test the diff weakened, deleted or left asserting nothing it promises is a finding. ","weakened":"weakened, deleted or left asserting nothing it promises"},"shared":{"bg":"- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start."}}
+const DEFAULTS = {"fix":{"fix":"STAGE: fix, round {{round}}. Read {{IMPLEMENT_SKILL}} and follow it, code rules included.{{code_rules}}\nVerify each finding first. A fix that does not fit the implementation is NOT applied: reject it with an argument that cites code, the ticket or the spec — it goes back to the reviewers. Never delete the thing a finding is about to silence it. Group the findings by root cause first and fix each cause once, not one finding at a time; for each cause, check whether the same failure can arrive by another path — a sibling caller, another writer of the same state — and close that path too.\n\nFINDINGS:\n{{findings}}\n{{earlier_fixes}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","earlier_fixes":"\nEARLIER FIXES:\n{{fixed}}\n"},"gates":{"run":"STAGE: gates, HEAD {{HEAD}}.\nFrom {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):\n{{gate_command}}\nIt prints one JSON row per gate.\nExit 0: the report is complete, whatever the gates did; return its rows.\nExit 2: it could not run; a `not_run` row per gate, `line` its stderr.\nExit 3: gates are still running and survive the call; run the same command again, at most 6 calls in all. Still exit 3 after the 6th: a `not_run` row per gate, `line` saying it did not finish.\nDo not end your turn before one of these; judge no gate and read no log."},"implement":{"implement":"STAGE: implementation.{{retry_note}} Read {{IMPLEMENT_SKILL}} and follow it, with the tdd/ directory beside it.{{code_rules}}\nBuild on the research facts and plan: what they settle is settled.\n\nBefore reporting, go through the ticket's sentences for each boundary it states — a limit, an empty input, a missing key, an error path, an exit code — and give each a phrase row with a test at the seam its requirement's test_harness names; a phrase row is unverified only when this environment cannot run its test (no tool, no data, no binary). Then call what you built the way its consumer will — its real entry point, not the steps that built it — and feed it every input, mode and data file the ticket names. Anything you did not run that way, and every claim you did not test, goes in `unverified`, one line each with its cause (no tool, no data, no time, out of scope); an empty list claims you ran all of it.{{property_framework_note}}{{property_runner_note}}\n\nCASES:\n{{cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","retry_note":" A previous attempt at this stage made NO commit (HEAD still {{BASE}}); its notes: {{previous_notes}}. Implement the ticket now.","property":"\nPROPERTY CASES: each is one test, opening with its marker, a comment in the language's own form: `contract: <id>: <statement>` from the case's `property`. It runs the property over the domain, checks that the property rejects each `mut` on the generated inputs, and prints each example before running it.","property_framework_note":"\nPROPERTY CASES: each is one test, opening with its marker, a comment in the language's own form: `contract: <id>: <statement>` from the case's `property`. It runs the property over the domain, checks that the property rejects each `mut` on the generated inputs, and prints each example before running it. Write it in {{property_framework}}'s own idiom, seeded from `PROPERTY_SEED` (1 when unset) with `PROPERTY_EXAMPLES` examples ({{property_examples}} when unset).","property_runner_note":"\nPROPERTY CASES: each is one test, opening with its marker, a comment in the language's own form: `contract: <id>: <statement>` from the case's `property`. It runs the property over the domain, checks that the property rejects each `mut` on the generated inputs, and prints each example before running it. No framework is declared, so the core's runner feeds it: the marker's next line is `domain: <domain>`, the case's JSON; the test reads `$PROPERTY_DIR/<id>.json`, a JSON array of examples, and does nothing when the file is absent; one example of each case's domain: {{property_shapes}}; each printed line is `property: <id> <index>`, flushed; at the end it writes the indexes of its failed examples, one per line, to `$PROPERTY_DIR/<id>.failed`, empty when all pass."},"plan":{"plan":"STAGE: test-case planning.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's. Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\nPROPERTY: a claim over a domain too large to enumerate gets a property case; a small finite domain is one case asserting a table of literal rows. Its `property`: `id` the contract id (dot-separated, module first), `statement` the claim on one line of at most {{statement_limit}} characters, `source` the id of the requirement or the exact `where` of the listed fact that makes the claim (one location when it lists several), `domain` the inputs the claim covers{{property_framework_note}}{{property_runner_note}}, `mut` one wrong output per input the statement names, each of which the property must reject. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`; the one-Act and single-literal rules are for the other cases. When the seam `how` names costs too much per example, a property case may go through a lower one, saying so in its Act; a literal case keeps the named seam.\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","replan":"STAGE: test-case planning, the one replan.{{uncovered_note}}{{duplicates_note}}{{property_issues_note}} Keep every other case as it is, same id.\n\ncases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's. Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\nPROPERTY: a claim over a domain too large to enumerate gets a property case; a small finite domain is one case asserting a table of literal rows. Its `property`: `id` the contract id (dot-separated, module first), `statement` the claim on one line of at most {{statement_limit}} characters, `source` the id of the requirement or the exact `where` of the listed fact that makes the claim (one location when it lists several), `domain` the inputs the claim covers{{property_framework_note}}{{property_runner_note}}, `mut` one wrong output per input the statement names, each of which the property must reject. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`; the one-Act and single-literal rules are for the other cases. When the seam `how` names costs too much per example, a property case may go through a lower one, saying so in its Act; a literal case keeps the named seam.\n\nYOUR PREVIOUS CASES:\n{{plan.cases}}\n\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","uncovered_note":" Your cases below leave {{uncovered}} uncovered: add cases for each.","duplicates_note":" These checks sit in several cases after the same Arrange and Act; keep each in one case. Each `check` reads `arrange | act | assert`: {{duplicates}}.","property_issues_note":" These property cases fail their checks: {{property_issues}}.","property_framework_note":" (in {{property_framework}}'s terms)","property_runner_note":" (JSON in the runner's language, one of {{domain_forms}}, bounds inclusive, a record for more than two values; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case)","limit":"Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.","rules":"cases: one case for each behaviour that {{test_ids}} name, their boundaries and rejections included. Each case goes through the seam its requirement's test_harness `how` names; every case is one test, and `requirement` is the id of the one requirement it checks. Each check lives in one case: a behaviour two requirements share is checked once, under the requirement that names it most directly. A case tests behaviour, not implementation: what a caller of the seam sees (inputs, outputs, effects, errors) and the stubs Arrange allows. How the test is written and run, and the code's inner structure (helpers, private names, call order), are the implementer's. Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.\nAAA — Arrange: every input and object the case uses, written out in this case; the case runs the real code, and a stub stands in only for what a test cannot run (another program, the network, hardware, the clock), each stub with what it is given and what it returns or writes; Act: ONE call through the seam; asserts: atomic, one expected value or one property each, on what the Act leaves visible to a caller.\nThe ticket and the spec are the oracle: each expected value is a single literal taken from them, never recomputed the way the code would, and a default or precedence they leave open takes the reading their words support, stated in the case.\nPROPERTY: a claim over a domain too large to enumerate gets a property case; a small finite domain is one case asserting a table of literal rows. Its `property`: `id` the contract id (dot-separated, module first), `statement` the claim on one line of at most {{statement_limit}} characters, `source` the id of the requirement or the exact `where` of the listed fact that makes the claim (one location when it lists several), `domain` the inputs the claim covers{{property_framework_note}}{{property_runner_note}}, `mut` one wrong output per input the statement names, each of which the property must reject. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`; the one-Act and single-literal rules are for the other cases. When the seam `how` names costs too much per example, a property case may go through a lower one, saying so in its Act; a literal case keeps the named seam."},"research":{"research":"STAGE: research.{{retry_note}} Read {{TARGET}}, its parent spec and the sections it names, sibling tickets, the documents they cite, and the code and tests the ticket touches. Collect the knowledge of the code that must be known BEFORE writing it: helpers and seams to reuse, every call site and reader affected, and the traps that apply. Every fact is shown by lines of code, a repository document or a read-only search of the repository. The baseline and the gates step own the environment and the checks' results: report neither in facts nor in plan.","retry_note":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed; a plan step over its limit keeps its action and moves the details to the facts.","section":"RESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover."},"review":{"checklist":"STAGE: review, round {{round}} of at most {{rounds}}.{{retry_note}} Lens: checklist. Review the change against its statement. For each requirement id — {{check_ids}} — the promise is the sentence of the statement it rests on, whatever the code, its docs or its tests say. Then find a counterexample: the input or path most likely to make the promise false on the diff `git diff {{BASE}}..HEAD` — a boundary, an empty or malformed input, an error path, an exit code, a second caller.{{verify_review_note}} Scope: a change the statement does not call for is a finding.{{unverified_note}}\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","code":"STAGE: review, round {{round}} of at most {{rounds}}.{{retry_note}} Lens: code. Read the code as code: would every new branch execute as intended{{runtime_note}}, is every new assertion falsifiable. For each check, guard, clamp or documented promise the diff adds, name one input on which it passes while the property it promises is false. Also the rules of {{IMPLEMENT_SKILL}} § Code rules. Over-built code is a finding.{{duty.order}}{{code_rules}}\nTest only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message. A test in the diff that breaks this is a major whose `trigger` is that test.{{property_note}}\n{{duty.test_case_review}}If the diff holds no production source (only tests, docs, data or config), check one row saying so, review only the tests, and stop.\nThe gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","head":"STAGE: review, round {{round}} of at most {{rounds}}.{{retry_note}} Lens:","frame":"The gates step ran the fast and round gates at this HEAD, not the acceptance gates; review the diff and its rows below.{{red_gates_note}}\nGATES:\n{{gate_rows}}\nCompare against the statement ({{TARGET}} and every document it points to, as written before the code) and the research plan below.\n{{earlier_findings}}{{last_fix_note}}{{duty.test_case_review_fix}}\nRESEARCH:\n{{research}}\n\nStart from the change-site facts above: read only the lines the change touches or you verify, and search only for what they do not cover.","retry_note":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed.","verify_review_note":" These have no test and are checked only by you: {{verify_review}}.","unverified_note":" Implementation said it did not test: {{unverified}}; weigh each against the requirement it touches.","red_gates_note":" Still red after {{attempts_made}} attempts at a fix: {{red_gates}}. Weigh the code knowing that.","earlier_findings":"\nEARLIER FINDINGS (a fixed one stays closed, also as a broader future risk; re-raise a rejected one only as a finding whose `problem` answers its `argument`):\n{{history}}\n","last_fix_note":"THE LAST FIX: on `git diff {{from_head}}..HEAD`, verify that each `fixed` finding below is fixed and that each `rejected` one's `argument` holds against the code; a claim that fails is a new major.\nOUTCOMES:\n{{last_fix}}","duty.test_case_review_fix":"\nA test that diff weakened, deleted or left asserting nothing it promises is a new major too.","duty.order":" ORDER RULE (experiment draft): for each piece of state the diff adds or writes, list every path that changes it (handlers, callbacks, requests, retries, timers). For any two that can land in one unit of processing (tick, frame, event-loop turn, request, transaction, the span between two awaits), check the result in both orders and with one of them repeated; a result that depends on order or repetition is a finding whose trigger names both events.","property_note":" A property test (one with a `contract:` marker) lacking the check that its property rejects each named wrong output is a major whose `trigger` is that test.","runtime_note":" in {{config.runtime}}","duty.test_case_review":"A test the diff weakened, deleted or left asserting nothing it promises is a finding. ","weakened":"weakened, deleted or left asserting nothing it promises"},"shared":{"failed_checks":" A previous answer at this stage failed the core's checks: {{previous_notes}}. Answer again in full with each of them fixed","bg":"- Commands over ~2 min: `run_in_background`, wait for its completion notice; no sleep/poll, no second start."}}
+// The contract CLI's language, from skills/contracts.mjs: {LIMIT, ID, KINDS, compile, example}; ID matches a whole
+// contract id, compile throws on a domain the CLI rejects, example is a domain's least example as JSON.
+const CONTRACTS = (() => {
+  const ASCII = [" ","!","\"","#","$","%","&","'","(",")","*","+",",","-",".","/","0","1","2","3","4","5","6","7","8","9",":",";","<","=",">","?","@","A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","[","\\","]","^","_","`","a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","{","|","}","~"], KINDS = {"int":[[],"{\"int\":[lo,hi]}"],"bytes":[[],"{\"bytes\":[min,max]}"],"string":[["chars"],"{\"string\":[min,max],\"chars\":\"<alphabet>\"}"],"list":[["len"],"{\"list\":<domain>,\"len\":[min,max]}"],"tuple":[[],"{\"tuple\":[<domain>,...]}"],"record":[[],"{\"record\":{\"<name>\":<domain>,...}}"],"oneof":[[],"{\"oneof\":[<domain>,...]}"],"const":[[],"{\"const\":<json>}"]}, int = (next, lo, hi) => {
+  const x = next()
+  if (x < 1 / 16) return lo
+  if (x < 1 / 8) return hi
+  return Math.min(hi, lo + Math.floor((next() + next() / 2 ** 32) * (hi - lo + 1)))
+}
+  const compile = d => {
+  const bad = why => { throw new Error(`${why}: ${JSON.stringify(d)}`) }
+  const kind = d && typeof d === 'object' && !Array.isArray(d) && Object.keys(KINDS).find(k => k in d)
+  if (!kind || Object.keys(d).some(k => k !== kind && !KINDS[kind][0].includes(k))) bad(`want one of ${Object.keys(KINDS).join(', ')}`)
+  const range = (r, min) => Array.isArray(r) && r.length === 2 && r.every(Number.isSafeInteger) && min <= r[0] && r[0] <= r[1]
+    ? r : bad(`want [lo, hi], integers with ${min === 0 ? '0 <= ' : ''}lo <= hi`)
+  const many = (len, one) => { const [a, b] = range(len, 0); return next => Array.from({ length: int(next, a, b) }, () => one(next)) }
+  const domains = () => Array.isArray(d[kind]) && (kind === 'tuple' || d[kind].length) ? d[kind].map(compile) : bad(`want a list of domains`)
+  switch (kind) {
+    case 'int': { const [lo, hi] = range(d.int, -Infinity); return next => int(next, lo, hi) }
+    case 'bytes': return many(d.bytes, next => int(next, 0, 255))
+    case 'string': {
+      const cs = d.chars === undefined ? ASCII : typeof d.chars === 'string' && d.chars ? [...d.chars] : bad('chars: want a non-empty string')
+      const g = many(d.string, next => cs[int(next, 0, cs.length - 1)])
+      return next => g(next).join('')
+    }
+    case 'list': return many(d.len, compile(d.list))
+    case 'tuple': { const gs = domains(); return next => gs.map(g => g(next)) }
+    case 'record': {
+      // An integer-like name would lose its place: JSON objects put those keys first.
+      const r = d.record, ok = r && typeof r === 'object' && !Array.isArray(r) && !Object.keys(r).some(k => /^\d+$/.test(k))
+      const gs = ok ? Object.entries(r).map(([k, e]) => [k, compile(e)]) : bad('want an object of field names, none an integer, to domains')
+      return next => Object.fromEntries(gs.map(([k, g]) => [k, g(next)]))
+    }
+    case 'oneof': { const gs = domains(); return next => gs[int(next, 0, gs.length - 1)](next) }
+    case 'const': return () => d.const
+  }
+}, seq = d => {
+  if ('bytes' in d) return { len: d.bytes, el: { int: [0, 255] }, is: Array.isArray, from: v => v, to: a => a }
+  if ('list' in d) return { len: d.len, el: d.list, is: Array.isArray, from: v => v, to: a => a }
+  if (!('string' in d)) return null
+  const cs = d.chars === undefined ? ASCII : [...d.chars]
+  return { len: d.string, el: { int: [0, cs.length - 1] }, is: v => typeof v === 'string',
+    from: v => [...v].map(c => cs.indexOf(c)), to: a => a.map(i => cs[i]).join('') }
+}, least = d => {
+  const s = seq(d)
+  if (s) return s.to(Array(s.len[0]).fill(least(s.el)))
+  if ('int' in d) return d.int[0]
+  if ('tuple' in d) return d.tuple.map(least)
+  if ('record' in d) return Object.fromEntries(Object.entries(d.record).map(([k, e]) => [k, least(e)]))
+  if ('oneof' in d) return least(d.oneof[0])
+  return d.const
+}
+  const example = d => JSON.stringify(least(JSON.parse(d)))
+  return { LIMIT: 255, ID: new RegExp("^(?:[\\w-]+(?:\\.[\\w-]+)*)$"), KINDS, compile, example }
+})()
 const lines = xs => (xs || []).map(x => `- ${x}`).join('\n')
 const extra = x => x ? `\n${x}` : ''
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 // A JSON Schema validator for the keywords the core's schemas use; it throws on any other keyword anywhere in the
-// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid.
+// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid; a
+// value no anyOf branch takes gets the errors of the branch with the fewest (the first on a tie).
 const KEYWORDS = ['type', 'properties', 'required', 'items', 'enum', 'pattern', 'anyOf', 'minItems', 'maxLength']
 function validate(schema, value) {
   const check = (s, at) => {
@@ -52,7 +107,7 @@ function validate(schema, value) {
     const out = []
     if (s.enum && !s.enum.includes(v)) out.push(`${at}: ${JSON.stringify(v)} not in ${JSON.stringify(s.enum)}`)
     if (typeof v === 'string' && s.pattern && !new RegExp(s.pattern).test(v)) out.push(`${at}: ${JSON.stringify(v)} does not match ${s.pattern}`)
-    if (typeof v === 'string' && v.length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
+    if (typeof v === 'string' && [...v].length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
     if (kind === 'array') {
       if (v.length < s.minItems) out.push(`${at}: fewer than ${s.minItems} items`)
       if (s.items) v.forEach((x, i) => out.push(...errors(s.items, x, `${at}[${i}]`)))
@@ -61,7 +116,10 @@ function validate(schema, value) {
       ;(s.required || []).filter(k => v[k] === undefined).forEach(k => out.push(`${at}: ${k} missing`))
       Object.entries(s.properties || {}).filter(([k]) => v[k] !== undefined).forEach(([k, p]) => out.push(...errors(p, v[k], `${at}.${k}`)))
     }
-    if (s.anyOf && !s.anyOf.some(b => !errors(b, v, at).length)) out.push(`${at}: matches no anyOf branch`)
+    if (s.anyOf) {
+      const branches = s.anyOf.map(b => errors(b, v, at))
+      if (branches.every(e => e.length)) out.push(...branches.reduce((a, b) => b.length < a.length ? b : a))
+    }
     return out
   }
   check(schema, '$')
@@ -138,13 +196,20 @@ const RESEARCH_SCHEMA = { type: 'object', properties: {
 const SEARCH_TOOLS = 'rg, grep, git, find or ls'
 const SEARCH = new RegExp(`^\\$ (${SEARCH_TOOLS.split(/, | or /).join('|')}) [^;&|]*$`)
 
+// A property case's contract (docs/red-green/stages.md): its statement's limit, the contract CLI's, is in the planner's
+// schema alone, so a replan still takes an over-limit case back.
+const property = statement => ({ type: 'object', properties: {
+  id: { type: 'string' }, statement, source: { type: 'string' }, domain: { type: 'string' }, mut: { type: 'array', items: { type: 'string' } },
+}, required: ['id', 'statement', 'source', 'domain', 'mut'] })
 const CASE = { type: 'object', properties: {
   id: { type: 'string' }, requirement: { type: 'string' }, title: { type: 'string' },
   arrange: { type: 'string' }, act: { type: 'string' }, asserts: { type: 'array', items: { type: 'string' } },
+  property: property({ type: 'string' }),
 }, required: ['id', 'requirement', 'title', 'arrange', 'act', 'asserts'] }
 // A case names its requirement by id, one of the ids the planner is given.
 const casesSchema = ids => ({ type: 'object', properties: {
-  cases: { type: 'array', items: Object.assign({}, CASE, { properties: Object.assign({}, CASE.properties, { requirement: { type: 'string', enum: ids } }) }) },
+  cases: { type: 'array', items: Object.assign({}, CASE, { properties: Object.assign({}, CASE.properties, {
+    requirement: { type: 'string', enum: ids }, property: property({ type: 'string', maxLength: CONTRACTS.LIMIT }) }) }) },
   questions: { type: 'array', items: { type: 'object', properties: {
     requirement: { type: 'string' }, question: { type: 'string' }, reading: { type: 'string' },
     cases: { type: 'array', items: { type: 'string' } }, settles: { type: 'string', enum: ['research', 'owner'] },
@@ -166,9 +231,14 @@ const IMPL_SCHEMA = { type: 'object', properties: {
   notes: { type: 'string' },
 }, required: ['head', 'checks', 'unverified', 'questions'] }
 
+// A finding's place: the file, the symbol in it (the function, class or section) and its lines.
+const WHERE = { type: 'object', properties: { file: { type: 'string', pattern: '\\S' }, symbol: { type: 'string', pattern: '\\S' }, lines: { type: 'string' } }, required: ['file', 'symbol'] }
+// A place's identity, the one every comparison of places uses: a WHERE by its file and symbol, a gate's name or a
+// requirement's line as given.
+const placeKey = w => w && typeof w === 'object' ? JSON.stringify([w.file, w.symbol]) : String(w)
 const FINDING = { type: 'object', properties: {
   severity: { type: 'string', enum: ['major', 'minor'] },
-  where: { type: 'string' }, problem: { type: 'string' },
+  where: WHERE, problem: { type: 'string' },
   trigger: { type: 'string' }, consequence: { type: 'string' }, fix: { type: 'string' },
   proof: { type: 'object', properties: { path: { type: 'string' }, command: { type: 'string' }, red: { type: 'string' } }, required: ['path', 'command', 'red'] },
 }, required: ['severity', 'where', 'problem', 'trigger', 'consequence', 'fix'] }
@@ -190,13 +260,6 @@ const LENSES = [
     rules: last => [last ? `${READ_ONLY} Write no proof file: no fix follows this round.`
       : `${READ_ONLY} The one exception is a proof: you may prove a major about behaviour with a test, written as a new, uncommitted file in the repository's test directory; \`proof\` is its path, the exact command and the output line that showed it red on HEAD. Write no proof file for a minor.`, TARGETED] },
 ]
-// One record per mutant, from the runner or a project's own tool; the script derives ids, places and counts.
-const MUTANT_STATUS = ['killed', 'survived', 'invalid', 'not_run']
-const MUTATION_SCHEMA = { type: 'object', properties: {
-  applies: { type: 'boolean' }, ran: { type: 'boolean' }, not_run: { type: 'string' },
-  mutants: { type: 'array', items: { type: 'object', properties: {
-    target: { type: 'string' }, patch: { type: 'string' }, status: { type: 'string', enum: MUTANT_STATUS } }, required: ['target', 'patch', 'status'] } },
-}, required: ['applies', 'ran', 'mutants'] }
 
 const FIX_SCHEMA = { type: 'object', properties: {
   applied: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, what: { type: 'string' } }, required: ['id', 'what'] } },
@@ -217,73 +280,81 @@ const BLOCK_PATHS = {}
 // Research's inputs.
 INPUTS.research = ['TARGET', 'previous_notes', 'retry_note']
 // Plan's and replan's inputs, and the paths only they read: the uncovered test ids, checks in several cases, the
-// planner's own cases.
-INPUTS.plan = ['test_ids', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'plan.cases', 'research']
+// planner's own cases, the property cases failing their checks.
+INPUTS.plan = ['test_ids', 'statement_limit', 'domain_forms', 'property_framework', 'property_framework_note', 'property_runner_note', 'uncovered', 'uncovered_note', 'duplicates', 'duplicates_note', 'property_issues', 'property_issues_note', 'plan.cases', 'research']
 Object.assign(BLOCK_PATHS, {
-  uncovered: LIST,
+  uncovered: LIST, property_issues: LIST, statement_limit: INTEGER, domain_forms: OPTIONAL,
   duplicates: { type: 'array', items: { type: 'object', properties: { check: STRING, cases: LIST }, required: ['check', 'cases'] } },
   'plan.cases': { type: 'array', items: CASE },
 })
-// Implement's inputs, and the path only it reads: the cases, requirement lines expanded.
-INPUTS.implement = ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'cases', 'research']
-Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE } })
+// Implement's inputs, and the paths only it reads: the cases, requirement lines expanded, the examples a framework test runs
+// and one runner example per property case.
+INPUTS.implement = ['BASE', 'previous_notes', 'retry_note', 'IMPLEMENT_SKILL', 'code_rules', 'property_framework', 'property_examples', 'property_framework_note', 'property_runner_note', 'property_shapes', 'cases', 'research']
+Object.assign(BLOCK_PATHS, { cases: { type: 'array', items: CASE }, property_examples: INTEGER, property_shapes: STRING })
 // The inputs of the gates step.
 INPUTS.gates = ['HEAD', 'REPO', 'gate_command']
 // The lenses' inputs, and the paths only they read: the verify-by-review requirements, implement's unverified claims,
 // earlier findings and their outcomes, each finding the last fix was sent with its outcome.
-INPUTS.review = ['round', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
+// A sent finding's place: a lens finding's as the lens gave it (one that fails the place check goes on alone), a gate's
+// name or a requirement's line.
+const PLACE = { anyOf: [STRING, { type: 'object', properties: { file: STRING, symbol: STRING, lines: STRING } }] }
+INPUTS.review = ['round', 'retry_note', 'previous_notes', 'rounds', 'TARGET', 'BASE', 'check_ids', 'verify_review', 'verify_review_note', 'unverified', 'unverified_note', 'config.runtime', 'runtime_note', 'IMPLEMENT_SKILL', 'duty.order', 'code_rules', 'duty.test_case_review', 'property_note', 'gate_rows', 'red_gates', 'attempts_made', 'red_gates_note', 'history', 'earlier_findings', 'from_head', 'last_fix', 'last_fix_note', 'duty.test_case_review_fix', 'research']
 Object.assign(BLOCK_PATHS, {
   verify_review: LIST, unverified: LIST,
-  history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: STRING, problem: STRING,
+  history: { type: 'array', items: { type: 'object', properties: { id: STRING, round: INTEGER, where: PLACE, problem: STRING,
     outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'round', 'problem', 'outcome'] } },
-  last_fix: { type: 'array', items: { type: 'object', properties: { id: STRING, where: STRING, problem: STRING,
+  last_fix: { type: 'array', items: { type: 'object', properties: { id: STRING, where: PLACE, problem: STRING,
     outcome: { type: 'string', enum: ['fixed', 'rejected'] }, argument: STRING }, required: ['id', 'problem', 'outcome'] } },
 })
-// Mutation's inputs, and the path only it reads: implement's check rows with a test.
-INPUTS.mutation = ['HEAD', 'from_head', 'TARGET', 'RUN', 'config.edges', 'mutate_command', 'tested_checks', 'config.tool']
-Object.assign(BLOCK_PATHS, { tested_checks: { type: 'array', items: IMPL_SCHEMA.properties.checks.items } })
 // Fix's inputs, and the path only it reads: each applied fix so far.
 INPUTS.fix = ['round', 'IMPLEMENT_SKILL', 'code_rules', 'findings', 'fixed', 'earlier_fixes', 'research']
 Object.assign(BLOCK_PATHS, { fixed: { type: 'array', items: { type: 'object', properties: { round: INTEGER, id: STRING, what: STRING }, required: ['round', 'id', 'what'] } } })
 // The research input requires nothing extra: the limits research's own checks hold (the `R<n>: ` prefix, a plan step's
 // 600 characters) are left out, so a result recorded before a limit still fills a later block.
 const researchKept = Object.assign(Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions')), { requirements: LIST, plan: LIST })
-const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
+const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties, { where: PLACE }), required: ['id', 'source'].concat(FINDING.required) })
+// Findings on one place, as fix gets them: each view is one finding's, its lens in place of its id, source and place.
+const VIEW = { type: 'object', properties: Object.assign({ lens: STRING }, Object.fromEntries(Object.entries(FINDING.properties).filter(([k]) => k !== 'where'))),
+  required: ['lens'].concat(FINDING.required.filter(k => k !== 'where')) }
+const GROUP = { type: 'object', properties: { id: STRING, ids: Object.assign({ minItems: 2 }, LIST), severity: FINDING.properties.severity, where: WHERE,
+  views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'ids', 'severity', 'where', 'views'] }
 const REGISTRY = Object.assign({
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
   // planned rounds, and text the core builds from the run (a list, a command).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
-  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
+  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, test_ids: STRING, check_ids: STRING, code_rules: STRING,
   // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
   previous_notes: STRING,
+  // The property framework plan and implement take, blocks.implement.property_framework.
+  property_framework: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
   earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING, last_fix_note: STRING, red_gates_note: STRING,
+  property_framework_note: STRING, property_runner_note: STRING, property_issues_note: STRING, property_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
-  findings: { type: 'array', items: SENT_FINDING },
+  findings: { type: 'array', items: { anyOf: [SENT_FINDING, GROUP] } },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,
   'config.rounds': INTEGER, 'config.min': INTEGER, 'config.fix_attempts': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
-  'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
-  // The approach fields (gates declared; mutants generated and run under build and test, or a tool) and
-  // the plug-in fields every block takes.
+  'config.runtime': OPTIONAL, 'config.property_framework': OPTIONAL, 'config.property_examples': INTEGER,
+  // The gates declared and the plug-in fields every block takes.
   'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING, tier: { type: 'string', enum: ['fast', 'round', 'acceptance'] } }, required: ['name', 'command'] } }, { type: 'null' }] },
-  'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
+  'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
   // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,
 }, BLOCK_PATHS)
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
 // valid against its registry schema. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
-// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, any other value as
-// compact JSON.
-const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', ') }
+// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, property_issues
+// semicolon-separated, any other value as compact JSON.
+const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', '), property_issues: xs => xs.join('; ') }
 const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v)
 function fill(block, text, values) {
   const inputs = INPUTS[block].concat('default')
@@ -341,25 +412,22 @@ function mergeBlocks(defaults, over, registry) {
   return { merged, errors }
 }
 // Each block's config: the render config's defaults, profile.blocks.<name> over them (docs/red-green/blocks.md).
-const { merged: CONFIG, errors: configErrors } = mergeBlocks({"research":{"model":"opus","effort":"high","prompt":null,"skill":null},"plan":{"model":null,"effort":"high","prompt":null,"skill":null},"implement":{"model":"haiku","effort":"high","prompt":null,"skill":null},"gates":{"model":"haiku","effort":"medium","gates":null,"fix_attempts":2,"prompt":null,"skill":null},"review":{"model":"opus","effort":"high","rounds":3,"min":2,"lenses":["checklist","code"],"duties":{"test_case_review":true,"order":false},"minors":2,"runtime":null,"prompt":null,"skill":null},"mutation":{"model":"haiku","effort":"medium","edges":5,"timeout":300,"build":null,"test":null,"tool":null,"prompt":null,"skill":null},"fix":{"model":"sonnet","effort":"high","prompt":null,"skill":null}}, P.blocks, REGISTRY)
+const { merged: CONFIG, errors: configErrors } = mergeBlocks({"research":{"model":"opus","effort":"high","prompt":null,"skill":null},"plan":{"model":null,"effort":"high","prompt":null,"skill":null},"implement":{"model":"haiku","effort":"high","property_framework":null,"property_examples":100,"prompt":null,"skill":null},"gates":{"model":"haiku","effort":"medium","gates":null,"fix_attempts":2,"prompt":null,"skill":null},"review":{"model":"opus","effort":"high","rounds":3,"min":2,"lenses":["checklist","code"],"duties":{"test_case_review":true,"order":false},"minors":2,"runtime":null,"prompt":null,"skill":null},"fix":{"model":"sonnet","effort":"high","prompt":null,"skill":null}}, P.blocks, REGISTRY)
 // A block with no model runs on the model of the block it follows.
 const FOLLOWS = { plan: 'research' }
 Object.entries(FOLLOWS).forEach(([b, leader]) => { CONFIG[b].model = CONFIG[b].model || CONFIG[leader].model })
-// These args and profile fields moved into the block config; one still given fails the run instead of being ignored.
+// These args and profile fields moved into the block config, or out of the run; one still given fails the run instead
+// of being ignored.
+const BY_HAND = `the by-hand command node ${TOOLS}/.claude/workflows/red-green/skills/mutate.mjs`
 const MOVED = [[A, 'args', { models: 'profile.blocks.<name>.model', rounds: 'profile.blocks.review.rounds', extra_rounds: 'profile.blocks.review.rounds', min_rounds: 'profile.blocks.review.min' }],
-  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates', mutation: 'profile.blocks.mutation' }],
-  [Object(P.blocks), 'profile.blocks', { 'minor-fix': 'profile.blocks.fix: minors reach a fix with a major', 'fix-review': 'profile.blocks.review: the next iteration verifies each fix' }],
+  [P, 'profile', { research: 'profile.blocks.research.prompt as "{{default}}\\n<text>"', runtime: 'profile.blocks.review.runtime', gates: 'profile.blocks.gates.gates' }],
+  [Object(P.blocks), 'profile.blocks', { mutation: BY_HAND, 'minor-fix': 'profile.blocks.fix: minors reach a fix with a major', 'fix-review': 'profile.blocks.review: the next iteration verifies each fix' }],
   [Object(Object(P.blocks).review), 'profile.blocks.review', { extra: 'profile.blocks.review.rounds' }]]
 MOVED.forEach(([from, name, to]) => Object.keys(to).filter(k => k in from).forEach(k => configErrors.push(`${name}.${k} moved to ${to[k]}`)))
 // A block prompt keeps its registry paths ({{default}} among them) for the call to fill; any other placeholder is an error.
-// blocks.mutation.tool keeps {{mutate_from}}, which each step fills.
-UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)) && !(at === 'profile.blocks.mutation.tool' && p === 'mutate_from'))
+UNFILLED.filter(([at, , p]) => !(/^profile\.blocks\.[^.]+\.prompt$/.test(at) && Object.hasOwn(REGISTRY, p)))
   .forEach(([at, m]) => configErrors.push(`${at}: unknown placeholder ${m}`))
 Object.entries(CONFIG).filter(([, c]) => c.prompt && c.skill).forEach(([b]) => configErrors.push(`blocks.${b}: prompt or skill, not both`))
-// Mutation runs on a test or a tool; with no blocks.mutation given the step is skipped.
-if ((P.blocks || {}).mutation && !CONFIG.mutation.tool && !CONFIG.mutation.test) configErrors.push('blocks.mutation: neither test nor tool')
-if (CONFIG.mutation.build && !CONFIG.mutation.test) configErrors.push('blocks.mutation: build without test')
-if (CONFIG.mutation.tool && (CONFIG.mutation.test || CONFIG.mutation.build)) configErrors.push('blocks.mutation: tool, or build and test, not both')
 if (CONFIG.review.rounds < 1) configErrors.push(`blocks.review.rounds: ${CONFIG.review.rounds} is below 1`)
 if (CONFIG.review.min < 1) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is below 1`)
 if (CONFIG.review.min > CONFIG.review.rounds) configErrors.push(`blocks.review.min: ${CONFIG.review.min} is over rounds ${CONFIG.review.rounds}: set min too`)
@@ -397,9 +465,12 @@ const GATES_SCHEMA = { type: 'object', properties: {
 }, required: ['head', 'gates'] }
 
 // The output rules every review stage gets in its contract part; the minors cap is the review block's config.
-const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
+const SEVERITY = `SEVERITY. major: a concrete defect in this diff, with a \`trigger\` (a reachable input or path that shows it) and a \`consequence\` (what breaks). A passing test or a ruling in the research does not cancel a trigger you can name. minor: everything else — wording, style, a future risk, "one more test would be nice"; report at most ${CONFIG.review.minors} minors, one sentence each. A missing test is major only when you name the behaviour this diff adds, why the existing tests miss it, and the input that shows it. \`where.symbol\` is the enclosing function or class as declared (\`Class::method\`), or a document's section. One root cause is one finding. After your first finding, make one more pass on a different concern before you stop.`
 // what: the rows' subject; none when the job already says what a row is. Its last sentence is what counts as died.
 const CHECKED = what => `In \`checked\`, ${what ? `one row per ${what}; ` : ''}\`evidence\` is one sentence naming the file, test or command output that settled it. ${died('Return at least one checked row and verdict `clean` exactly when findings is empty and no row is `unmet`')}`
+// The schema's place check, which the script holds: a finding's errors, and a lens result's.
+const placeErrors = (f, k = 0) => validate(WHERE, f.where).map(e => `findings[${k}].where${e.slice(1)}`)
+const misplaced = res => res ? res.findings.flatMap(placeErrors) : []
 const idOf = s => s.split(':')[0].trim()
 function silence(res, ids) {
   if (!res.checked.length) return 'no checked rows'
@@ -410,9 +481,12 @@ function silence(res, ids) {
   const missing = (ids || []).filter(i => !seen.has(i))
   return missing.length ? `not checked: ${missing.join(', ')}` : null
 }
-// A major with no trigger is a minor; a lens keeps at most review.minors minors, and a dropped one's proof is a stray.
+// A finding still without a place after the retry stays, alone, and is logged; a major with no trigger is a minor; a
+// lens keeps at most review.minors minors, and a dropped one's proof is a stray.
 function tidy(findings, idBase) {
   let minors = 0
+  const unplaced = findings.flatMap(placeErrors)
+  if (unplaced.length) log(`${idBase}: findings without a place, each kept alone: ${unplaced.join('; ')}`)
   const out = findings.map(f => f.severity !== 'minor' && !(f.trigger || '').trim() ? Object.assign({}, f, { severity: 'minor', downgraded: true }) : f)
   const kept = out.filter(f => f.severity !== 'minor' || ++minors <= CONFIG.review.minors)
   out.filter(f => !kept.includes(f) && f.proof).forEach((f, i) => stray({ id: `${idBase}-dropped-${i + 1}`, proof: f.proof }))
@@ -510,10 +584,15 @@ const harnessOf = id => research.test_harness.find(h => idOf(h.requirement) === 
 const lineOf = id => research.requirements.find(r => idOf(r) === id)
 const testIds = reqIds.filter(id => harnessOf(id).by === 'test')
 const checkIds = reqIds.filter(id => harnessOf(id).by !== 'launch')
+// The property framework the project declares, or none: then property cases go through the contract CLI's run.
+const FRAMEWORK = CONFIG.implement.property_framework
+const frameworkValues = on => ({ property_framework: FRAMEWORK || undefined, property_framework_note: on && !!FRAMEWORK, property_runner_note: on && !FRAMEWORK })
+// The property rule's statement limit and, for the runner, its domain forms, from the contract CLI.
+const contractValues = { statement_limit: CONTRACTS.LIMIT, domain_forms: FRAMEWORK ? undefined : Object.values(CONTRACTS.KINDS).map(k => k[1]).join(', ') }
 const PLAN_CONTRACT = contract(READ_ONLY, 'questions: every point the ticket and the research leave open that a case still depends on, one entry each; reading: the one the cases take; settles: research (the repository holds the answer and the research does not give it) or owner (the ticket and the spec leave it to their author). An empty list says nothing was left open.', died('Answer'))
 
 // With no test requirement there is nothing to plan: no planner call, no cases.
-let plan = !testIds.length ? { cases: [] } : await call('plan', NO_CODE_PRE, 'plan', { test_ids: testIds.join(', '), research }, PLAN_CONTRACT,
+let plan = !testIds.length ? { cases: [] } : await call('plan', NO_CODE_PRE, 'plan', Object.assign({ test_ids: testIds.join(', '), research }, frameworkValues(true), contractValues), PLAN_CONTRACT,
   { schema: casesSchema(testIds), phase: 'Plan', label: 'plan' })
 if (!plan) return { status: 'failed', stage: 'plan', failures }
 
@@ -526,14 +605,35 @@ function duplicates(p) {
   p.cases.forEach(c => c.asserts.forEach(a => { const k = `${norm(c.arrange)} | ${norm(c.act)} | ${norm(a)}`; (seen[k] = seen[k] || new Set()).add(c.id) }))
   return Object.entries(seen).filter(([, ids]) => ids.size > 1).map(([check, ids]) => ({ check, cases: [...ids] }))
 }
+// A property's source is a requirement id or a listed fact's where, any one of its locations. Its id, statement and,
+// with no framework, domain are what the contract CLI accepts in a marker; its mut names at least one wrong output.
+const SOURCES = new Set(reqIds.concat(research.facts.flatMap(f => [].concat(f.where))))
+const domainError = d => { try { CONTRACTS.compile(JSON.parse(d)); return null } catch (e) { return e.message } }
+const issuesOf = c => {
+  if (!c.property) return []
+  const { id, statement, source, domain, mut } = c.property, rejected = !FRAMEWORK && domainError(domain)
+  return [
+    !CONTRACTS.ID.test(id) && `id ${JSON.stringify(id)} is not a contract id, dot-separated segments of letters, digits, _ and -`,
+    [...statement].length > CONTRACTS.LIMIT && `statement over ${CONTRACTS.LIMIT} characters: split it into flat contracts sharing an id prefix, one case each`,
+    /[\r\n]/.test(statement) && 'statement holds a line break; a marker is one line',
+    !SOURCES.has(source) && `source ${JSON.stringify(source)} is neither a requirement id nor a listed fact's \`where\``,
+    rejected && `domain ${JSON.stringify(domain)} is one the runner rejects: ${rejected}`,
+    !mut.length && 'mut is empty',
+  ].filter(Boolean).map(e => `${c.id}: ${e}`)
+}
 let cov = coverage(plan)
 let dup = duplicates(plan)
-if (cov.length || dup.length) {
-  log(`plan: replan: uncovered ${cov.join(', ') || 'none'}; duplicate checks in ${[...new Set(dup.flatMap(d => d.cases))].join(', ') || 'none'}`)
-  plan = await call('plan', NO_CODE_PRE, 'replan', {
+let issues = new Map(plan.cases.map(c => [c, issuesOf(c)]).filter(([, e]) => e.length))
+if (cov.length || dup.length || issues.size) {
+  log(`plan: replan: uncovered ${cov.join(', ') || 'none'}; duplicate checks in ${[...new Set(dup.flatMap(d => d.cases))].join(', ') || 'none'}${issues.size ? `; property cases failing their checks: ${[...issues.keys()].map(c => c.id).join(', ')}` : ''}`)
+  plan = await call('plan', NO_CODE_PRE, 'replan', Object.assign({
     test_ids: testIds.join(', '), 'plan.cases': plan.cases, research,
-    uncovered: cov, uncovered_note: cov.length > 0, duplicates: dup, duplicates_note: dup.length > 0,
-  }, PLAN_CONTRACT, { schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
+    uncovered: cov, uncovered_note: cov.length > 0, duplicates: dup, duplicates_note: dup.length > 0, property_issues: [...issues.values()].flat(), property_issues_note: issues.size > 0,
+  }, frameworkValues(true), contractValues), PLAN_CONTRACT, { schema: casesSchema(testIds), phase: 'Plan', label: 'replan' }) || plan
+  // A property case still failing its checks is dropped; what that leaves uncovered is reported with the rest.
+  issues = new Map(plan.cases.map(c => [c, issuesOf(c)]).filter(([, e]) => e.length))
+  issues.forEach(e => log(`plan: dropped ${e.join('; ')}`))
+  plan.cases = plan.cases.filter(c => !issues.has(c))
   cov = coverage(plan)
   dup = duplicates(plan)
 }
@@ -546,7 +646,9 @@ log(`plan: ${cases.length} cases, ${cov.length} uncovered, ${dup.length} duplica
 
 phase('Implement')
 const implementCall = (retry, label) => call('implement', PRE, 'implement',
-  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research }, retryValues(retry)), contract(writer('Commit your work as it stands.'),
+  Object.assign({ BASE, IMPLEMENT_SKILL, code_rules: CODE_RULES, cases, research, property_examples: CONFIG.implement.property_examples,
+    property_shapes: FRAMEWORK ? undefined : cases.filter(c => c.property).map(c => `\`${c.property.id}\` ${CONTRACTS.example(c.property.domain)}`).join(', ') },
+    frameworkValues(cases.some(c => c.property)), retryValues(retry)), contract(writer('Commit your work as it stands.'),
   'Report: head (`git rev-parse HEAD`); checks: a row per case (ref: its id; requirement: its id, e.g. R1) and per boundary phrase (ref: the ticket\'s words, quoted), a row with a test also `red`: the failure line it showed before the code; questions (requirement: its id; reading: the one you took; settles: plan when the plan contradicts the ticket and you followed the ticket, owner when the ticket leaves it open).',
   died(`Answer with a head past ${BASE}`)), { schema: IMPL_SCHEMA, phase: 'Implement', label })
 let impl = await implementCall(null, 'implement')
@@ -559,6 +661,8 @@ if (madeNothing(impl)) {
   impl = await implementCall(impl ? impl.notes || 'none' : 'agent died', 'implement:retry')
   if (madeNothing(impl)) return { status: 'failed', stage: 'implement', note: 'two attempts made no commit; nothing was reviewed', research, cases, failures }
 }
+// A property case's row names its contract id.
+impl.checks.forEach(r => { const c = r.kind === 'case' && cases.find(c => c.id === r.ref); if (c && c.property) r.contract = c.property.id })
 // A case with no case row, every row that says why it has no test, and a test with no red line join the free-text unverified list.
 const rowless = cases.filter(c => !impl.checks.some(r => r.kind === 'case' && r.ref === c.id)).map(c => `case ${c.id}: no check reported`)
 impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unverified).map(r => `${r.ref}: ${r.unverified}`),
@@ -566,8 +670,6 @@ impl.unverified = impl.unverified.concat(rowless, impl.checks.filter(r => r.unve
 log(`implement: ${impl.checks.length} checks, ${rowless.length} cases without one`)
 // Implement questions go to the result alone, like research's.
 const implementQuestions = impl.questions.filter(q => reqIds.includes(idOf(q.requirement)) || log(`implement question for unknown requirement ${q.requirement}: dropped`))
-
-let mutation = null
 
 // The gates step runs once per HEAD, before the lenses, which get its lines. HEAD moves only when implement or a fix commits.
 let headNow = impl.head
@@ -596,73 +698,32 @@ async function runGates(label, at) {
     id: `G${at}-${r.name}`, source: 'gates', severity: 'major', where: r.name, problem: `${vs(r)}${r.log ? `; full output: ${r.log}` : ''}`, trigger: vs(r),
     consequence: 'the gate fails', fix: 'make the gate pass' })) }
 }
-
-// The mutation step runs once per iteration, between the gates and the review. Returns every survivor as a major for
-// fix, which may reject it with an argument like any finding.
-// A mutant's place: its file from the +++ side (the --- side for a deleted file), less any timestamp; its line from
-// the HEAD side of its first hunk header.
-const placeOf = patch => {
-  const to = (/^\+\+\+ (?:b\/)?([^\t\n]*)/m.exec(patch) || [, ''])[1].trim()
-  const from = (/^--- (?:a\/)?([^\t\n]*)/m.exec(patch) || [, ''])[1].trim()
-  return { file: to && to !== '/dev/null' ? to : from, line: +(/^@@ -(\d+)/m.exec(patch) || [, 0])[1] }
+// Findings of any lens on one file and symbol are one item: the first one's id, every member's in ids, the highest
+// severity, each finding a view. One without a valid place (a gate's, a requirement's, a lens's that failed the place
+// check) stays alone, keyed by its id.
+const placeOf = f => placeErrors(f).length ? `id ${f.id}` : placeKey(f.where)
+function grouped(findings) {
+  const at = new Map()
+  findings.forEach(f => at.set(placeOf(f), (at.get(placeOf(f)) || []).concat(f)))
+  return [...at.values()].map(fs => fs.length < 2 ? fs[0] : { id: fs[0].id, ids: fs.map(f => f.id), severity: fs.some(f => f.severity === 'major') ? 'major' : 'minor',
+    where: fs[0].where, views: fs.map(({ id, source, where, ...view }) => Object.assign({ lens: source }, view)) })
 }
-const HEADERS = /^--- .*\n\+\+\+ .*\n@@ -\d+/m
-// The headers a patch lacks, by name.
-const missingHeaders = patch => [[/^--- /m, '---'], [/^\+\+\+ /m, '+++'], [/^@@ -\d+/m, '@@']].filter(([re]) => !re.test(patch)).map(([, h]) => h).join(', ') || 'its headers in order'
-// The HEAD of the last step that ran or found nothing to cover; the first step covers the diff from base.
-let mutatedHead = BASE
-// Why the code since mutatedHead went unmutated with no failure: a red control run while a gate is known red.
-let mutationSkipped = null
-async function runMutation() {
-  const { tool, test, build, edges, timeout } = CONFIG.mutation
-  if (!tool && !test) { log('mutation: no blocks.mutation, step skipped'); return [] }
-  // A gate with no result counts as red; a known_red one as green. A skipped step leaves its code for the next one.
-  const blocked = gated.gates.filter(r => r.status === 'red' || r.status === 'not_run')
-  if (blocked.length) { log(`mutation: ${blocked.map(r => `${r.name} ${r.status}`).join(', ')}, step skipped`); return [] }
-  if (same(headNow, mutatedHead)) { log('mutation: HEAD already mutated, step skipped'); return [] }
-  const from = mutatedHead
-  phase('Gates')
-  // The approach: the project's tool, or mutants generated against the checks and run by the runner.
-  const [covers, part, values] = tool ? ['files the tool covers', 'tool', { 'config.tool': tool.replaceAll('{{mutate_from}}', from) }]
-    : ['production source', 'generated', {
-      from_head: from, TARGET, RUN, 'config.edges': edges, tested_checks: impl.checks.filter(r => r.test && !r.unverified),
-      mutate_command: `node ${MUTATE} --mutants ${RUN}/mutants.json --repo ${REPO} --head ${headNow} --dir ${RUN} --test ${sq(test)}${build ? ` --build ${sq(build)}` : ''} --timeout ${timeout}`,
-    }]
-  const res = await call('mutation', NO_CODE_PRE, part, Object.assign({ HEAD: headNow }, values),
-    contract(READ_ONLY, `applies: whether \`git diff --name-only ${from}..HEAD\` lists ${covers}; when it does not, ran is false and mutants []. If it applies and did not run, ran is false and not_run the reason — never a pass.`,
-      died('Answer')), { schema: MUTATION_SCHEMA, phase: 'Gates', label: `mutation:r${round}` })
-  if (!res) { failures.push('mutation'); return [] }
-  if (!res.applies) { mutatedHead = headNow; log('mutation: no file it covers in the diff, step skipped'); return [] }
-  // The runner refuses a red baseline: expected while a gate is known red, so no failure.
-  // A reason given with ran true still means not run: an agent's word that the step left a gap is never a pass.
-  const reason = (res.not_run || '').trim()
-  // A reason with mutants is the agent's note on a run; with none, it says the run covered nothing.
-  const notRun = !res.ran || (reason && !res.mutants.length)
-  if (notRun && /control run/.test(reason) && gated.gates.some(r => r.status === 'known_red')) { mutationSkipped = reason; log(`mutation: ${reason}, step skipped`); return [] }
-  if (notRun) failures.push(`mutation not run: ${reason || 'no reason given'}`)
-  else { mutatedHead = headNow; mutationSkipped = null }
-  // A survivor must name a file and a line; one whose patch cannot counts as not run.
-  const mutants = res.mutants.map((m, i) => Object.assign({ id: `M${round}-${i + 1}`, target: m.target }, placeOf(m.patch), { patch: m.patch,
-    status: m.status === 'survived' && !HEADERS.test(m.patch) ? 'not_run' : m.status }))
-  mutants.forEach((m, i) => { if (m.status === 'not_run') failures.push(`mutation ${m.id} not run: ${m.target}${res.mutants[i].status === 'survived' ? `: patch lacks ${missingHeaders(m.patch)}` : ''}`) })
-  const all = (mutation ? mutation.mutants : []).concat(mutants)
-  const countsOf = list => Object.fromEntries(MUTANT_STATUS.map(s => [s, list.filter(m => m.status === s).length]))
-  mutation = { mutants: all, counts: countsOf(all) }
-  log(`mutation: ${JSON.stringify(countsOf(mutants))}`)
-  return mutants.filter(m => m.status === 'survived').map(m => ({
-    id: m.id, key: m.patch, source: 'mutation', severity: 'major', where: `${m.file}:${m.line}`,
-    problem: `a mutant aimed at ${m.target} survives: no test fails on it`, trigger: m.patch,
-    consequence: 'no test fails, so a defect of that shape ships unnoticed',
-    fix: `make the test of ${m.target} fail on this mutant, or reject it with an argument that no test could tell it apart or that the code cannot run` }))
-}
+// Fix answers an item once; its answer holds for each finding in it, under the finding's id.
+const perFinding = (xs, items) => xs.flatMap(x => {
+  const group = items.find(i => i.ids && i.ids.includes(x.id))
+  return group ? group.ids.map(id => Object.assign({}, x, { id })) : [x]
+})
 async function runFix(round, toFix, label) {
   phase('Fix')
-  return call('fix', PRE, 'fix', { round, IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: toFix, research, fixed, earlier_fixes: fixed.length > 0 }, fixContract(
+  const items = grouped(toFix)
+  const res = await call('fix', PRE, 'fix', { round, IMPLEMENT_SKILL, code_rules: CODE_RULES, findings: items, research, fixed, earlier_fixes: fixed.length > 0 }, fixContract(
     'Commit your work as it stands.',
+    items.some(i => i.views) && 'An item with `views` is the findings on one place, a view per lens: verify each view and answer the item once, by its id.',
     toFix.some(f => f.proof) && 'For a finding with a `proof`, run its `command` first: green on HEAD is a valid rejection ("proof green"); a red proof is rejected only with an argument against the test. Never leave a proof as written: rewrite it into the suite in its style and commit it, or delete it; report each in `proofs`.',
     orphanFiles().length && `Delete each of these proof files and report it in \`proofs\`, by the id before its path: ${orphanFiles().join(', ')}.`,
     fixed.length && 'A finding whose root cause appears in EARLIER FIXES twice already is not patched a third time: reject it with the argument "recurs after two fixes: needs a split or the user".'),
   { schema: FIX_SCHEMA, phase: 'Fix', label })
+  return res && Object.assign(res, { applied: perFinding(res.applied, items), rejected: perFinding(res.rejected, items) })
 }
 // The contract part of fix: a writer that keeps its bar (COMMIT_RULE folds into the one commit), the
 // block's rules, the head and proofs it reports.
@@ -682,12 +743,12 @@ let lastFix = null
 const gateRejected = {}
 // For each gate, the attempts made on it so far in the run.
 const gateAttempts = {}
-// A finding is the same finding by what it says, not by its positional id: a survivor by its patch,
-// any other by source, place and problem (a rejection without a place by its id).
-const sameKey = f => f.key || (f.where ? `${f.source}|${f.where}|${f.problem}` : f.id)
+// A finding is the same finding by what it says, not by its positional id: by source, place and problem (a rejection
+// without a place by its id).
+const sameKey = f => f.where ? `${f.source}|${placeKey(f.where)}|${f.problem}` : f.id
 const uniq = xs => xs.filter((x, i) => xs.findIndex(y => sameKey(y) === sameKey(x)) === i)
 // An earlier minor a fix already answered, under this id or as a repeat of it.
-const answered = f => history.some(h => h.id === f.id || (h.where === f.where && h.problem === f.problem))
+const answered = f => history.some(h => h.id === f.id || (placeKey(h.where) === placeKey(f.where) && h.problem === f.problem))
 const FIX_ATTEMPTS = CONFIG.gates.fix_attempts
 // What any fix leaves behind, whether an attempt on a red gate or the fix ending an iteration.
 function settleFix(sent, fix, at) {
@@ -720,10 +781,10 @@ while (round < N) {
     if (same(headNow, fromHead)) break
     gated = await runGates(`gates:${at}`, `${round}a${attempts}`)
   }
-  const survivors = await runMutation()
   phase('Review')
   const active = LENSES.filter(l => LENS_KEYS.includes(l.key))
-  const lensResults = await parallel(active.map(l => () => call('review', NO_CODE_PRE, l.key, {
+  // A lens whose finding has no valid place gets one retry with the errors; tidy keeps a finding still without one alone.
+  const lensCall = (l, errors, label) => call('review', NO_CODE_PRE, l.key, Object.assign({
     round, rounds: N, TARGET, BASE, IMPLEMENT_SKILL, research, code_rules: CODE_RULES, check_ids: checkIds.join(', '),
     gate_rows: gated.gates.map(r => `${r.name}: ${r.status} — ${r.line}`).join('\n'),
     red_gates: gated.found.map(f => f.where).join(', '), attempts_made: gated.found.length ? Math.max(...gated.found.map(f => gateAttempts[f.where] || 0)) : undefined, red_gates_note: gated.found.length > 0,
@@ -734,11 +795,19 @@ while (round < N) {
     unverified: impl.unverified, unverified_note: impl.unverified.length > 0,
     'config.runtime': CONFIG.review.runtime, runtime_note: !!CONFIG.review.runtime,
     'duty.order': CONFIG.review.duties.order, 'duty.test_case_review': CONFIG.review.duties.test_case_review,
-  }, contract(...l.rules(round === N), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
-  { schema: l.schema, phase: 'Review', label: `review:r${round}:${l.key}` })))
+    property_note: plan.cases.some(c => c.property),
+  }, retryValues(errors)), contract(...l.rules(round === N), `${SEVERITY}${round > 1 ? ' A major on code the last fix did not change says in `problem` why the earlier round could not see it.' : ''}`, CHECKED(l.checked)),
+  { schema: l.schema, phase: 'Review', label })
+  const lensResults = await parallel(active.map(l => async () => {
+    const res = await lensCall(l, null, `review:r${round}:${l.key}`)
+    const errors = misplaced(res)
+    if (!errors.length) return res
+    log(`review r${round} ${l.key}: findings without a place; retrying once: ${errors.join('; ')}`)
+    return await lensCall(l, errors.join('; '), `review:r${round}:${l.key}:retry`) || res
+  }))
   lastFix = null
 
-  const found = gated.found.concat(survivors)
+  const found = gated.found.slice()
   let reviewed = true
   lensResults.forEach((res, i) => {
     const l = active[i]
@@ -767,7 +836,7 @@ while (round < N) {
 
   if (!reviewed) log(`round ${round}: a lens died or came back silent — not a clean round`)
   if (!toFix.length && reviewed && round >= MIN_ROUNDS) break
-  // A fix needs a major or a survivor: minors alone wait for one, or stay advisory.
+  // A fix needs a major: minors alone wait for one, or stay advisory.
   if (!toFix.length) continue
   if (round === N) { unfixed = toFix; break }
   // A fix would only reject again a gate rejected at this HEAD, and another iteration would review the same code.
@@ -798,8 +867,6 @@ return {
   rounds_run: round,
   rounds,
   verdicts,
-  mutation,
-  mutation_skipped: mutationSkipped,
   uncovered_requirements: cov,
   dropped_facts: droppedFacts,
   unresearched_requirements: unresearched,
@@ -810,7 +877,7 @@ return {
   gates: GATES,
   verify_launch: plan.verify_launch,
   verify_review: plan.verify_review,
-  leftover_findings: uniq(unfixed.filter(f => !rowMajor(f)).concat(unmet)),
+  leftover_findings: grouped(uniq(unfixed.filter(f => !rowMajor(f)).concat(unmet))),
   advisory: uniq(advisory.filter(f => !fixed.some(a => a.id === f.id))),
   stray_proofs: strayProofs,
   unverified: impl.unverified,

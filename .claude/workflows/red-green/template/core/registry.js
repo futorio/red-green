@@ -1,5 +1,5 @@
 // The registry (every path a block's instructions may name, with its schema), assembled from the paths several blocks
-// share and the blocks' inputs parts, fill() and call(). docs/red-green/blocks.md. It reads RESEARCH_SCHEMA, FINDING, LENSES,
+// share and the blocks' inputs parts, fill() and call(). docs/red-green/blocks.md. It reads RESEARCH_SCHEMA, WHERE, PLACE, FINDING, LENSES,
 // CONFIG, DEFAULTS, failures, validate and ask.
 // @part types
 
@@ -16,33 +16,40 @@ const BLOCK_PATHS = {}
 // The research input requires nothing extra: the limits research's own checks hold (the `R<n>: ` prefix, a plan step's
 // 600 characters) are left out, so a result recorded before a limit still fills a later block.
 const researchKept = Object.assign(Object.fromEntries(Object.entries(RESEARCH_SCHEMA.properties).filter(([k]) => k !== 'questions')), { requirements: LIST, plan: LIST })
-const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties), required: ['id', 'source'].concat(FINDING.required) })
+const SENT_FINDING = Object.assign({}, FINDING, { properties: Object.assign({ id: STRING, source: STRING }, FINDING.properties, { where: PLACE }), required: ['id', 'source'].concat(FINDING.required) })
+// Findings on one place, as fix gets them: each view is one finding's, its lens in place of its id, source and place.
+const VIEW = { type: 'object', properties: Object.assign({ lens: STRING }, Object.fromEntries(Object.entries(FINDING.properties).filter(([k]) => k !== 'where'))),
+  required: ['lens'].concat(FINDING.required.filter(k => k !== 'where')) }
+const GROUP = { type: 'object', properties: { id: STRING, ids: Object.assign({ minItems: 2 }, LIST), severity: FINDING.properties.severity, where: WHERE,
+  views: { type: 'array', items: VIEW, minItems: 2 } }, required: ['id', 'ids', 'severity', 'where', 'views'] }
 const REGISTRY = Object.assign({
   // Run args.
   REPO: STRING, BASE: STRING, TARGET: STRING, RUN: STRING,
   // Computed values: the HEAD a step runs on and the one a fix started from, a skill's path, the round and the
   // planned rounds, and text the core builds from the run (a list, a command).
   HEAD: STRING, from_head: STRING, IMPLEMENT_SKILL: STRING, round: INTEGER, rounds: INTEGER,
-  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, mutate_command: STRING, test_ids: STRING, check_ids: STRING, code_rules: STRING,
+  gate_command: STRING, gate_rows: STRING, red_gates: STRING, attempts_made: INTEGER, test_ids: STRING, check_ids: STRING, code_rules: STRING,
   // The notes' data (FORM says how each fills in) research and implement share: the attempt before a retry.
   previous_notes: STRING,
+  // The property framework plan and implement take, blocks.implement.property_framework.
+  property_framework: STRING,
   // Notes: a part of the block's defaults (docs/red-green/blocks.md), filled from the same values when it applies, else ''.
   retry_note: STRING, uncovered_note: STRING, duplicates_note: STRING, verify_review_note: STRING, unverified_note: STRING,
   earlier_findings: STRING, earlier_fixes: STRING, runtime_note: STRING, last_fix_note: STRING, red_gates_note: STRING,
+  property_framework_note: STRING, property_runner_note: STRING, property_issues_note: STRING, property_note: STRING,
   'duty.order': STRING, 'duty.test_case_review': STRING, 'duty.test_case_review_fix': STRING,
   // Earlier stages' typed outputs several blocks take, as the core passes them on.
   research: { type: 'object', properties: Object.assign({}, researchKept, { files: { type: 'array', items: STRING } }), required: ['requirements', 'facts', 'plan', 'test_harness', 'files'] },
-  findings: { type: 'array', items: SENT_FINDING },
+  findings: { type: 'array', items: { anyOf: [SENT_FINDING, GROUP] } },
   // The block's config, every field of blocks.<name>; mergeBlocks checks each block's merged config against these.
   'config.model': OPTIONAL, 'config.effort': STRING,
   'config.rounds': INTEGER, 'config.min': INTEGER, 'config.fix_attempts': INTEGER, 'config.minors': INTEGER,
   'config.lenses': { type: 'array', items: { type: 'string', enum: LENSES.map(l => l.key) } },
   'config.duties': { type: 'object', properties: { test_case_review: { type: 'boolean' }, order: { type: 'boolean' } } },
-  'config.edges': INTEGER, 'config.timeout': INTEGER, 'config.runtime': OPTIONAL,
-  // The approach fields (gates declared; mutants generated and run under build and test, or a tool) and
-  // the plug-in fields every block takes.
+  'config.runtime': OPTIONAL, 'config.property_framework': OPTIONAL, 'config.property_examples': INTEGER,
+  // The gates declared and the plug-in fields every block takes.
   'config.gates': { anyOf: [{ type: 'array', items: { type: 'object', properties: { name: STRING, command: STRING, tier: { type: 'string', enum: ['fast', 'round', 'acceptance'] } }, required: ['name', 'command'] } }, { type: 'null' }] },
-  'config.build': OPTIONAL, 'config.test': OPTIONAL, 'config.tool': OPTIONAL, 'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
+  'config.prompt': OPTIONAL, 'config.skill': OPTIONAL,
   // The default instructions of the call, for a project prompt that wraps them; every block takes it.
   default: STRING,
 }, BLOCK_PATHS)
@@ -50,9 +57,9 @@ const REGISTRY = Object.assign({
 // Fills a block's instructions from values: every {{path}} is one of the block's inputs (or default) and has a value
 // valid against its registry schema. Throws with everything that is wrong.
 const PATH = /\{\{([\w.-]+)\}\}/g
-// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, any other value as
-// compact JSON.
-const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', ') }
+// How a value fills in: a string as text (previous_notes as JSON), uncovered's ids comma-separated, property_issues
+// semicolon-separated, any other value as compact JSON.
+const FORM = { previous_notes: JSON.stringify, uncovered: ids => ids.join(', '), property_issues: xs => xs.join('; ') }
 const show = (p, v) => FORM[p] ? FORM[p](v) : typeof v === 'string' ? v : JSON.stringify(v)
 function fill(block, text, values) {
   const inputs = INPUTS[block].concat('default')

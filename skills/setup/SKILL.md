@@ -70,20 +70,16 @@ answer:
 3. The model preset, from the presets table in `args-and-profile.md` with what each is for, or keep the current models.
 4. Any block's own `prompt` or `skill` (the Plug-ins section of `${CLAUDE_PLUGIN_ROOT}/docs/red-green/blocks.md`), one
    per block.
-5. The mutation commands, from the same table: a row for `blocks.mutation.test` and, when the tests need one, a row for
-   `.build`; or none, saying the mutation step will be skipped. Recommend the quickest test row that covers the code,
-   since it runs once per mutant.
 
 Done when every table row is kept or dropped, each kept row has a name and a tier, and the user has answered the other
-four; "none" and "keep" are answers.
+three; "none" and "keep" are answers.
 
 ## 6. Write
 
 Start from the current profile and set only what the user decided in step 5:
 
 - `blocks.gates.gates`: the picked gates as `{name, command, tier}`.
-- `blocks.mutation`: `build` and `test` as picked, in place of any `tool`, a config error beside them; none removes the
-  block.
+- `blocks.mutation`: remove it, since a run fails on it.
 - `code_rules`, `commit`: the kept rules.
 - A preset: set each `model` its row gives, and remove `model` from every other block that any preset row names.
 - A block's `prompt` or `skill`: set it, and remove the other of the two on that block.

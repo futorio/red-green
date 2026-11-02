@@ -8,6 +8,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ASCII, ID, KINDS, LIMIT, compile, int, least, seq } from '../skills/contracts.mjs'
 
 const here = name => new URL(name, import.meta.url)
 
@@ -54,6 +55,12 @@ export function defaults(dir) {
     [b, Object.fromEntries(Object.entries(parts).map(([p, text]) => [p, expand(text, [`${b} ${p}`])]))]))
 }
 const CORE_DIR = fileURLToPath(here('core/'))
+const CONTRACTS = `(() => {
+  const ASCII = ${JSON.stringify(ASCII)}, KINDS = ${JSON.stringify(KINDS)}, int = ${int}
+  const compile = ${compile}, seq = ${seq}, least = ${least}
+  const example = d => JSON.stringify(least(JSON.parse(d)))
+  return { LIMIT: ${LIMIT}, ID: new RegExp(${JSON.stringify(`^(?:${ID.source})$`)}), KINDS, compile, example }
+})()`
 const TEMPLATE = template(CORE_DIR)
 const DEFAULT_TEXTS = defaults(fileURLToPath(here('defaults/')))
 // Code of the core's own, the code the script runs: its validator, for the tests and the conformance check, and its
@@ -67,14 +74,14 @@ export const REGISTRY = fromCore(['shared validate', 'research schema', 'plan sc
 export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
-// The render-time slots are {{blocks}} and {{defaults}}, the inlined default instructions; every other {{path}} is a
-// run-time template variable.
+// The render-time slots are {{blocks}}, {{defaults}}, the inlined default instructions, and {{contracts}}, the contract
+// CLI's statement limit, id pattern, domain kinds, domain compiler and a domain's least example; every other {{path}} is a run-time template variable.
 export function render(config) {
   for (const k of Object.keys(config)) if (!(k in DEFAULT)) throw new Error(`unknown config key: ${k}`)
   const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks, REGISTRY)
   if (errors.length) throw new Error(errors.join('; '))
-  const slots = { blocks: merged, defaults: DEFAULT_TEXTS }
-  return TEMPLATE.replace(/\{\{(blocks|defaults)\}\}/g, (_, slot) => JSON.stringify(slots[slot]))
+  const slots = { blocks: JSON.stringify(merged), defaults: JSON.stringify(DEFAULT_TEXTS), contracts: CONTRACTS }
+  return TEMPLATE.replace(/\{\{(blocks|defaults|contracts)\}\}/g, (_, slot) => slots[slot])
 }
 
 // A case: { args, gate_lines, results }. args override the stub args below; gate_lines become the lines of the
@@ -116,11 +123,10 @@ export function stageCall(source, kase, label) {
 
 // The conformance check: a block's real output, given as the result of the agent labelled <label>, through a run whose
 // other blocks answer clean from their calls' values: review lenses with a met row per requirement id and no finding,
-// the mutation step not applying, each fix rejecting every finding it is sent and deleting its proofs. Reports the
-// output's schema errors (against the schema that agent gets), every finding the script sent to a fix (`sent_to`: its
-// label), and the run's result: its status, failures, verdicts, leftover and advisory findings, mutation, research
-// issues and unverified list; a run the output breaks reports the error as crash. It passes when there is no schema
-// error, failure or crash.
+// each fix rejecting every finding it is sent and deleting its proofs. Reports the output's schema errors (against the
+// schema that agent gets), every finding the script sent to a fix (`sent_to`: its label), and the run's result: its
+// status, failures, verdicts, leftover and advisory findings, research issues and unverified list; a run the output
+// breaks reports the error as crash. It passes when there is no schema error, failure or crash.
 export async function conform(source, kase, label, output) {
   const { schema } = await stageCall(source, kase, label)
   const sent = []
@@ -130,16 +136,15 @@ export async function conform(source, kase, label, output) {
       return { verdict: 'clean', findings: [], checked: ids.map(item => ({ item, evidence: 'stub', status: 'met', promise: 'stub', counterexample: 'stub' })) }
     }
     if (l.startsWith('review:')) return { verdict: 'clean', findings: [], checked: [{ item: 'stub', evidence: 'stub' }] }
-    if (l.startsWith('mutation:')) return { applies: false, ran: false, mutants: [] }
     if (!l.startsWith('fix:')) return null
     const given = values.findings
     sent.push(...given.map(f => Object.assign({ sent_to: l }, f)))
-    return { applied: [], rejected: given.map(f => ({ id: f.id, argument: 'conformance stub' })), proofs: given.filter(f => f.proof).map(f => ({ id: f.id, path: f.proof.path, outcome: 'deleted' })), head: 'HEAD' }
+    return { applied: [], rejected: given.map(f => ({ id: f.id, argument: 'conformance stub' })), proofs: given.flatMap(f => (f.views || [f]).filter(v => v.proof).map(v => ({ id: f.id, path: v.proof.path, outcome: 'deleted' }))), head: 'HEAD' }
   }
   const report = { label, schema_errors: validate(schema, output) }
   try {
     const r = await drive(source, Object.assign({}, kase, { results: Object.assign({}, kase.results, { [label]: output }) }), () => false, answer)
-    Object.assign(report, { findings: sent, status: r.status, failures: r.failures }, ...['note', 'verdicts', 'leftover_findings', 'advisory', 'mutation', 'research_issues', 'unverified'].filter(k => k in r).map(k => ({ [k]: r[k] })))
+    Object.assign(report, { findings: sent, status: r.status, failures: r.failures }, ...['note', 'verdicts', 'leftover_findings', 'advisory', 'research_issues', 'unverified'].filter(k => k in r).map(k => ({ [k]: r[k] })))
   } catch (e) {
     // The script runs as an AsyncFunction body, two lines below the header the constructor adds.
     const at = /<anonymous>:(\d+):\d+/.exec(e.stack)

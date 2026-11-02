@@ -6,7 +6,8 @@ const extra = x => x ? `\n${x}` : ''
 const sq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 // @part validate
 // A JSON Schema validator for the keywords the core's schemas use; it throws on any other keyword anywhere in the
-// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid.
+// schema, so a new keyword fails loudly. Returns the errors, each with its place ($.a[1]), [] when the value is valid; a
+// value no anyOf branch takes gets the errors of the branch with the fewest (the first on a tie).
 const KEYWORDS = ['type', 'properties', 'required', 'items', 'enum', 'pattern', 'anyOf', 'minItems', 'maxLength']
 function validate(schema, value) {
   const check = (s, at) => {
@@ -22,7 +23,7 @@ function validate(schema, value) {
     const out = []
     if (s.enum && !s.enum.includes(v)) out.push(`${at}: ${JSON.stringify(v)} not in ${JSON.stringify(s.enum)}`)
     if (typeof v === 'string' && s.pattern && !new RegExp(s.pattern).test(v)) out.push(`${at}: ${JSON.stringify(v)} does not match ${s.pattern}`)
-    if (typeof v === 'string' && v.length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
+    if (typeof v === 'string' && [...v].length > s.maxLength) out.push(`${at}: longer than ${s.maxLength}`)
     if (kind === 'array') {
       if (v.length < s.minItems) out.push(`${at}: fewer than ${s.minItems} items`)
       if (s.items) v.forEach((x, i) => out.push(...errors(s.items, x, `${at}[${i}]`)))
@@ -31,7 +32,10 @@ function validate(schema, value) {
       ;(s.required || []).filter(k => v[k] === undefined).forEach(k => out.push(`${at}: ${k} missing`))
       Object.entries(s.properties || {}).filter(([k]) => v[k] !== undefined).forEach(([k, p]) => out.push(...errors(p, v[k], `${at}.${k}`)))
     }
-    if (s.anyOf && !s.anyOf.some(b => !errors(b, v, at).length)) out.push(`${at}: matches no anyOf branch`)
+    if (s.anyOf) {
+      const branches = s.anyOf.map(b => errors(b, v, at))
+      if (branches.every(e => e.length)) out.push(...branches.reduce((a, b) => b.length < a.length ? b : a))
+    }
     return out
   }
   check(schema, '$')

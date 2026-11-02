@@ -10,13 +10,13 @@ A run takes one path:
 research -> plan -> implement
   -> iteration x blocks.review.rounds:
        gates <-> fix (a red gate, up to blocks.gates.fix_attempts)
-       mutation (when the gates are green)
        review
        clean and round >= blocks.review.min: leave the loop
        fix (not in the last iteration)
 ```
 
-Acceptance follows, in the main thread ([`/red-green:start`](../../skills/start/SKILL.md)).
+Acceptance follows, in the main thread ([`/red-green:start`](../../skills/start/SKILL.md)). A run makes no mutants:
+mutation runs by hand, with [`skills/mutate.mjs`](args-and-profile.md#by-hand-mutation).
 
 "Died" is a call with no answer. It lands in `failures`, or ends the run (`status: failed`) where the table says so.
 Each stage's questions go to the result as `<stage>_questions`, not to later prompts; one naming no known requirement
@@ -30,8 +30,7 @@ Labels are unique, since the core's stub tests key on them.
 | `plan` | `plan`, `replan` | read-only; died: the run fails (replan: the previous cases stand) |
 | `implement` | `implement`, `implement:retry` | writer; died: one retry, then the run fails |
 | `gates` | `gates:r<n>`, `gates:r<n>:a<k>`, either with `:retry` | read-only; only runs the gate runner; no result: one retry, then `failures` |
-| `mutation` | `mutation:r<n>` | read-only; died: `failures` |
-| `review` | `review:r<n>:checklist`, `review:r<n>:code` | read-only (the code lens may write uncommitted proofs, except in the last iteration) |
+| `review` | `review:r<n>:checklist`, `review:r<n>:code`, either with `:retry` | read-only (the code lens may write uncommitted proofs, except in the last iteration); a finding with no valid place: one retry |
 | `fix` | `fix:r<n>`, `fix:r<n>:a<k>` | writer; died: `failures`, and an iteration's fix ends the loop |
 
 `r<n>` is the iteration, `a<k>` an attempt on a red gate within it.
@@ -82,6 +81,24 @@ sees and the result lists with research's `how`. Cases cite only `test` ids.
 and Act, case and whitespace folded) may sit in two cases. A miss sends the plan back once (`replan`) naming the
 uncovered ids and duplicates; what is still uncovered goes to the result.
 
+**Property cases:** a claim over a domain too large to enumerate may get a property case; a small finite domain is one
+case with a table of literal rows. Its optional `property` holds the property contract: `id`, `statement` (255 characters
+at most), `source`, `domain` (JSON in `run`'s domain language with no `blocks.implement.property_framework`, else text
+for the framework; a domain `run` cannot state keeps the case literal) and `mut`, one wrong output per input the
+statement names. Its Act runs over the domain and its asserts hold the property and the rejection of each `mut`, the
+one exception to one Act and single literals. It may go through a lower seam than `how` names when that one costs too
+much per example, saying so; a literal case keeps the named seam. The script accepts as `source` only a requirement id
+or a listed fact's `where` (any one location of a list), and checks the rest by the contract CLI's own id pattern,
+limit and domain compiler. A bad source, an id outside the marker form, an over-limit or multi-line statement, a domain
+`run` would reject (with no framework) or an empty `mut` joins the replan's reasons, an over-limit statement told to
+split into flat property contracts sharing an id prefix; a case still failing after the replan is dropped (logged), and
+what it leaves uncovered goes to `uncovered_requirements`. Research does not change.
+
+**Limit on tests:** plan's rules and the code lens hold one list, the `plan` default's `limit` part. Worth testing:
+requirement behaviour, invariant, boundary, error, regression. Banned: doc and message wording, constants, private
+structure, the framework, getters, mock checks; an exact message only when a requirement names it. The code lens raises a
+banned test as a major whose `trigger` is the test, so it goes to fix and the minors cap cannot drop it.
+
 ## Implementation
 
 Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/implement.md), `skills/tdd/` and `profile.code_rules`. `head` still at `base`: one more run, then `failed`.
@@ -89,6 +106,12 @@ Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/impleme
 - **One gate rule for writers (implement, fix):** before each commit, run the runner at tier `fast` with `--no-cache`, then
   commit as is, whatever it reports. No stage reverts: the gates stage follows every writer. With no `fast` gate the prompt
   says nothing about gates.
+- **Property tests:** only when a case has a `property`, implement gets the rule: one test per property case, opening
+  with the marker `contract: <id>: <statement>` as a comment, running the property over the domain, checking that it
+  rejects each `mut`, and printing each example before running it. With no framework the marker's next line is
+  `domain: <json>` and the test follows `run`'s test-side protocol ([`args-and-profile.md`](args-and-profile.md)),
+  shown one example of each case's domain: its least, the one `run`'s reducer moves toward, so its size is the domain's minimums; with one it is written in it and reads `PROPERTY_SEED` and `PROPERTY_EXAMPLES`. The script adds the property contract's
+  id to that case's check row as `contract`.
 - **Checks:** one row per case and per boundary phrase, each with a `test` or an `unverified` reason; a row with a test also
   has `red`, the failure line it showed before the code. The script adds to `unverified`: `case <id>: no check reported` per
   case without a row, `<ref>: <reason>` per `unverified` row, and `<ref>: test <name> reported no red line` per test row
@@ -104,14 +127,14 @@ agent runs the runner at tier `round`, calls it again on exit 3, and returns its
 - **`known_red`** is shown to the lenses and makes no finding.
 - **No result** (`not_run`, no row, the script's exit 2, a dead step) gets one `:retry` of the stage, which picks up finished
   gates. Still none: an entry in `failures` and no finding, and the next iteration runs the stage again though HEAD has not
-  moved. For mutation it counts as red. It does not keep an iteration from being clean, since `failures` stops the
+  moved. It does not keep an iteration from being clean, since `failures` stops the
   fast-forward.
 
 Lenses run no gate.
 
 ## Attempts on a red gate
 
-A red gate goes to `fix` at once as a major, before any mutation or review, and the gates stage runs again. This repeats up
+A red gate goes to `fix` at once as a major, before any review, and the gates stage runs again. This repeats up
 to `blocks.gates.fix_attempts` (2) per iteration and uses up no iteration. `fix_attempts: 0` sends a red gate straight to
 review.
 
@@ -124,45 +147,23 @@ recurs after two fixes.
 A gate still red goes on to the lenses with a note naming it and the attempts made on it so far in the run (the most of any
 gate named), and it stays a major, so the iteration is not clean.
 
-## Mutation
-
-Once per iteration, once the gates and attempts are done, on the diff from the HEAD last mutated to HEAD; the first step
-covers the diff from `base`. The HEAD last mutated advances on `ran: true` or `applies: false` (the range holds no covered
-file), so any other skipped step leaves its code to the next one.
-
-The script skips the step, with a log line and no call, with no `blocks.mutation`, with a gate `red` or with no result
-(`known_red` counts as green), or with HEAD already mutated.
-
-The generated form gets `from_head`, writes one patch per check whose test or code is in that diff, plus at most
-`blocks.mutation.edges` (5) on the diff's edges;
-[`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs) runs them. The runner first makes a control run,
-a mutant with no patch, and exits 2 if its build or test fails or times out; an empty mutant list makes no control run. The `{tool}` form names the same range by
-`{{mutate_from}}` and returns the same records. The script derives ids (`M<round>-<i>`), `file:line` and counts;
-`result.mutation` accumulates every step.
-
-- `applies` false: the step is skipped with a log line.
-- `ran` false, or `ran` true with no mutants and a non-blank `not_run`, counts as not run: the mutated HEAD stays, and any
-  mutants returned are still recorded and survivors returned. With mutants, a `not_run` beside `ran` true is the agent's
-  note on the run.
-- Not run with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
-  `result.mutation_skipped` holds the reason until a later step runs.
-- Any other not run, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
-- A `survived` mutant whose patch has no file header and hunk header counts as `not_run`; its `failures` entry names the
-  missing headers.
-- Every survivor is a major finding (`source: mutation`), fixed in an iteration with a fix and left over from the last. No
-  separate call rules on survivors.
-
 ## Review
 
 Two lenses in parallel (`blocks.review.lenses`), given every earlier finding with its outcome; a rejected one is raised
 again only with a `problem` that answers the fixer's `argument`.
 
+- **Code lens:** with property cases in the plan it also raises a property test lacking the check that its property
+  rejects each named wrong output, as a major whose `trigger` is that test.
 - **Checklist lens:** one `checked` row per requirement id except `verify_launch` ones, `status`
   `met|unmet|unverified`; an id without a row is `unverified`. `unmet` becomes a major finding; `unverified` goes to
   `leftover_findings` and starts no fix.
 - **The last fix:** after a fix, each lens gets `from_head` and the outcomes of every fix since the last review, and verifies
   on `git diff {{from_head}}..HEAD` that each `fixed` finding is fixed, that each rejection's argument holds and that no test
   was weakened. A claim that fails is a new major. A rejection no lens raises again is accepted.
+- **Place:** a finding's `where` is `{file, symbol, lines?}`, `symbol` the enclosing function or class as declared, or a
+  document's section. The script's place check: `where` is an object with a non-empty `file` and a non-empty `symbol`
+  (`symbol: ''` fails). A lens with a finding that fails it gets one `:retry` with the errors; a finding that still
+  fails is kept, goes to fix and the result as its own item, keyed by its id, and is reported in the run log.
 - **Severity:** the script turns a major with an empty `trigger` into a minor and keeps at most `blocks.review.minors`
   (2) minors per lens; a dropped minor's proof is a stray.
 - **Silence is not clean:** `verdict` is `clean` exactly when `findings` is empty and no row is `unmet`. No rows, or a
@@ -171,8 +172,11 @@ again only with a `problem` that answers the fixer's `argument`.
 
 ## Fix
 
-Runs at the end of an iteration with a major or a survivor, unless it is the last. It gets majors, survivors and minors in
-one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. A finding that does not fit is rejected with an argument citing code, the ticket or the
+Runs at the end of an iteration with a major, unless it is the last. It gets majors and minors in one call, the minors including earlier iterations' that no fix has answered, each once; minors alone make no fix. Findings of either lens on one `file` and `symbol` (exact strings) reach it as one item
+`{id, ids, severity, where, views}`: `id` the first member's, `ids` every member's, `severity` the highest of theirs, a
+view per finding: `lens` and the finding's fields but its id and place. Fix answers the item once, by any member's id;
+the answer holds for each member, under its own id, in the history and the outcomes. A finding that fails the place
+check, a gate's finding (a gate name) and an unmet row (a requirement line) stay alone. A finding that does not fit is rejected with an argument citing code, the ticket or the
 spec. Fixed and rejected findings, minors included, enter the earlier findings. `applied` findings with `head` unchanged are
 an entry in `failures`.
 
@@ -187,10 +191,10 @@ before acceptance.
 ## Loop exit
 
 `blocks.review.rounds` (3) iterations at most, a number fixed at the start, so at most `rounds - 1` fixes follow a review. A
-clean iteration (no major, no survivor, every lens answered) ends the loop at or past `blocks.review.min` (2). A clean
-iteration before `min` makes no fix, and the next one reviews the same code at no gate or mutation cost.
+clean iteration (no major, every lens answered) ends the loop at or past `blocks.review.min` (2). A clean
+iteration before `min` makes no fix, and the next one reviews the same code at no gate cost.
 
-The last iteration makes no fix: its majors, survivors and unmet requirements go to `leftover_findings`. Blocking there means
+The last iteration makes no fix: its majors and unmet requirements go to `leftover_findings`. Blocking there means
 `severity: major` or `status: unmet`; an `unverified` row is reported, not blocking. `advisory` holds the minors no fix
 applied, from any iteration. See
 [`template/core/orchestrator.js`](../../.claude/workflows/red-green/template/core/orchestrator.js).

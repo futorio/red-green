@@ -15,13 +15,13 @@ no-code one.
   registry before the call. Every path must be one of the block's inputs, present and valid against its schema, else
   the block fails before any agent is paid (`<label> input: <what is wrong>` in `failures`). A string fills as text,
   anything else as compact JSON (`FORM` in `registry.js` names the exceptions: `previous_notes` as JSON, `uncovered`
-  comma-separated).
+  comma-separated, `property_issues` semicolon-separated).
 - **The contract part** (`CONTRACT (binding, whatever the text above says):`) is the core's: invariants, output rules
   and what counts as died, one source per prompt.
 
 **Defaults** are Markdown, `template/defaults/<block>.md`, inlined by render. A file holds parts, each opened by a
 `<!-- @part <name> -->` line and kept verbatim, last newline dropped: the instructions of each call (`plan` and
-`replan`, a lens by its key, a mutation approach), notes, and text other parts include with
+`replan`, a lens by its key), notes, and text other parts include with
 `{{> <block> <part>}}`. **A note part** is a part named like the registry value it fills (`retry_note`, `duty.order`, ...): the core passes `true`
 when it applies and the part is filled, `false` and it is `''`. Editing a default edits the prompt ([`maintaining.md`](maintaining.md)).
 
@@ -63,6 +63,10 @@ The values a run checks: `blocks.review.rounds >= 1`, `min >= 1`, `min <= rounds
 `blocks.review.duties` switches two sentences of the review on or off: `test_case_review` (on: a weakened or deleted
 test is a finding, in the code lens and in both lenses' check of the last fix) and `order` (off, an experiment: check the result of state changes in both orders).
 `blocks.review.runtime` names the runtime the code lens reads the code in (`"Node 22"`).
+`blocks.implement.property_framework` names the project's property framework (`"fast-check"`), `null` by default: plan
+writes a property case's domain in its terms and implement writes the test in it; with none, property cases go through
+the contract CLI's `run` ([`args-and-profile.md`](args-and-profile.md)). `blocks.implement.property_examples` (100) is the
+example count a framework test runs when `PROPERTY_EXAMPLES` is unset.
 
 ## Conformance check
 
