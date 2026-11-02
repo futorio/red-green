@@ -52,14 +52,36 @@ review round needs. `--json` prints `{ prompt, schema, model, effort }`.
 ## Changing the prompts
 
 An agent's how-to is the block's default, `template/defaults/<block>.md`; the contract part is in `template/core/<block>.js`.
+New prompt text follows the `writing-for-agents` skill and the rules below. Each holds for any stage.
 
-
-**Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage. A commit that edits
-one states the size change in bytes. When an agent keeps making the wrong move, fix the schema, the check or the input
-that let it before adding a sentence telling it not to.
-
-**Discipline is not a fix.** A defect class that already has two written rules and comes back needs a check, a schema
-field or a deleted duplicate, not a third rule.
+- **Prompts are code.** Every word in a stage prompt or a skill is paid on every call of that stage. A commit that edits
+  one states the size change in bytes.
+- **Fix the cause, not the agent.** When an agent keeps making a wrong move, fix the schema, the check or the input that
+  let it before adding a sentence. A defect class that comes back after two written rules needs a check, a schema field
+  or a deleted duplicate, not a third rule: a sentence forbidding a kind of evidence holds only once the script drops
+  that kind.
+- **Derive by code.** What the script can compute from earlier output (a list, a route, a copy of a statement), the
+  script computes; an agent asked to restate it drifts. An id the agent must cite is an enum built per run, and the
+  script expands it to its full text after the call.
+- **Check what the schema states.** A limit or form the schema declares is also checked by the script. A failure gets
+  one retry carrying the errors; an item the check cannot repair is dropped and reported, never passed on.
+- **Tie output to the target.** Each item of output names what it serves, or says it is general; the script drops the
+  rest and reports what nothing serves.
+- **Only the branch the stage takes.** A stage gets the rules of its own branch: one that writes no code gets the no-code
+  preamble and no commit or gate rules.
+- **Gaps go to the result.** What a stage cannot settle is a typed question that goes to the result for a human, never
+  into a later prompt. A free list nothing reads becomes a parking lot: delete it rather than narrow its wording.
+- **Take the reading the source supports.** Where the ticket and the spec leave a choice open, the stage takes the
+  reading their words support and states it, rather than leaving it unspecified.
+- **One source per rule.** A rule lives in one part. A sentence several stages include holds for each of them.
+- **Trim, then smoke.** Deleting a sentence changes behaviour: a smoke run follows every trim, since a line that looks
+  redundant can be the one that holds an output's form.
+- **Guardrails stay prohibitions.** State the target behaviour; a hard limit that positive wording did not hold keeps
+  its prohibition, paired with the target.
+- **Measure wording, not mechanics.** Mechanics ship under stub tests. A wording change is measured on the failing cases
+  it names, and the budget is asked before a paid run.
+- **Unmeasured rules stay out.** A design rule with no field of its own and no failing case to measure it on is not
+  added; neither is a check that does not catch its target, or a branch whose output nothing reads.
 
 ## Dependencies
 
