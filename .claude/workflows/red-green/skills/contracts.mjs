@@ -10,7 +10,8 @@
 //
 // run is the property runner for a project with no framework. A contract whose next line is a `domain: <json>` marker
 // gets --examples examples (100 by default) generated from --seed (1 by default) and its id, written as a JSON array to
-// $PROPERTY_DIR/<id>.json; the example id is its index. It runs <test command> once, with PROPERTY_DIR, PROPERTY_SEED and
+// $PROPERTY_DIR/<id>.json; the example id is its index. It runs <test command> once, its stdout and stderr
+// printed in the order written, all to stdout, with PROPERTY_DIR, PROPERTY_SEED and
 // PROPERTY_EXAMPLES set. A test reads its contract's file and, when the file is absent, does nothing; before running an
 // example it prints `property: <id> <example id>` and flushes; at the end it writes the ids of the failed examples, one per
 // line, to $PROPERTY_DIR/<id>.failed, empty when all passed. Exit 0 all passed; 1 red: a failed example, a non-zero
@@ -35,7 +36,7 @@
 //
 // Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile (with int and ASCII) into the core's plan
 // check, and seq and least for implement's example of each domain.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
@@ -221,15 +222,22 @@ const smaller = (d, v) => {
   return []
 }
 
-const exec = (command, dir, seed, count) => spawnSync(command[0], command.slice(1), { encoding: 'utf8', maxBuffer: 1 << 30,
-  env: { ...process.env, PROPERTY_DIR: dir, PROPERTY_SEED: String(seed), PROPERTY_EXAMPLES: String(count) } })
+// stdout and stderr share one file, so `output` keeps the order the command wrote them in.
+const exec = (command, dir, seed, count) => {
+  const file = `${dir}.out`, fd = openSync(file, 'w')
+  try {
+    const r = spawnSync(command[0], command.slice(1), { stdio: ['ignore', fd, fd],
+      env: { ...process.env, PROPERTY_DIR: dir, PROPERTY_SEED: String(seed), PROPERTY_EXAMPLES: String(count) } })
+    return { ...r, output: readFileSync(file, 'utf8') }
+  } finally { closeSync(fd); rmSync(file, { force: true }) }
+}
 
 // What a run said of contract `id` with `n` examples: {failed: [example id], unknown: [string]} from its <id>.failed,
 // else {failed: null, last}, the last example printed before a non-zero exit.
 const outcome = (id, n, dir, r) => {
   let text
   try { text = readFileSync(join(dir, `${id}.failed`), 'utf8') } catch {
-    const last = r.status === 0 ? undefined : [...(r.stdout + r.stderr).matchAll(new RegExp(`property: ${id.replace(/[.]/g, '\\.')} (\\d+)`, 'g'))].at(-1)?.[1]
+    const last = r.status === 0 ? undefined : [...r.output.matchAll(new RegExp(`property: ${id.replace(/[.]/g, '\\.')} (\\d+)`, 'g'))].at(-1)?.[1]
     return { failed: null, last: last !== undefined && Number(last) < n ? Number(last) : undefined }
   }
   const ids = text.split(/\s+/).filter(Boolean), ok = s => /^\d+$/.test(s) && Number(s) < n
@@ -269,8 +277,7 @@ const run = (command, seed, count) => {
   try {
     for (const p of props) writeFileSync(join(dir, `${p.id}.json`), JSON.stringify(p.examples))
     const r = exec(command, dir, seed, count)
-    process.stdout.write(r.stdout ?? '')
-    process.stderr.write(r.stderr ?? '')
+    process.stdout.write(r.output)
     if (r.error) die(`${command[0]}: ${r.error.message}`)
     const exit = r.status ?? r.signal
     const reds = [], errors = []

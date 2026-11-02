@@ -1,4 +1,4 @@
-// Runs the gates of a tier in the working directory and prints one JSON row per gate: name, status (green, red,
+// Runs the gates of a tier in --repo (the working directory by default) and prints one JSON row per gate: name, status (green, red,
 // known_red, or not_run when a signal or the timeout ended it), line, log, seconds, cached. Exit 0 the report is complete, whatever the
 // gates did; 2 it could not run, or the tier selects no gate (stderr says why); 3 gates are still running, call again.
 //
@@ -6,17 +6,17 @@
 // call, and another call joins them instead of starting its own. Its report stays in the run directory for a later call.
 // The run directory must be outside the tree or ignored, or its logs change the cache key on every run.
 //
-//     node run_gates.mjs --gates <json> --dir <run dir> [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
+//     node run_gates.mjs --gates <json> --dir <run dir> [--repo <path>] [--tier fast|round|acceptance] [--baseline <json>] [--no-cache] [--wait <s>] [--timeout <s>]
 import { mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, rmSync, copyFileSync, existsSync, linkSync } from 'node:fs'
 import { spawn, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 const die = why => { process.stderr.write(`run_gates: ${why}\n`); process.exit(2) }
 let o
 try {
-  o = parseArgs({ options: { gates: { type: 'string' }, tier: { type: 'string' }, dir: { type: 'string' }, baseline: { type: 'string' },
+  o = parseArgs({ options: { gates: { type: 'string' }, repo: { type: 'string' }, tier: { type: 'string' }, dir: { type: 'string' }, baseline: { type: 'string' },
     'no-cache': { type: 'boolean' }, wait: { type: 'string' }, timeout: { type: 'string' }, supervise: { type: 'string' } } }).values
 } catch (e) { die(e.message) }
 for (const k of ['gates', 'dir']) if (!o[k]) die(`--${k} is required`)
@@ -41,7 +41,7 @@ if (!Number.isFinite(waitSeconds)) die(`--wait ${o.wait}: not a number`)
 const timeoutSeconds = o.timeout === undefined ? 7200 : Number(o.timeout)
 if (!(timeoutSeconds > 0)) die(`--timeout ${o.timeout}: not a positive number`)
 
-const git = (args, env) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } }).trim()
+const git = (args, env) => execFileSync('git', args, { cwd: o.repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } }).trim()
 let GIT_DIR
 try {
   GIT_DIR = git(['rev-parse', '--absolute-git-dir'])
@@ -59,7 +59,7 @@ const writeJson = (file, value) => {
 const treeState = () => {
   const index = join(GIT_DIR, `red-green-gates.index.${process.pid}`)
   try {
-    const real = git(['rev-parse', '--git-path', 'index'])
+    const real = resolve(o.repo ?? '', git(['rev-parse', '--git-path', 'index']))
     if (existsSync(real)) copyFileSync(real, index)
     git(['add', '-A', ':/'], { GIT_INDEX_FILE: index })
     return `${git(['rev-parse', 'HEAD'])} ${git(['write-tree'], { GIT_INDEX_FILE: index })}`
@@ -92,7 +92,7 @@ const supervise = async id => {
       const fd = openSync(log, 'w')
       const start = Date.now()
       // A group of its own, so its timeout kills what it started and not this process.
-      const p = spawn(g.command, { shell: true, stdio: ['ignore', fd, fd], detached: true })
+      const p = spawn(g.command, { cwd: o.repo, shell: true, stdio: ['ignore', fd, fd], detached: true })
       writeJson(LOCK, { pid: process.pid, id, request, gate: p.pid, until: start + timeoutSeconds * 1000 })
       let timedOut = false
       const timer = setTimeout(() => { timedOut = true; killGroup(p.pid) }, timeoutSeconds * 1000)

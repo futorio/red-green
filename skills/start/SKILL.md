@@ -47,9 +47,9 @@ Done when `repo` has `wf/<name>` checked out at `base` and every gitignored file
 
 ## 3. Baseline
 
-Measure the `fast` and `round` gates with the runner, from the worktree, with a Bash timeout of 10 minutes:
+Measure the `fast` and `round` gates with the runner on the worktree, with a Bash timeout of 10 minutes:
 
-`node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier round --no-cache`
+`node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --repo <repo> --tier round --no-cache`
 
 `<gates as JSON>` is `profile.blocks.gates.gates`, its commands' placeholders filled from the args
 ([`args-and-profile.md`](../../docs/red-green/args-and-profile.md)). Exit 3: run it again. Exit 2 or a `not_run` row: stop
@@ -81,7 +81,7 @@ The run goes on in the background and never waits for the user. Watch its journa
 ```
 tail -n +1 -F <wf dir>/journal.jsonl | jq -cn --unbuffered 'foreach (inputs | select(.key)) as $r ({};
   if $r.type == "started" then .[$r.key] = $r.label else . end; .[$r.key] as $l
-  | if $r.type == "started" and $l == "implement" then {done: true}
+  | if $r.type == "started" and $l == "implement" then ({done: true}, halt)
     elif $r.type == "result" and ($l | IN("research", "plan", "replan")) then
       (($r.result | objects | .questions) // []) as $q | ($q[] | {stage: $l, requirement, question, reading, cases}), {stage: $l, questions: ($q | length)}
     else empty end)'
@@ -89,8 +89,9 @@ tail -n +1 -F <wf dir>/journal.jsonl | jq -cn --unbuffered 'foreach (inputs | se
 
 Give the user each question as it lands: stage, requirement, question, and the plan's reading and cases. Tell them a
 reply settles it and that, unanswered, the run keeps the reading. Implement starts after plan and any replan, so the
-`{done: true}` line ends the watch, as does the run's result when the run fails before implement: stop the monitor then
-(TaskStop), and re-arm it on an earlier expiry.
+watch command exits there, after a `{done: true}` line, and the watch ends with it, even when that line is lost. A run
+that fails before implement ends the watch with its result: stop the monitor then (TaskStop). Re-arm it on an earlier
+expiry.
 
 A reply, or any detail the user adds meanwhile, goes to the run's mailbox
 ([`mailbox.md`](../../docs/red-green/mailbox.md)), and the run keeps going. A reply to a question is an entry `to: all`
@@ -107,9 +108,9 @@ Done when the run's result is in.
    in `failures` then no longer counts against the fast-forward; every other entry does. Then `git status --porcelain`
    in the worktree: acceptance measures the commit that lands, so anything left skips step 4 and stops the fast-forward;
    show it to the user at step 6.
-4. Run the acceptance gates from the worktree, from scratch, with a Bash timeout of 10 minutes:
+4. Run the acceptance gates on the worktree, from scratch, with a Bash timeout of 10 minutes:
 
-   `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
+   `node <tools>/.claude/workflows/red-green/skills/run_gates.mjs --gates '<gates as JSON>' --dir <run> --repo <repo> --tier acceptance --no-cache --baseline '<baseline as JSON>'`
 
    Exit 3: run it again. Blocking: a row with status `red` or `not_run`, or exit 2. A `known_red` row is reported and not
    blocking.

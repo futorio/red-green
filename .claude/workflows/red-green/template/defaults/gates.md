@@ -1,7 +1,7 @@
 <!-- Block gates: the gates step's default instructions. -->
 <!-- @part run -->
 STAGE: gates, HEAD {{HEAD}}.
-From {{REPO}}, run this in the foreground with a Bash timeout of 600000 ms (10 minutes):
+Run this in the foreground with a Bash timeout of 600000 ms (10 minutes):
 {{gate_command}}
 It prints one JSON row per gate.
 Exit 0: the report is complete, whatever the gates did; return its rows.

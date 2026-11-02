@@ -3,7 +3,7 @@
 //     node --test .claude/workflows/red-green/skills/test_run_gates.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -317,4 +317,14 @@ test('G17: a run that fails behind the lock is exit 2 with the cause, and a next
   assert.match(res.stderr, /gate-logs/)
   rmSync(join(s.dir, 'gate-logs'))
   assert.equal(rows(run(s, gates))[0].status, 'green')
+})
+
+test('G-repo: --repo runs the gates and reads git state there, whatever the cwd', () => {
+  const s = setup()
+  const res = spawnSync('node', [...args(s, [{ name: 'here', command: 'pwd; cat a.txt' }]), '--repo', s.repo], { cwd: s.tmp, encoding: 'utf8' })
+  const [row] = rows(res)
+  assert.equal(row.status, 'green')
+  assert.equal(row.line, 'a')
+  const report = JSON.parse(readFileSync(join(s.dir, 'gate-runs', readdirSync(join(s.dir, 'gate-runs'))[0]), 'utf8'))
+  assert.equal(report.start.split(' ')[0], s.git('rev-parse', 'HEAD').trim())
 })
