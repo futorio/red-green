@@ -70,7 +70,20 @@ way for every language, and the project declares that gate too, with its test co
 A property test's marker has a second line, `domain: <json>`, in the runner's domain language: `{"int": [lo, hi]}`,
 `{"bytes": [min, max]}` (byte values as a list), `{"string": [min, max], "chars": "<alphabet>"}` (`chars` optional,
 printable ASCII by default), `{"list": <domain>, "len": [min, max]}`, `{"tuple": [<domain>, ...]}`,
-`{"oneof": [<domain>, ...]}` and `{"const": <json>}`; bounds are inclusive integers. `run` generates the examples from
+`{"record": {"<name>": <domain>, ...}}` (an object with those keys in that order; no name an integer),
+`{"oneof": [<domain>, ...]}` and `{"const": <json>}`; bounds are inclusive integers. A domain may continue over the
+following comment lines with the same opener until its JSON is complete; one that never completes is a bad domain:
+
+```cpp
+// contract: baton.same-frames: Both sides release the same frames in the same order under any loss.
+// domain: {"record": {
+//   "seed": {"int": [0, 2147483647]},
+//   "loss": {"int": [0, 40]},
+//   "cuts": {"list": {"record": {"dir": {"int": [0, 2]}, "at": {"int": [0, 8000]}}}, "len": [0, 2]}
+// }}
+```
+
+`run` generates the examples from
 `--seed` (1 by default, so a gate is stable) and writes each contract's as a JSON array to `$PROPERTY_DIR/<id>.json`,
 sets `PROPERTY_SEED` and `PROPERTY_EXAMPLES` (`--examples`, 100 by default) and runs the command once. The test:
 
@@ -84,7 +97,8 @@ last example printed; 2 on a bad marker or domain, a missing `<id>.failed` after
 
 On red, `run` reduces each red contract's first failed example. Each rerun writes only that contract's file, holding
 the examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward
-the lower bound, earlier `oneof` choices), runs the command again with nothing rebuilt, and keeps the first that fails;
+the lower bound, earlier `oneof` choices, a tuple or record one element or field at a time), runs the command again
+with nothing rebuilt, and keeps the first that fails;
 it stops when none fails or after 100 reruns. stderr names `<id>: example <index> reduced in <n> reruns: <json>`.
 
 ## By-hand mutation

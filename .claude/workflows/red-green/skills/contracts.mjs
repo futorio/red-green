@@ -19,12 +19,14 @@
 //
 // A red contract's first failed example is then reduced: each rerun writes only that contract's file, holding the
 // examples one step smaller by the domain (shorter lists, byte strings and strings, integers and characters toward the
-// lower bound, earlier oneof choices), runs the command again and keeps the first that fails, until none does or 100
-// reruns. stderr then names `<id>: example <example id> reduced in <n> reruns: <json>`.
+// lower bound, earlier oneof choices, a tuple or record one element or field at a time), runs the command again and
+// keeps the first that fails, until none does or 100 reruns. stderr then names `<id>: example <example id> reduced in <n> reruns: <json>`.
 //
 // The domain language, by key: {"int": [lo, hi]}; {"bytes": [min, max]}, a list of byte values that long;
 // {"string": [min, max], "chars"?: "<alphabet>"}, printable ASCII by default; {"list": <domain>, "len": [min, max]};
-// {"tuple": [<domain>, ...]}; {"oneof": [<domain>, ...]}; {"const": <json>}. Bounds are integers, inclusive.
+// {"tuple": [<domain>, ...]}; {"record": {"<name>": <domain>, ...}}, an object with those keys in that order, no name an
+// integer; {"oneof": [<domain>, ...]}; {"const": <json>}. Bounds are integers, inclusive. A `domain:` may continue over
+// the following comment lines with the same opener until its JSON is complete.
 //
 //     node contracts.mjs doc <path> [--check]
 //     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
@@ -39,7 +41,20 @@ const die = why => { process.stderr.write(`contracts: ${why}\n`); process.exit(2
 const LIMIT = 255, SHOWN = 3
 const MARKER = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)\s*contract:(.*)$/
 const CONTRACT = /^\s*([\w-]+(?:\.[\w-]+)*):\s+(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
-const DOMAIN = /^\s*(?:\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)\s*domain:(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
+const COMMENT = /^\s*(\/\/+|#+|--|;+|%+|\/\*+|\*|<!--|\(\*)(.*?)\s*(?:\*\/|-->|\*\))?\s*$/
+// The raw text of a `domain:` marker at lines[i], or null. It continues over the following comment lines with the same
+// opener until it parses as JSON; one that never does is returned whole, for run to reject.
+const domainAt = (lines, i) => {
+  const m = COMMENT.exec(lines[i] ?? ''), d = m && /^\s*domain:(.*)$/.exec(m[2])
+  if (!d) return null
+  let text = d[1].trim()
+  for (let j = i + 1; ; j++) {
+    try { JSON.parse(text); return text } catch {}
+    const c = COMMENT.exec(lines[j] ?? '')
+    if (!c || c[1] !== m[1]) return text
+    text += '\n' + c[2]
+  }
+}
 
 // Every marker in the tracked and unignored files: {contracts: [{id, statement, file, line, domain}], problems: [string]}. `domain` is
 // the raw text of a `domain:` marker on the next line, or null.
@@ -61,7 +76,7 @@ const scan = () => {
       if ([...statement].length > LIMIT) problems.push(`${where}: ${id}: statement is ${[...statement].length} characters, over ${LIMIT}`)
       const twin = contracts.find(x => x.id === id)
       if (twin) problems.push(`${where}: ${id}: duplicate id, also at ${twin.file}:${twin.line}`)
-      contracts.push({ id, statement, file, line: i + 1, domain: DOMAIN.exec(lines[i + 1] ?? '')?.[1].trim() ?? null })
+      contracts.push({ id, statement, file, line: i + 1, domain: domainAt(lines, i + 1) })
     })
   }
   return { contracts, problems }
@@ -108,7 +123,7 @@ const int = (next, lo, hi) => {
   return Math.min(hi, lo + Math.floor((next() + next() / 2 ** 32) * (hi - lo + 1)))
 }
 const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
-const TYPES = { int: [], bytes: [], string: ['chars'], list: ['len'], tuple: [], oneof: [], const: [] }
+const TYPES = { int: [], bytes: [], string: ['chars'], list: ['len'], tuple: [], record: [], oneof: [], const: [] }
 
 // A domain to a generator: next => example. Throws on what the language cannot state.
 const compile = d => {
@@ -129,6 +144,12 @@ const compile = d => {
     }
     case 'list': return many(d.len, compile(d.list))
     case 'tuple': { const gs = domains(); return next => gs.map(g => g(next)) }
+    case 'record': {
+      // An integer-like name would lose its place: JSON objects put those keys first.
+      const r = d.record, ok = r && typeof r === 'object' && !Array.isArray(r) && !Object.keys(r).some(k => /^\d+$/.test(k))
+      const gs = ok ? Object.entries(r).map(([k, e]) => [k, compile(e)]) : bad('want an object of field names, none an integer, to domains')
+      return next => Object.fromEntries(gs.map(([k, g]) => [k, g(next)]))
+    }
     case 'oneof': { const gs = domains(); return next => gs[int(next, 0, gs.length - 1)](next) }
     case 'const': return () => d.const
   }
@@ -148,6 +169,8 @@ const has = (d, v) => {
   if (s) { const a = s.is(v) && s.from(v); return !!a && a.length >= s.len[0] && a.length <= s.len[1] && a.every(x => has(s.el, x)) }
   if ('int' in d) return Number.isSafeInteger(v) && d.int[0] <= v && v <= d.int[1]
   if ('tuple' in d) return Array.isArray(v) && v.length === d.tuple.length && d.tuple.every((e, i) => has(e, v[i]))
+  if ('record' in d) { const ks = Object.keys(d.record); return !!v && typeof v === 'object' && !Array.isArray(v)
+    && Object.keys(v).length === ks.length && ks.every(k => Object.hasOwn(v, k) && has(d.record[k], v[k])) }
   if ('oneof' in d) return d.oneof.some(e => has(e, v))
   return JSON.stringify(v) === JSON.stringify(d.const)
 }
@@ -156,6 +179,7 @@ const least = d => {
   if (s) return s.to(Array(s.len[0]).fill(least(s.el)))
   if ('int' in d) return d.int[0]
   if ('tuple' in d) return d.tuple.map(least)
+  if ('record' in d) return Object.fromEntries(Object.entries(d.record).map(([k, e]) => [k, least(e)]))
   if ('oneof' in d) return least(d.oneof[0])
   return d.const
 }
@@ -172,6 +196,7 @@ const smaller = (d, v) => {
   }
   if ('int' in d) { const out = []; for (let k = v - d.int[0]; k >= 1; k = Math.floor(k / 2)) out.push(v - k); return out }
   if ('tuple' in d) return d.tuple.flatMap((e, i) => smaller(e, v[i]).map(y => v.with(i, y)))
+  if ('record' in d) return Object.entries(d.record).flatMap(([k, e]) => smaller(e, v[k]).map(y => ({ ...v, [k]: y })))
   if ('oneof' in d) { const j = d.oneof.findIndex(e => has(e, v)); return [...d.oneof.slice(0, j).map(least), ...smaller(d.oneof[j], v)] }
   return []
 }

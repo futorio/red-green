@@ -233,7 +233,7 @@ const propertyCase = over => ({ id: 'C1', requirement: 'R1', title: 't', arrange
 const cleanRounds = { 'review:r1:checklist': met('R1'), 'review:r1:code': met('x'), 'review:r2:checklist': met('R1'), 'review:r2:code': met('x') }
 const ACAE = {
   plain: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: cleanRounds },
-    { research: '6911c78e1828d634', plan: '50fe709084ee167d', implement: 'b70304504af9e0b3', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': '3e3bf11d116926dd',
+    { research: '6911c78e1828d634', plan: '7276e746b3637821', implement: 'b70304504af9e0b3', 'gates:r1': 'ecdbdc5ce45d7d6c', 'review:r1:checklist': '3e3bf11d116926dd',
       'review:r1:code': '67fc9466f40aa44a', 'review:r2:checklist': 'b3b8c70f59dd4595', 'review:r2:code': '8c46768874fa9b3d' }],
   fixes: [{ args: { one_commit: true, profile: { code_rules: ['rule one'], commit: 'imperative mood', context: ['ctx line'], blocks: {
     gates: { gates: G }, research: { prompt: '{{default}}\n- Also read NOTES.md.' }, review: { runtime: 'Node 22' } } } },
@@ -248,10 +248,10 @@ const ACAE = {
     plan: { cases: [{ id: 'C1', requirement: 'R1', title: 't', arrange: 'a', act: 'a', asserts: ['x'] }, { id: 'C2', requirement: 'R1', title: 't2', arrange: 'a', act: 'a', asserts: ['x'] }], questions: [] },
     implement: { head: 'BASE', checks: [], unverified: [], questions: [], notes: 'stuck' },
     'implement:retry': { head: 'H1', checks: [], unverified: ['no tool for X'], questions: [] } } },
-  { replan: '07e388ea69966e5e', 'implement:retry': '02123538d71a26a0', 'review:r1:checklist': '3cdbad0e09563efa', 'review:r1:code': '8ef453d1628e5c58' }],
+  { replan: '2935505f08e78115', 'implement:retry': '02123538d71a26a0', 'review:r1:checklist': '3cdbad0e09563efa', 'review:r1:code': '8ef453d1628e5c58' }],
   property: [{ args: { profile: { blocks: { gates: { gates: G } } } }, results: Object.assign({ plan: { cases: [propertyCase({ source: 'nowhere' })], questions: [] },
     replan: { cases: [propertyCase({})], questions: [] } }, cleanRounds) },
-  { replan: '5ebc86dc2fff3b86', implement: '4ee7aa01e488b30c', 'review:r1:code': '0ecbd15abf491805' }],
+  { replan: '9e4fb753c4399907', implement: '4ee7aa01e488b30c', 'review:r1:code': '0ecbd15abf491805' }],
   framework: [{ args: { profile: { blocks: { gates: { gates: G }, implement: { property_framework: 'fast-check' } } } }, results: Object.assign({ plan: { cases: [propertyCase({})], questions: [] } }, cleanRounds) },
     { plan: '8c05e3f54ad3d441', implement: '96c71bddd5bfe627' }],
   order: [{ args: { profile: { blocks: { gates: { gates: G }, review: { duties: { order: true } } } } }, results: cleanRounds },

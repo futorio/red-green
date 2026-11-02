@@ -259,3 +259,51 @@ for (const id of ['p.a', 'p.b']) {
   assert.ok(runs.length > 1)
   for (const l of runs.slice(1)) assert.equal(l, 'p.a.json')
 })
+
+test('R14: a record is generated as an object with the declared keys in declared order, nested and in lists too', () => {
+  const d = { record: { seed: { int: [0, 9] }, cuts: { list: { record: { dir: { int: [0, 2] }, at: { int: [5, 5] } } }, len: [1, 2] },
+    inner: { record: { b: { const: 'x' }, a: { int: [1, 1] } } } } }
+  for (const v of examples(d)) {
+    assert.deepEqual(Object.keys(v), ['seed', 'cuts', 'inner'], JSON.stringify(v))
+    assert.ok(Number.isInteger(v.seed) && v.seed >= 0 && v.seed <= 9, JSON.stringify(v))
+    assert.ok(v.cuts.length >= 1 && v.cuts.length <= 2, JSON.stringify(v))
+    for (const c of v.cuts) assert.deepEqual(Object.keys(c), ['dir', 'at'], JSON.stringify(v))
+    assert.equal(JSON.stringify(v.inner), '{"b":"x","a":1}')
+  }
+})
+
+test('R15: a record is reduced field by field and reported with its names', () => {
+  const d = { record: { loss: { int: [0, 40] }, name: { string: [0, 5], chars: 'ab' }, cuts: { list: { record: { at: { int: [0, 99] } } }, len: [0, 3] } } }
+  const r = run(property(d, `ex.forEach((v, i) => { if (v.loss >= 7 && v.cuts.some(c => c.at >= 20)) failed.push(i) })`))
+  assert.equal(r.status, 1, r.stderr)
+  assert.match(r.stderr, /p\.a: example \d+ reduced in \d+ reruns: \{"loss":7,"name":"","cuts":\[\{"at":20\}\]\}\n/)
+  assert.deepEqual(reduced({ oneof: [{ const: 0 }, { record: { a: { int: [0, 9] } } }] }, 'v !== 0 && v.a >= 3'), { a: 3 })
+})
+
+test('R16: a domain continues over comment lines with its opener until the JSON is complete; an unterminated one is an error naming its file', () => {
+  const spread = '{"record": {\n//   "seed": {"int": [0, 9]},\n//   "loss": {"int": [3, 3]}\n// }}'
+  const v = examples(spread)
+  assert.equal(v.length, 100)
+  for (const x of v) assert.deepEqual(Object.keys(x), ['seed', 'loss'])
+  const py = setup({ 't.py': '# contract: p.a: a property\n# domain: {"tuple": [\n#   {"int": [4, 4]}]}\n',
+    't.mjs': `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const f = process.env.PROPERTY_DIR + '/p.a.json'
+if (existsSync(f)) { if (!JSON.parse(readFileSync(f, 'utf8')).every(x => x[0] === 4)) process.exit(9); writeFileSync(f.replace('json', 'failed'), '') }
+` })
+  const ok = run(py)
+  assert.equal(ok.status, 0, ok.stderr)
+  for (const domain of ['{"record": {\n//   "seed": {"int": [0, 9]}', '{"record": {\n#   "seed": {"int": [0, 9]}}}']) {
+    const r = run(property(domain))
+    assert.equal(r.status, 2, domain)
+    assert.match(r.stderr, /t\.mjs:2: p\.a: domain/, domain)
+  }
+})
+
+test('C08: doc and doc --check accept a one-line and a multi-line domain', () => {
+  const repo = setup({ 'a.js': '// contract: a.one: one\n// domain: {"int": [0, 1]}\n',
+    'b.js': '// contract: a.two: two\n// domain: {"record": {\n//   "x": {"int": [0, 1]}\n// }}\n' })
+  const text = doc(repo)
+  assert.ok(text.includes('`a.one`: one (a.js)') && text.includes('`a.two`: two (b.js)'), text)
+  const r = cli(repo, 'doc', 'CONTRACTS.md', '--check')
+  assert.equal(r.status, 0, r.stderr)
+})

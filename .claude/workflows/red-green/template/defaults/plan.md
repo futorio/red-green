@@ -24,7 +24,7 @@ YOUR PREVIOUS CASES:
 <!-- @part property_framework_note -->
  (in {{property_framework}}'s terms)
 <!-- @part property_runner_note -->
- (JSON in the runner's language: {"int":[lo,hi]}, {"bytes":[min,max]}, {"string":[min,max],"chars":"<alphabet>"}, {"list":<domain>,"len":[min,max]}, {"tuple":[<domain>,...]}, {"oneof":[<domain>,...]} or {"const":<json>}, bounds inclusive; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case)
+ (JSON in the runner's language: {"int":[lo,hi]}, {"bytes":[min,max]}, {"string":[min,max],"chars":"<alphabet>"}, {"list":<domain>,"len":[min,max]}, {"tuple":[<domain>,...]}, {"record":{"<name>":<domain>,...}} (the form for more than two values), {"oneof":[<domain>,...]} or {"const":<json>}, bounds inclusive; a claim over inputs it cannot state, such as objects, callbacks or state, stays a literal case)
 <!-- @part limit -->
 Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.
 <!-- @part rules -->
