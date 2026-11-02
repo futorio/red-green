@@ -62,8 +62,9 @@ async function runCore(over, rounds, extra) {
   const results = base(over)
   const calls = []
   const events = []
+  const logs = []
   const agent = async (prompt, opts) => {
-    const call = { label: opts.label, prompt, opts }
+    const call = { label: opts.label, prompt, opts, logged: [...logs] }
     calls.push(call)
     events.push(`${opts.label} start`)
     const key = opts.label
@@ -77,8 +78,8 @@ async function runCore(over, rounds, extra) {
   const blocks = Object.assign({}, args.profile.blocks)
   blocks.review = Object.assign(rounds === 'default' ? {} : rounds > 1 ? { rounds } : { rounds: 1, min: 1 }, blocks.review)
   args.profile = Object.assign({}, args.profile, { blocks })
-  const result = await core(args, agent, parallel, () => {}, () => {})
-  return { result, calls, events }
+  const result = await core(args, agent, parallel, () => {}, line => { logs.push(line) })
+  return { result, calls, events, logs }
 }
 
 const prompt = (calls, label) => calls.find(c => c.label === label).prompt
@@ -775,6 +776,17 @@ test('W46: two cases with the same check after the same Arrange and Act get one 
   assert.equal(count(calls, 'replan'), 1)
   assert.match(prompt(calls, 'replan'), /keep each in one case\. Each `check` reads `arrange \| act \| assert`: \[\{"check":"a \| a \| x","cases":\["C1","C2"\]\}\]\. Keep every other case/)
   assert.ok(!/uncovered/.test(prompt(calls, 'replan')))
+})
+
+test('W134: the reason for a replan is logged before the call: uncovered ids and the duplicated checks\' case ids', async () => {
+  const c = base().plan.cases[0]
+  const { calls } = await runCore({
+    research: research({ requirements: ['R1: one', 'R2: two'], test_harness: [harness('R1'), harness('R2')] }),
+    plan: { cases: [c, Object.assign({}, c, { id: 'C2' })] }, replan: base().plan,
+  })
+  assert.equal(calls.find(k => k.label === 'replan').logged.at(-1), 'plan: replan: uncovered R2; duplicate checks in C1, C2')
+  const dupOnly = await runCore({ plan: { cases: [c, Object.assign({}, c, { id: 'C2' })] }, replan: base().plan })
+  assert.equal(dupOnly.calls.find(k => k.label === 'replan').logged.at(-1), 'plan: replan: uncovered none; duplicate checks in C1, C2')
 })
 
 test('W47: the open questions of the planner reach the result with who settles each; one tied to no case is dropped', async () => {
@@ -1794,6 +1806,48 @@ test('MU09: the mutated HEAD advances on ran: true, not on ran: false or a dead 
   assert.match(prompt(notRun.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
   const dead = await runCore({ 'mutation:r1': null }, 2)
   assert.match(prompt(dead.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+})
+
+test('MU17: ran true with a non-blank not_run counts as not run: in failures, HEAD not advanced, mutants still recorded', async () => {
+  const gap = { applies: true, ran: true, not_run: ' coverage gap, not a pass ', mutants: [] }
+  const empty = await runCore({ 'mutation:r1': gap }, 2)
+  assert.ok(empty.result.failures.includes('mutation not run: coverage gap, not a pass'))
+  assert.match(prompt(empty.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+  const some = await runCore({ 'mutation:r1': Object.assign({}, gap, { mutants: [mutant(1), mutant(2, 'killed')] }), 'fix:r1': applied('M1-1', 'cccc222') }, 2)
+  assert.deepEqual(sentTo(some.calls, 'fix:r1').map(f => f.id), ['M1-1'])
+  assert.deepEqual(some.result.mutation.mutants.slice(0, 2).map(m => [m.id, m.status]), [['M1-1', 'survived'], ['M1-2', 'killed']])
+  assert.match(prompt(some.calls, 'mutation:r2'), /git diff --name-only aaaa000\.\.HEAD/)
+})
+
+test('MU18: ran true with a blank or missing not_run is a run: no failure, HEAD advanced', async () => {
+  for (const extra of [{}, { not_run: '' }, { not_run: ' \n' }]) {
+    const { result, calls } = await runCore({ 'mutation:r1': Object.assign(step(), extra) }, 2)
+    assert.deepEqual(result.failures, [])
+    assert.ok(!called(calls, 'mutation:r2'))
+  }
+})
+
+test('MU19: ran true with not_run keeps mutation_skipped, and takes the known_red skip if it names the control run', async () => {
+  const red = gatesAt('bbbb111', gate('tests', 'known_red', 'F'))
+  const control = 'mutate: control run at bbbb111: test failed or timed out'
+  const skipped = await runCore({ 'gates:r1': red, 'mutation:r1': { applies: true, ran: true, not_run: control, mutants: [] } })
+  assert.deepEqual(skipped.result.failures, [])
+  assert.equal(skipped.result.mutation, null)
+  assert.equal(skipped.result.mutation_skipped, control)
+  const plain = await runCore({ 'mutation:r1': { applies: true, ran: true, not_run: control, mutants: [] } })
+  assert.ok(plain.result.failures.includes(`mutation not run: ${control}`))
+  const kept = await runCore({ 'gates:r1': red, 'mutation:r1': { applies: true, ran: false, not_run: control, mutants: [] }, 'mutation:r2': Object.assign(step(), { not_run: 'coverage gap' }) }, 2)
+  assert.equal(kept.result.mutation_skipped, control)
+  assert.ok(kept.result.failures.includes('mutation not run: coverage gap'))
+})
+
+test('MU20: the log line shows this step\'s counts; result.mutation.counts stays accumulated', async () => {
+  const { result, logs } = await runCore({
+    'mutation:r1': step(mutant(1, 'killed'), mutant(2)), 'fix:r1': applied('M1-2', 'cccc222'), 'mutation:r2': step(mutant(3, 'killed')),
+  }, 2)
+  assert.deepEqual(logs.filter(l => /^mutation: \{/.test(l)).map(l => JSON.parse(l.slice('mutation: '.length))), [
+    { killed: 1, survived: 1, invalid: 0, not_run: 0 }, { killed: 1, survived: 0, invalid: 0, not_run: 0 }])
+  assert.deepEqual(result.mutation.counts, { killed: 2, survived: 1, invalid: 0, not_run: 0 })
 })
 
 test('MU10: a survivor without a file header and a hunk header is not_run: in failures, no finding; a killed or invalid one is only counted', async () => {

@@ -529,6 +529,7 @@ function duplicates(p) {
 let cov = coverage(plan)
 let dup = duplicates(plan)
 if (cov.length || dup.length) {
+  log(`plan: replan: uncovered ${cov.join(', ') || 'none'}; duplicate checks in ${[...new Set(dup.flatMap(d => d.cases))].join(', ') || 'none'}`)
   plan = await call('plan', NO_CODE_PRE, 'replan', {
     test_ids: testIds.join(', '), 'plan.cases': plan.cases, research,
     uncovered: cov, uncovered_note: cov.length > 0, duplicates: dup, duplicates_note: dup.length > 0,
@@ -633,16 +634,20 @@ async function runMutation() {
   if (!res) { failures.push('mutation'); return [] }
   if (!res.applies) { mutatedHead = headNow; log('mutation: no file it covers in the diff, step skipped'); return [] }
   // The runner refuses a red baseline: expected while a gate is known red, so no failure.
-  if (!res.ran && /control run/.test(res.not_run) && gated.gates.some(r => r.status === 'known_red')) { mutationSkipped = res.not_run; log(`mutation: ${res.not_run}, step skipped`); return [] }
-  if (!res.ran) failures.push(`mutation not run: ${res.not_run || 'no reason given'}`)
+  // A reason given with ran true still means not run: an agent's word that the step left a gap is never a pass.
+  const reason = (res.not_run || '').trim()
+  const notRun = !res.ran || reason
+  if (notRun && /control run/.test(reason) && gated.gates.some(r => r.status === 'known_red')) { mutationSkipped = reason; log(`mutation: ${reason}, step skipped`); return [] }
+  if (notRun) failures.push(`mutation not run: ${reason || 'no reason given'}`)
   else { mutatedHead = headNow; mutationSkipped = null }
   // A survivor must name a file and a line; one whose patch cannot counts as not run.
   const mutants = res.mutants.map((m, i) => Object.assign({ id: `M${round}-${i + 1}`, target: m.target }, placeOf(m.patch), { patch: m.patch,
     status: m.status === 'survived' && !HEADERS.test(m.patch) ? 'not_run' : m.status }))
   mutants.forEach((m, i) => { if (m.status === 'not_run') failures.push(`mutation ${m.id} not run: ${m.target}${res.mutants[i].status === 'survived' ? `: patch lacks ${missingHeaders(m.patch)}` : ''}`) })
   const all = (mutation ? mutation.mutants : []).concat(mutants)
-  mutation = { mutants: all, counts: Object.fromEntries(MUTANT_STATUS.map(s => [s, all.filter(m => m.status === s).length])) }
-  log(`mutation: ${JSON.stringify(mutation.counts)}`)
+  const countsOf = list => Object.fromEntries(MUTANT_STATUS.map(s => [s, list.filter(m => m.status === s).length]))
+  mutation = { mutants: all, counts: countsOf(all) }
+  log(`mutation: ${JSON.stringify(countsOf(mutants))}`)
   return mutants.filter(m => m.status === 'survived').map(m => ({
     id: m.id, key: m.patch, source: 'mutation', severity: 'major', where: `${m.file}:${m.line}`,
     problem: `a mutant aimed at ${m.target} survives: no test fails on it`, trigger: m.patch,

@@ -44,6 +44,7 @@ function duplicates(p) {
 let cov = coverage(plan)
 let dup = duplicates(plan)
 if (cov.length || dup.length) {
+  log(`plan: replan: uncovered ${cov.join(', ') || 'none'}; duplicate checks in ${[...new Set(dup.flatMap(d => d.cases))].join(', ') || 'none'}`)
   plan = await call('plan', NO_CODE_PRE, 'replan', {
     test_ids: testIds.join(', '), 'plan.cases': plan.cases, research,
     uncovered: cov, uncovered_note: cov.length > 0, duplicates: dup, duplicates_note: dup.length > 0,
