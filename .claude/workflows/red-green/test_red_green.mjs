@@ -634,6 +634,24 @@ test('W134: the reason for a replan is logged before the call: uncovered ids and
   assert.equal(dupOnly.calls.find(k => k.label === 'replan').logged.at(-1), 'plan: replan: uncovered none; duplicate checks in C1, C2')
 })
 
+// The one limit on what gets tested, as plan's rules and the code lens's default state it.
+const LIMIT = 'Test only requirement behaviour, an invariant, a boundary, an error or a regression. Never test doc or message wording, a constant, private structure, the framework itself, a getter, or whether a mock was called; assert an exact message only when a requirement names that message.'
+
+test('W135: plan, replan and the code lens hold the same limit on tests; the lens makes a banned test a major triggered by the test', async () => {
+  const c = base().plan.cases[0]
+  const { calls } = await runCore({ plan: { cases: [c, Object.assign({}, c, { id: 'C2' })] }, replan: base().plan })
+  for (const label of ['plan', 'replan', 'review:r1:code']) assert.ok(prompt(calls, label).includes(LIMIT), label)
+  assert.ok(prompt(calls, 'review:r1:code').includes(`${LIMIT} A test in the diff that breaks this is a major whose \`trigger\` is that test.`))
+  assert.ok(!prompt(calls, 'review:r1:checklist').includes(LIMIT))
+})
+
+test('W136: a banned-test major from the code lens reaches fix as a major with the test as its trigger', async () => {
+  const banned = { verdict: 'findings', checked: [row('x')], findings: [finding('major', 'test/cli.test.js:12', 'test/cli.test.js:12 asserts the --help text')] }
+  const { calls } = await runCore({ 'review:r1:code': banned, 'fix:r1': applied('R1-code-1', 'cccc222') }, 2)
+  const [sent] = sentTo(calls, 'fix:r1')
+  assert.deepEqual([sent.id, sent.severity, sent.trigger], ['R1-code-1', 'major', 'test/cli.test.js:12 asserts the --help text'])
+})
+
 test('W47: the open questions of the planner reach the result with who settles each; one tied to no case is dropped', async () => {
   const q = { requirement: 'R1', question: 'which dir wins?', reading: 'the upstream one', cases: ['C1'], settles: 'owner' }
   const loose = Object.assign({}, q, { question: 'anything else?', cases: ['C9'] })

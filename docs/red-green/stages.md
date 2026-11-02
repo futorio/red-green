@@ -81,6 +81,11 @@ sees and the result lists with research's `how`. Cases cite only `test` ids.
 and Act, case and whitespace folded) may sit in two cases. A miss sends the plan back once (`replan`) naming the
 uncovered ids and duplicates; what is still uncovered goes to the result.
 
+**Limit on tests:** plan's rules and the code lens hold one list, the `plan` default's `limit` part. Worth testing:
+requirement behaviour, invariant, boundary, error, regression. Banned: doc and message wording, constants, private
+structure, the framework, getters, mock checks; an exact message only when a requirement names it. The code lens raises a
+banned test as a major whose `trigger` is the test, so it goes to fix and the minors cap cannot drop it.
+
 ## Implementation
 
 Follows [`skills/implement.md`](../../.claude/workflows/red-green/skills/implement.md), `skills/tdd/` and `profile.code_rules`. `head` still at `base`: one more run, then `failed`.
