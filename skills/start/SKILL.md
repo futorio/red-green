@@ -73,20 +73,24 @@ added directory:
 
 A refused launch is not retried unchanged.
 
+`<wf dir>` is the transcript directory the Workflow launch result prints; it holds the run's `journal.jsonl`.
+
 The run goes on in the background and never waits for the user. Watch its journal with the Monitor tool, `timeout_ms`
-1800000, `<wf dir>` the run's directory:
+1800000:
 
 ```
 tail -n +1 -F <wf dir>/journal.jsonl | jq -cn --unbuffered 'foreach (inputs | select(.key)) as $r ({};
   if $r.type == "started" then .[$r.key] = $r.label else . end; .[$r.key] as $l
-  | select($r.type == "result" and ($l == "research" or $l == "plan"))
-  | (($r.result | objects | .questions) // []) as $q
-  | ($q[] | {stage: $l, requirement, question, reading, cases}), {stage: $l, done: ($q | length)})'
+  | if $r.type == "started" and $l == "implement" then {done: true}
+    elif $r.type == "result" and ($l | IN("research", "plan", "replan")) then
+      (($r.result | objects | .questions) // []) as $q | ($q[] | {stage: $l, requirement, question, reading, cases}), {stage: $l, questions: ($q | length)}
+    else empty end)'
 ```
 
 Give the user each question as it lands: stage, requirement, question, and the plan's reading and cases. Tell them a
-reply settles it and that, unanswered, the run keeps the reading. The `{stage: "plan", done}` line, or the run's result,
-ends the watch: stop the monitor then (TaskStop), and re-arm it on an earlier expiry.
+reply settles it and that, unanswered, the run keeps the reading. Implement starts after plan and any replan, so the
+`{done: true}` line ends the watch, as does the run's result when the run fails before implement: stop the monitor then
+(TaskStop), and re-arm it on an earlier expiry.
 
 A reply, or any detail the user adds meanwhile, goes to the run's mailbox
 ([`mailbox.md`](../../docs/red-green/mailbox.md)), and the run keeps going. A reply to a question is an entry `to: all`
@@ -96,7 +100,7 @@ Done when the run's result is in.
 
 ## 5. Accept
 
-1. Save the spans: `node <tools>/.claude/workflows/red-green/trace.mjs <wf dir> > <run>/trace.jsonl`
+1. Save the spans: `node <tools>/.claude/workflows/red-green/trace.mjs <wf dir> > <run>/trace.jsonl`, `<wf dir>` as in § 4
    ([`tracing.md`](../../docs/red-green/tracing.md)).
 2. Read the result ([`result.md`](../../docs/red-green/result.md)) and every commit on `wf/<name>`.
 3. Delete from the worktree each `path` in `stray_proofs`: an uncommitted proof left by the run. Its `stray proof` entry
