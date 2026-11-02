@@ -141,8 +141,9 @@ a mutant with no patch, and exits 2 if its build or test fails or times out; an 
 `result.mutation` accumulates every step.
 
 - `applies` false: the step is skipped with a log line.
-- `ran` false or a non-blank `not_run` (even with `ran` true) counts as not run: the mutated HEAD stays, and any mutants
-  returned are still recorded and survivors returned.
+- `ran` false, or `ran` true with no mutants and a non-blank `not_run`, counts as not run: the mutated HEAD stays, and any
+  mutants returned are still recorded and survivors returned. With mutants, a `not_run` beside `ran` true is the agent's
+  note on the run.
 - Not run with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
   `result.mutation_skipped` holds the reason until a later step runs.
 - Any other not run, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.

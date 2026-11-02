@@ -52,7 +52,8 @@ async function runMutation() {
   // The runner refuses a red baseline: expected while a gate is known red, so no failure.
   // A reason given with ran true still means not run: an agent's word that the step left a gap is never a pass.
   const reason = (res.not_run || '').trim()
-  const notRun = !res.ran || reason
+  // A reason with mutants is the agent's note on a run; with none, it says the run covered nothing.
+  const notRun = !res.ran || (reason && !res.mutants.length)
   if (notRun && /control run/.test(reason) && gated.gates.some(r => r.status === 'known_red')) { mutationSkipped = reason; log(`mutation: ${reason}, step skipped`); return [] }
   if (notRun) failures.push(`mutation not run: ${reason || 'no reason given'}`)
   else { mutatedHead = headNow; mutationSkipped = null }
