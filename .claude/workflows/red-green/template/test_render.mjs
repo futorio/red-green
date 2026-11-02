@@ -273,7 +273,7 @@ test('T25: a replay takes a recorded research plan step over 600 characters as g
 
 test('T26: --check exits 0 on a valid profile, and non-zero with the run\'s own config note on an invalid one', async () => {
   const run = (...a) => { try { execFileSync('node', [CLI, ...a], { stdio: 'pipe' }); return { code: 0 } } catch (e) { return { code: e.status, err: e.stderr.toString() } } }
-  const valid = { code_rules: ['diff against {{base}}'], blocks: { gates: { gates: [{ name: 'lint', command: 'make -C {{repo}} lint', tier: 'fast' }, { name: 'test', command: 'make test' }] }, research: { prompt: '{{default}}\nMore.' } } }
+  const valid = { code_rules: ['diff against {{base}}'], blocks: { gates: { gates: [{ name: 'lint', command: 'make -C {{repo}} lint', tier: 'fast' }, { name: 'test', command: 'make test' }] }, research: { prompt: '{{default}}\nMore.' } }, mutation: { include: ['src/**'] } }
   assert.deepEqual(run('--check', file('valid.json', valid)), { code: 0 })
   for (const [name, profile] of [['field', { blocks: { gates: { gates: G }, plan: { nope: 1 } } }], ['placeholder', { blocks: { gates: { gates: G } }, context: ['{{nope}}'] }],
     ['fast', { blocks: { gates: { gates: [{ name: 'lint', command: 'make lint', fast: true }] } } }], ['tier', { blocks: { gates: { gates: [{ name: 'lint', command: 'make lint', tier: 'x' }] } } }]]) {

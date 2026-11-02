@@ -1067,7 +1067,7 @@ test('W93: a skill path replaces the how-to with reading it, followed by the cal
 
 test('W95: the removed profile strings and the moved profile fields fail the run before any agent, naming where they went', async () => {
   for (const [field, value, where] of [['research', 'text', /profile\.blocks\.research\.prompt as "\{\{default\}\}\\n<text>"/], ['runtime', 'text', /profile\.blocks\.review\.runtime/],
-    ['gates', TESTS, /profile\.blocks\.gates\.gates/], ['mutation', { test: 'T' }, /by-hand command node \/t\/\.claude\/workflows\/red-green\/skills\/mutate\.mjs/]]) {
+    ['gates', TESTS, /profile\.blocks\.gates\.gates/]]) {
     const args = withProfile()
     args.profile[field] = value
     const { result, calls } = await runCore({}, 1, args)
@@ -1587,6 +1587,14 @@ test('MU02: blocks.mutation, whatever it holds, fails the run on config before a
     assert.equal(result.stage, 'config')
     assert.match(result.note, /profile\.blocks\.mutation .*skills\/mutate\.mjs/)
   }
+})
+
+test('MU04: a top-level profile.mutation, the by-hand command\'s section, is ignored by the run', async () => {
+  const plain = await runCore({}, 1, withProfile())
+  const { result, calls } = await runCore({}, 1, withProfile({ mutation: { include: ['src/**'], exclude: ['vendor/**'], skip_lines: ['^\\s*//'] } }))
+  assert.deepEqual(labels(calls), labels(plain.calls))
+  assert.deepEqual(calls.map(c => c.prompt), plain.calls.map(c => c.prompt))
+  assert.equal(result.status, plain.result.status)
 })
 
 test('MU03: {{mutate_from}} is an unknown placeholder', async () => {

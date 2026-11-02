@@ -16,7 +16,7 @@ research -> plan -> implement
 ```
 
 Acceptance follows, in the main thread ([`/red-green:start`](../../skills/start/SKILL.md)). A run makes no mutants:
-mutation runs by hand, with [`skills/mutate.mjs`](../../.claude/workflows/red-green/skills/mutate.mjs).
+mutation runs by hand, with [`skills/mutate.mjs`](args-and-profile.md#by-hand-mutation).
 
 "Died" is a call with no answer. It lands in `failures`, or ends the run (`status: failed`) where the table says so.
 Each stage's questions go to the result as `<stage>_questions`, not to later prompts; one naming no known requirement
