@@ -92,5 +92,6 @@ In the order a run takes them ([`stages.md`](docs/red-green/stages.md) has each 
 - [`tracing.md`](docs/red-green/tracing.md): `trace.mjs`.
 - [`maintaining.md`](docs/red-green/maintaining.md): tests, template, new blocks and fields, prompts.
 
-The workflow is measured in the separate `~/projects/wf-ablation` repository, which runs against this checkout through
-`TICKET_TDD_CORE`. It still builds the old `ticket-tdd` paths from it and has to be adapted in its own repository.
+## License
+
+MIT, see [`LICENSE`](LICENSE).
