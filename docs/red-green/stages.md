@@ -141,9 +141,11 @@ a mutant with no patch, and exits 2 if its build or test fails or times out; an 
 `result.mutation` accumulates every step.
 
 - `applies` false: the step is skipped with a log line.
-- `ran` false with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
+- `ran` false or a non-blank `not_run` (even with `ran` true) counts as not run: the mutated HEAD stays, and any mutants
+  returned are still recorded and survivors returned.
+- Not run with a `not_run` naming the control run while a gate is `known_red`: skipped with a log line, and
   `result.mutation_skipped` holds the reason until a later step runs.
-- Any other `ran` false, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
+- Any other not run, a `not_run` mutant and a dead step land in `failures`; `invalid` ones are only counted.
 - A `survived` mutant whose patch has no file header and hunk header counts as `not_run`; its `failures` entry names the
   missing headers.
 - Every survivor is a major finding (`source: mutation`), fixed in an iteration with a fix and left over from the last. No
