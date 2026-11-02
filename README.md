@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.svg" width="160" alt="red-green logo"></p>
+
 # red-green: research, TDD, review loop
 
 A Claude Code Workflow that takes one ticket or spec and hands back commits on a branch: implemented test-first,
