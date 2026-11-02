@@ -333,3 +333,9 @@ test('R17: a reduction stopped by the cap of 100 reruns says so', () => {
   assert.equal(r.status, 1, r.stderr)
   assert.match(r.stderr, /p\.a: example 0 reduced in 100 reruns, stopped at the cap: \[/)
 })
+
+test('R-order: the command\'s stderr and stdout come out of run in the order written', () => {
+  const r = run(property({ int: [0, 1] }, `process.stderr.write('first\\n'); process.stdout.write('last\\n')`))
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.stdout, 'first\nlast\n')
+})
