@@ -730,10 +730,10 @@ test('P05: with a property case and no framework, implement gets the marker, dom
   assert.ok(!/PROPERTY|contract: </.test(prompt((await runCore()).calls, 'implement')))
 })
 
-test('P11: with no framework, implement\'s runner note shows one example of each property case\'s own domain, as the runner generates it', async () => {
-  const cases = [propertyCase('C1', { domain: '{"record":{"a":{"int":[0,9]},"b":{"const":"x"}}}' }), propertyCase('C2', { domain: '{"tuple":[{"int":[0,9]},{"const":true}]}' })]
+test('P11: with no framework, implement\'s runner note shows each property case\'s own domain by its least example, sized by the domain\'s minimums', async () => {
+  const cases = [propertyCase('C1', { domain: '{"record":{"a":{"int":[3,9]},"b":{"bytes":[2,100000]}}}' }), propertyCase('C2', { domain: '{"tuple":[{"string":[1,9],"chars":"xy"},{"const":true}]}' })]
   const p = prompt((await runCore({ plan: { cases } })).calls, 'implement')
-  assert.ok(p.includes('when the file is absent; one example of each case\'s domain: `m.C1` {"a":0,"b":"x"}, `m.C2` [0,true]; each printed line'), p)
+  assert.ok(p.includes('when the file is absent; one example of each case\'s domain: `m.C1` {"a":3,"b":[0,0]}, `m.C2` ["x",true]; each printed line'), p)
   assert.ok(!/one example of/.test(prompt((await runCore()).calls, 'implement')))
   const framework = { plan: { cases: [propertyCase('C1', { domain: 'fc.integer()' })] } }
   assert.ok(!/one example of/.test(prompt((await runCore(framework, 1, withBlocks({ implement: { property_framework: 'fast-check' } }))).calls, 'implement')))

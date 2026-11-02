@@ -34,8 +34,8 @@ const fillRun = (v, at) => typeof v === 'string' ? v.replace(/\{\{([^{}]*)\}\}/g
 const P = fillRun(A.profile || {}, 'profile')
 // Each block's default instructions, from template/defaults/<block>.md: {<block>: {<part>: text}} (docs/red-green/blocks.md).
 const DEFAULTS = {{defaults}}
-// The contract CLI's language, from skills/contracts.mjs: {LIMIT, ID, KINDS, compile}; ID matches a whole contract id,
-// compile throws on a domain the CLI rejects.
+// The contract CLI's language, from skills/contracts.mjs: {LIMIT, ID, KINDS, compile, example}; ID matches a whole
+// contract id, compile throws on a domain the CLI rejects, example is a domain's least example as JSON.
 const CONTRACTS = {{contracts}}
 // @include shared text
 // @include shared validate

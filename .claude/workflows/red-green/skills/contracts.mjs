@@ -34,7 +34,7 @@
 //     node contracts.mjs run [--seed <n>] [--examples <n>] -- <test command>
 //
 // Imported, it runs nothing: render.mjs inlines LIMIT, ID, KINDS and compile (with int and ASCII) into the core's plan
-// check, and mulberry32 for implement's example of each domain.
+// check, and seq and least for implement's example of each domain.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -122,7 +122,7 @@ const doc = (path, check) => {
 }
 
 // A seeded generator (mulberry32): next() is uniform in [0, 1). random seeds it from a key.
-export const mulberry32 = s => () => {
+const mulberry32 = s => () => {
   s = (s + 0x6d2b79f5) | 0
   let t = Math.imul(s ^ (s >>> 15), 1 | s)
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
@@ -175,7 +175,7 @@ export const compile = d => {
 }
 
 // Reduction by a validated domain. A string is reduced as the list of its characters' places in the alphabet.
-const seq = d => {
+export const seq = d => {
   if ('bytes' in d) return { len: d.bytes, el: { int: [0, 255] }, is: Array.isArray, from: v => v, to: a => a }
   if ('list' in d) return { len: d.len, el: d.list, is: Array.isArray, from: v => v, to: a => a }
   if (!('string' in d)) return null
@@ -193,7 +193,8 @@ const has = (d, v) => {
   if ('oneof' in d) return d.oneof.some(e => has(e, v))
   return JSON.stringify(v) === JSON.stringify(d.const)
 }
-const least = d => {
+// The least example of a domain, the one reduction moves toward: its size is the domain's minimums.
+export const least = d => {
   const s = seq(d)
   if (s) return s.to(Array(s.len[0]).fill(least(s.el)))
   if ('int' in d) return d.int[0]

@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ASCII, ID, KINDS, LIMIT, compile, int, mulberry32 } from '../skills/contracts.mjs'
+import { ASCII, ID, KINDS, LIMIT, compile, int, least, seq } from '../skills/contracts.mjs'
 
 const here = name => new URL(name, import.meta.url)
 
@@ -57,8 +57,8 @@ export function defaults(dir) {
 const CORE_DIR = fileURLToPath(here('core/'))
 const CONTRACTS = `(() => {
   const ASCII = ${JSON.stringify(ASCII)}, KINDS = ${JSON.stringify(KINDS)}, int = ${int}
-  const compile = ${compile}, mulberry32 = ${mulberry32}
-  const example = d => JSON.stringify(compile(JSON.parse(d))(mulberry32(1)))
+  const compile = ${compile}, seq = ${seq}, least = ${least}
+  const example = d => JSON.stringify(least(JSON.parse(d)))
   return { LIMIT: ${LIMIT}, ID: new RegExp(${JSON.stringify(`^(?:${ID.source})$`)}), KINDS, compile, example }
 })()`
 const TEMPLATE = template(CORE_DIR)
@@ -75,7 +75,7 @@ export const DEFAULT = JSON.parse(readFileSync(here('default.json'), 'utf8'))
 
 // A config names only what it changes: its blocks merge over the default's, as profile.blocks merges at run time.
 // The render-time slots are {{blocks}}, {{defaults}}, the inlined default instructions, and {{contracts}}, the contract
-// CLI's statement limit, id pattern, domain kinds, domain compiler and one example of a domain; every other {{path}} is a run-time template variable.
+// CLI's statement limit, id pattern, domain kinds, domain compiler and a domain's least example; every other {{path}} is a run-time template variable.
 export function render(config) {
   for (const k of Object.keys(config)) if (!(k in DEFAULT)) throw new Error(`unknown config key: ${k}`)
   const { merged, errors } = mergeBlocks(DEFAULT.blocks, config.blocks, REGISTRY)
